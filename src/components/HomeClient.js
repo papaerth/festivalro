@@ -21,18 +21,50 @@ function currentSeason() {
   return "winter";
 }
 
+// Date → "YYYY-MM-DD"
+function ymd(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// 이번 주말(토~일) 범위. 평일이면 다가오는 주말, 주말이면 이번 주말.
+function weekendRange(now = new Date()) {
+  const dow = now.getDay(); // 0=일 ~ 6=토
+  const sat = new Date(now);
+  if (dow === 0) sat.setDate(now.getDate() - 1); // 일요일이면 어제(토)가 주말 시작
+  else sat.setDate(now.getDate() + (6 - dow)); // 그 외엔 이번 주 토요일로
+  const sun = new Date(sat);
+  sun.setDate(sat.getDate() + 1);
+  return [ymd(sat), ymd(sun)];
+}
+
+// 이번 달 1일 ~ 말일 범위
+function monthRange(now = new Date()) {
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return [ymd(start), ymd(end)];
+}
+
+// 축제 기간이 주어진 범위와 겹치는지
+function overlaps(startDate, endDate, rangeStart, rangeEnd) {
+  return startDate <= rangeEnd && endDate >= rangeStart;
+}
+
 export default function HomeClient({ festivals, usingSample }) {
   const [season, setSeason] = useState(currentSeason());
   const [region, setRegion] = useState("all");
   const [statusFilter, setStatusFilter] = useState(null); // null=전체
   const [query, setQuery] = useState("");
+  const [period, setPeriod] = useState(null); // null | "weekend" | "month"
   const theme = SEASONS[season];
 
   const q = query.trim().toLowerCase();
   const searching = q.length > 0;
 
-  // 검색 중이면: 계절/지역 무시하고 전국에서 이름·지역명으로 검색
-  // 아니면: 선택한 계절 + 지역으로 거름 (상태 요약 개수의 기준)
+  // 우선순위: 검색 > 기간(주말/이번달) > 계절+지역
+  // 검색·기간 모드에서는 계절/지역을 무시하고 전국에서 찾습니다.
   const base = useMemo(() => {
     if (searching) {
       return festivals.filter(
@@ -42,10 +74,21 @@ export default function HomeClient({ festivals, usingSample }) {
           (f.sigungu || "").toLowerCase().includes(q)
       );
     }
+    if (period) {
+      const [rs, re] = period === "weekend" ? weekendRange() : monthRange();
+      return festivals.filter((f) => overlaps(f.startDate, f.endDate, rs, re));
+    }
     return festivals
       .filter((f) => f.season === season)
       .filter((f) => (region === "all" ? true : f.region === region));
-  }, [festivals, season, region, q, searching]);
+  }, [festivals, season, region, q, searching, period]);
+
+  // 기간 바로가기 토글 (다시 누르면 해제). 검색과는 상호배타적.
+  const togglePeriod = (key) => {
+    setPeriod((prev) => (prev === key ? null : key));
+    setQuery("");
+  };
+  const periodLabel = period === "weekend" ? "📅 이번 주말" : "🗓️ 이번 달";
 
   // 상태별 개수 요약 (진행중 / 예정 / 종료)
   const counts = useMemo(() => {
@@ -102,7 +145,10 @@ export default function HomeClient({ festivals, usingSample }) {
             className="search-input"
             placeholder="축제 이름·지역으로 검색 (예: 머드, 부산)"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              if (e.target.value.trim()) setPeriod(null);
+            }}
             aria-label="축제 검색"
           />
           {searching && (
@@ -116,10 +162,31 @@ export default function HomeClient({ festivals, usingSample }) {
           )}
         </div>
 
+        {/* 기간 바로가기 */}
+        <div className="quick-filters">
+          <button
+            className={`quick-chip ${period === "weekend" ? "active" : ""}`}
+            onClick={() => togglePeriod("weekend")}
+          >
+            📅 이번 주말
+          </button>
+          <button
+            className={`quick-chip ${period === "month" ? "active" : ""}`}
+            onClick={() => togglePeriod("month")}
+          >
+            🗓️ 이번 달
+          </button>
+        </div>
+
         {searching ? (
           /* 검색 중: 계절/지역 선택 대신 검색 결과 안내 */
           <div className="search-result-head">
             🔍 전국에서 <b>“{query.trim()}”</b> 검색 결과 <b>{base.length}</b>곳
+          </div>
+        ) : period ? (
+          /* 기간 바로가기: 계절/지역 대신 기간 결과 안내 */
+          <div className="search-result-head">
+            {periodLabel}에 열리는 축제 <b>{base.length}</b>곳
           </div>
         ) : (
           <>
@@ -205,6 +272,12 @@ export default function HomeClient({ festivals, usingSample }) {
                   “{query.trim()}” 검색 결과가 없어요.
                   <br />
                   다른 이름이나 지역으로 검색해 보세요!
+                </>
+              ) : period ? (
+                <>
+                  {periodLabel}에 열리는 축제가 없어요.
+                  <br />
+                  다른 기간이나 계절을 살펴보세요!
                 </>
               ) : (
                 <>

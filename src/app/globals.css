@@ -170,6 +170,35 @@ h3 {
   color: var(--accent);
 }
 
+/* ── 기간 바로가기 (이번 주말 / 이번 달) ── */
+.quick-filters {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.quick-chip {
+  flex: 1;
+  padding: 11px 14px;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.quick-chip:hover {
+  border-color: var(--accent);
+}
+.quick-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 14px var(--accent-soft);
+}
+
 /* ── 필터 (계절 / 지역) ── */
 .filter-group {
   margin: 16px 0;
