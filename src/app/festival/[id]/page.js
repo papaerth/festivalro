@@ -6,6 +6,8 @@ import { formatPeriod, getStatus } from "@/lib/format";
 import WeatherPanel from "@/components/WeatherPanel";
 import DirectionsButton from "@/components/DirectionsButton";
 import DetailMap from "@/components/DetailMap";
+import DetailTabs from "@/components/DetailTabs";
+import BlogList from "@/components/BlogList";
 
 // 축제 상세 화면 (서버에서 데이터를 불러온 뒤 렌더링)
 export default async function FestivalDetailPage({ params }) {
@@ -55,42 +57,57 @@ export default async function FestivalDetailPage({ params }) {
           </p>
         </section>
 
-        {/* 축제 소개 */}
-        <section className="section">
-          <h2>🎪 축제 소개</h2>
-          <p className="desc">{festival.description}</p>
-        </section>
+        {/* 탭: 정보 / 날씨 / 블로그 */}
+        <DetailTabs
+          infoPanel={
+            <>
+              <section className="section">
+                <h2>🎪 축제 소개</h2>
+                <p className="desc">{festival.description}</p>
+              </section>
 
-        {/* 날씨 */}
-        <section className="section">
-          <h2>🌤️ 오늘부터 3일 날씨</h2>
-          <WeatherPanel
-            lat={festival.lat}
-            lng={festival.lng}
-            place={`${festival.sido} ${festival.sigungu}`}
-          />
-        </section>
+              <section className="section">
+                <h2>🧭 길찾기</h2>
+                <DirectionsButton
+                  name={festival.name}
+                  lat={festival.lat}
+                  lng={festival.lng}
+                />
+              </section>
 
-        {/* 길찾기 */}
-        <section className="section">
-          <h2>🧭 길찾기</h2>
-          <DirectionsButton
-            name={festival.name}
-            lat={festival.lat}
-            lng={festival.lng}
-          />
-        </section>
-
-        {/* 미니 지도 */}
-        <section className="section">
-          <h2>🗺️ 축제 위치</h2>
-          <DetailMap
-            lat={festival.lat}
-            lng={festival.lng}
-            name={festival.name}
-            color={theme.color}
-          />
-        </section>
+              <section className="section">
+                <h2>🗺️ 축제 위치</h2>
+                <DetailMap
+                  lat={festival.lat}
+                  lng={festival.lng}
+                  name={festival.name}
+                  color={theme.color}
+                />
+              </section>
+            </>
+          }
+          weatherPanel={
+            <section className="section">
+              <h2>🌤️ 오늘부터 3일 날씨</h2>
+              <WeatherPanel
+                lat={festival.lat}
+                lng={festival.lng}
+                place={`${festival.sido} ${festival.sigungu}`}
+              />
+            </section>
+          }
+          blogPanel={
+            <section className="section">
+              <h2>📝 블로그 후기</h2>
+              <BlogList
+                query={festival.name}
+                fallbackUrl={`https://search.naver.com/search.naver?where=blog&query=${encodeURIComponent(
+                  festival.name
+                )}`}
+              />
+            </section>
+          }
+        />
       </main>
 
       <footer className="site-footer">
