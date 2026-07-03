@@ -37,6 +37,65 @@ function avg(arr) {
   return arr.reduce((a, b) => a + b, 0) / arr.length;
 }
 
+// 미세먼지 농도(㎍/㎥) → 한국 기준 등급 + 색상
+// PM10:  ~30 좋음 / ~80 보통 / ~150 나쁨 / 그 이상 매우나쁨
+// PM2.5: ~15 좋음 / ~35 보통 / ~75 나쁨 / 그 이상 매우나쁨
+const AIR_COLORS = {
+  좋음: "#1e88e5",
+  보통: "#2e9e4f",
+  나쁨: "#f08c00",
+  매우나쁨: "#e03131",
+};
+function airGrade(value, type) {
+  const steps =
+    type === "pm25"
+      ? [[15, "좋음"], [35, "보통"], [75, "나쁨"]]
+      : [[30, "좋음"], [80, "보통"], [150, "나쁨"]];
+  let grade = "매우나쁨";
+  for (const [max, label] of steps) {
+    if (value <= max) {
+      grade = label;
+      break;
+    }
+  }
+  return { grade, color: AIR_COLORS[grade] };
+}
+
+// Open-Meteo 대기질 API에서 날짜별 미세먼지/초미세먼지(하루 평균)를 가져옵니다.
+// 실패해도 날씨는 정상 표시되도록, 이 데이터는 '있으면 좋은' 부가정보로 취급합니다.
+async function getAirQuality(lat, lng) {
+  const url =
+    `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lng}` +
+    `&hourly=pm10,pm2_5&timezone=Asia%2FSeoul&forecast_days=4`;
+  const res = await fetchWithTimeout(url, { next: { revalidate: 1800 } }, 3500);
+  if (!res.ok) throw new Error("air not ok");
+  const h = (await res.json()).hourly;
+  if (!h || !Array.isArray(h.time)) throw new Error("air bad shape");
+
+  const byDay = {};
+  for (let i = 0; i < h.time.length; i++) {
+    const date = h.time[i].slice(0, 10);
+    const b = (byDay[date] ||= { pm10: [], pm25: [] });
+    if (typeof h.pm10?.[i] === "number") b.pm10.push(h.pm10[i]);
+    if (typeof h.pm2_5?.[i] === "number") b.pm25.push(h.pm2_5[i]);
+  }
+
+  const map = {};
+  for (const date of Object.keys(byDay)) {
+    const b = byDay[date];
+    if (!b.pm10.length && !b.pm25.length) continue;
+    const pm10 = b.pm10.length ? Math.round(avg(b.pm10)) : null;
+    const pm25 = b.pm25.length ? Math.round(avg(b.pm25)) : null;
+    map[date] = {
+      pm10,
+      pm25,
+      pm10Grade: pm10 != null ? airGrade(pm10, "pm10") : null,
+      pm25Grade: pm25 != null ? airGrade(pm25, "pm25") : null,
+    };
+  }
+  return map;
+}
+
 // 시간대별 데이터를 화면용 slots 배열로 변환 (아침→낮→저녁→밤 순서)
 function buildSlots(pdSlots, resolveSky, rainFmt) {
   const out = [];
@@ -216,23 +275,38 @@ export async function GET(request) {
   }
 
   // 1순위 → 2순위 순서로 시도, 먼저 성공하는 쪽 결과를 사용
+  let weather = null;
   for (const provider of [fromOpenMeteo, fromMet]) {
     try {
       const result = await provider(lat, lng);
       if (result.days.length > 0) {
-        return NextResponse.json(result, {
-          headers: {
-            "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600",
-          },
-        });
+        weather = result;
+        break;
       }
     } catch (err) {
       console.warn(`[weather] ${provider.name} 실패 → 다음 제공자 시도:`, err.message);
     }
   }
 
-  return NextResponse.json(
-    { error: "날씨 서버에 연결할 수 없습니다." },
-    { status: 504 }
-  );
+  if (!weather) {
+    return NextResponse.json(
+      { error: "날씨 서버에 연결할 수 없습니다." },
+      { status: 504 }
+    );
+  }
+
+  // 미세먼지 정보를 날짜별로 붙입니다(부가정보 — 실패해도 날씨는 그대로 표시).
+  let air = {};
+  try {
+    air = await getAirQuality(lat, lng);
+  } catch (err) {
+    console.warn("[weather] 대기질 조회 실패(무시):", err.message);
+  }
+  weather.days = weather.days.map((d) => ({ ...d, air: air[d.date] || null }));
+
+  return NextResponse.json(weather, {
+    headers: {
+      "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600",
+    },
+  });
 }

@@ -494,24 +494,71 @@ h3 {
   color: var(--text-soft);
   margin: 0;
 }
-.wd-more-link {
+/* ── 미세먼지 / 초미세먼지 ── */
+.wd-air {
   display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.wd-air-item {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
-  margin-top: 12px;
-  padding: 12px;
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+.wd-air-name {
+  font-weight: 700;
+}
+.wd-air-val {
+  color: var(--text-soft);
+}
+.air-badge {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* ── 네이버 날씨 안내 버튼 ── */
+.weather-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 16px;
   background: var(--surface);
   border: 1.5px solid var(--accent);
-  border-radius: 12px;
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 700;
-  transition: background 0.15s ease, color 0.15s ease;
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  transition: background 0.18s ease, transform 0.12s ease;
 }
-.wd-more-link:hover {
-  background: var(--accent);
-  color: #fff;
+.weather-cta:hover {
+  transform: translateY(-2px);
+  background: var(--accent-soft);
+}
+.weather-cta-lead {
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+.weather-cta-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 700;
+}
+.weather-cta-arrow {
+  transition: transform 0.15s ease;
+}
+.weather-cta:hover .weather-cta-arrow {
+  transform: translateX(4px);
 }
 
 /* ── 길찾기 버튼 ── */

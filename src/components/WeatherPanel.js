@@ -104,6 +104,39 @@ export default function WeatherPanel({ lat, lng, place }) {
             </div>
           )}
 
+          {openDay.air && (
+            <div className="wd-air">
+              {openDay.air.pm10 != null && (
+                <span className="wd-air-item">
+                  <span className="wd-air-name">미세먼지</span>
+                  <span className="wd-air-val">PM10 {openDay.air.pm10}</span>
+                  {openDay.air.pm10Grade && (
+                    <span
+                      className="air-badge"
+                      style={{ background: openDay.air.pm10Grade.color }}
+                    >
+                      {openDay.air.pm10Grade.grade}
+                    </span>
+                  )}
+                </span>
+              )}
+              {openDay.air.pm25 != null && (
+                <span className="wd-air-item">
+                  <span className="wd-air-name">초미세먼지</span>
+                  <span className="wd-air-val">PM2.5 {openDay.air.pm25}</span>
+                  {openDay.air.pm25Grade && (
+                    <span
+                      className="air-badge"
+                      style={{ background: openDay.air.pm25Grade.color }}
+                    >
+                      {openDay.air.pm25Grade.grade}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
+
           {openDay.slots && openDay.slots.length > 0 ? (
             <div className="wd-slots">
               {openDay.slots.map((s) => (
@@ -124,12 +157,18 @@ export default function WeatherPanel({ lat, lng, place }) {
 
       {/* 더 상세한 날씨(미세먼지·주간예보·레이더 등)는 네이버 날씨로 바로 연결 */}
       <a
-        className="wd-more-link"
+        className="weather-cta"
         href={naverWeatherUrl}
         target="_blank"
         rel="noopener noreferrer"
       >
-        📱 네이버 날씨에서 상세 예보 보기 →
+        <span className="weather-cta-lead">
+          더 자세하고 긴 날씨 예보가 궁금하신가요?
+        </span>
+        <span className="weather-cta-main">
+          <span>📡 네이버 날씨에서 상세 예보 보기</span>
+          <span className="weather-cta-arrow">→</span>
+        </span>
       </a>
     </div>
   );
