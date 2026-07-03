@@ -64,7 +64,11 @@ export default async function FestivalDetailPage({ params }) {
         {/* 날씨 */}
         <section className="section">
           <h2>🌤️ 오늘부터 3일 날씨</h2>
-          <WeatherPanel lat={festival.lat} lng={festival.lng} />
+          <WeatherPanel
+            lat={festival.lat}
+            lng={festival.lng}
+            place={`${festival.sido} ${festival.sigungu}`}
+          />
         </section>
 
         {/* 길찾기 */}

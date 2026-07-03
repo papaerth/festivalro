@@ -494,6 +494,25 @@ h3 {
   color: var(--text-soft);
   margin: 0;
 }
+.wd-more-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1.5px solid var(--accent);
+  border-radius: 12px;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.wd-more-link:hover {
+  background: var(--accent);
+  color: #fff;
+}
 
 /* ── 길찾기 버튼 ── */
 .directions-btn {

@@ -19,9 +19,14 @@ function prettyDate(dateStr) {
 
 // 우리 서버의 '날씨 중계소'(/api/weather)에서 오늘~3일 날씨를 받아 보여줍니다.
 // 각 칸을 누르면 그날의 시간대별 상세(아침/낮/저녁/밤)가 펼쳐집니다.
-export default function WeatherPanel({ lat, lng }) {
+export default function WeatherPanel({ lat, lng, place }) {
   const [state, setState] = useState({ status: "loading", days: [] });
   const [openIndex, setOpenIndex] = useState(null); // 펼쳐진 날짜 (없으면 null)
+
+  // 축제 위치 기준으로 네이버 날씨(상세)를 여는 주소
+  const naverWeatherUrl = `https://search.naver.com/search.naver?query=${encodeURIComponent(
+    `${place || ""} 날씨`.trim()
+  )}`;
 
   useEffect(() => {
     let alive = true;
@@ -116,6 +121,16 @@ export default function WeatherPanel({ lat, lng }) {
           )}
         </div>
       )}
+
+      {/* 더 상세한 날씨(미세먼지·주간예보·레이더 등)는 네이버 날씨로 바로 연결 */}
+      <a
+        className="wd-more-link"
+        href={naverWeatherUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        📱 네이버 날씨에서 상세 예보 보기 →
+      </a>
     </div>
   );
 }
