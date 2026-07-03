@@ -92,7 +92,6 @@ async function fetchFromTourApi(apiKey) {
     MobileOS: "ETC",
     MobileApp: "chukjero",
     _type: "json",
-    listYN: "Y",
     arrange: "A", // 제목순 정렬
     numOfRows: "200",
     pageNo: "1",

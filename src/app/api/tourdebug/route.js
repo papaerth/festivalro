@@ -21,7 +21,6 @@ export async function GET() {
     MobileOS: "ETC",
     MobileApp: "chukjero",
     _type: "json",
-    listYN: "Y",
     arrange: "A",
     numOfRows: "3",
     pageNo: "1",
