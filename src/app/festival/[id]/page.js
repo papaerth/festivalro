@@ -9,6 +9,7 @@ import DetailMap from "@/components/DetailMap";
 import DetailTabs from "@/components/DetailTabs";
 import BlogList from "@/components/BlogList";
 import CoverImage from "@/components/CoverImage";
+import ShareButton from "@/components/ShareButton";
 
 // 축제 상세 화면 (서버에서 데이터를 불러온 뒤 렌더링)
 export default async function FestivalDetailPage({ params }) {
@@ -67,6 +68,11 @@ export default async function FestivalDetailPage({ params }) {
             </p>
           </div>
         </section>
+
+        {/* 공유 */}
+        <div className="detail-actions">
+          <ShareButton title={festival.name} />
+        </div>
 
         {/* 탭: 정보 / 날씨 / 블로그 */}
         <DetailTabs
