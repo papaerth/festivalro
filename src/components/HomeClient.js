@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { SEASONS, SEASON_ORDER, REGIONS, REGION_ORDER } from "@/lib/seasons";
 import { getStatusInfo, STATUS_ORDER } from "@/lib/format";
+import { useFavorites } from "@/lib/useFavorites";
 import FestivalCard from "./FestivalCard";
 
 // 지도는 브라우저에서만 그려질 수 있어 ssr:false 로 불러옵니다.
@@ -58,13 +59,16 @@ export default function HomeClient({ festivals, usingSample }) {
   const [statusFilter, setStatusFilter] = useState(null); // null=전체
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState(null); // null | "weekend" | "month"
+  const [showFavorites, setShowFavorites] = useState(false);
   const theme = SEASONS[season];
+
+  const { favorites, ready: favReady } = useFavorites();
 
   const q = query.trim().toLowerCase();
   const searching = q.length > 0;
 
-  // 우선순위: 검색 > 기간(주말/이번달) > 계절+지역
-  // 검색·기간 모드에서는 계절/지역을 무시하고 전국에서 찾습니다.
+  // 우선순위: 검색 > 기간(주말/이번달) > 즐겨찾기 > 계절+지역
+  // 앞의 모드들에서는 계절/지역을 무시하고 전국에서 찾습니다.
   const base = useMemo(() => {
     if (searching) {
       return festivals.filter(
@@ -78,17 +82,28 @@ export default function HomeClient({ festivals, usingSample }) {
       const [rs, re] = period === "weekend" ? weekendRange() : monthRange();
       return festivals.filter((f) => overlaps(f.startDate, f.endDate, rs, re));
     }
+    if (showFavorites) {
+      return festivals.filter((f) => favorites.includes(f.id));
+    }
     return festivals
       .filter((f) => f.season === season)
       .filter((f) => (region === "all" ? true : f.region === region));
-  }, [festivals, season, region, q, searching, period]);
+  }, [festivals, season, region, q, searching, period, showFavorites, favorites]);
 
-  // 기간 바로가기 토글 (다시 누르면 해제). 검색과는 상호배타적.
+  // 기간 바로가기 토글 (다시 누르면 해제). 다른 모드와는 상호배타적.
   const togglePeriod = (key) => {
     setPeriod((prev) => (prev === key ? null : key));
     setQuery("");
+    setShowFavorites(false);
   };
   const periodLabel = period === "weekend" ? "📅 이번 주말" : "🗓️ 이번 달";
+
+  // 즐겨찾기만 보기 토글
+  const toggleFavorites = () => {
+    setShowFavorites((prev) => !prev);
+    setQuery("");
+    setPeriod(null);
+  };
 
   // 상태별 개수 요약 (진행중 / 예정 / 종료)
   const counts = useMemo(() => {
@@ -147,7 +162,10 @@ export default function HomeClient({ festivals, usingSample }) {
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
-              if (e.target.value.trim()) setPeriod(null);
+              if (e.target.value.trim()) {
+                setPeriod(null);
+                setShowFavorites(false);
+              }
             }}
             aria-label="축제 검색"
           />
@@ -176,6 +194,13 @@ export default function HomeClient({ festivals, usingSample }) {
           >
             🗓️ 이번 달
           </button>
+          <button
+            className={`quick-chip ${showFavorites ? "active" : ""}`}
+            onClick={toggleFavorites}
+            suppressHydrationWarning
+          >
+            ❤️ 즐겨찾기{favReady && favorites.length > 0 ? ` ${favorites.length}` : ""}
+          </button>
         </div>
 
         {searching ? (
@@ -187,6 +212,11 @@ export default function HomeClient({ festivals, usingSample }) {
           /* 기간 바로가기: 계절/지역 대신 기간 결과 안내 */
           <div className="search-result-head">
             {periodLabel}에 열리는 축제 <b>{base.length}</b>곳
+          </div>
+        ) : showFavorites ? (
+          /* 즐겨찾기: 계절/지역 대신 안내 */
+          <div className="search-result-head" suppressHydrationWarning>
+            ❤️ 즐겨찾기한 축제 <b>{base.length}</b>곳
           </div>
         ) : (
           <>
@@ -278,6 +308,12 @@ export default function HomeClient({ festivals, usingSample }) {
                   {periodLabel}에 열리는 축제가 없어요.
                   <br />
                   다른 기간이나 계절을 살펴보세요!
+                </>
+              ) : showFavorites ? (
+                <>
+                  아직 즐겨찾기한 축제가 없어요.
+                  <br />
+                  축제 카드의 🤍 하트를 눌러 담아보세요!
                 </>
               ) : (
                 <>

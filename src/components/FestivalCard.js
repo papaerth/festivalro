@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SEASONS, REGIONS } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import CoverImage from "./CoverImage";
+import FavoriteButton from "./FavoriteButton";
 
 // 축제 하나를 카드 형태로 보여줍니다. (상단 대표 이미지 + 정보)
 export default function FestivalCard({ festival }) {
@@ -25,6 +26,7 @@ export default function FestivalCard({ festival }) {
         {status.key === "ongoing" && <span className="live-dot" />}
         {status.label}
       </span>
+      <FavoriteButton id={festival.id} />
       <div className="card-body">
         <p className="card-title">{festival.name}</p>
         <p className="card-meta">{formatPeriod(festival.startDate, festival.endDate)}</p>
