@@ -8,15 +8,55 @@ function prettyPostDate(s) {
   return `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6, 8)}`;
 }
 
-// 축제 이름으로 네이버 블로그(최근 3년, 정확도순)를 불러와 보여줍니다.
-// 키가 없으면 '네이버에서 검색' 링크로 자동 대체됩니다.
-export default function BlogList({ query, fallbackUrl }) {
+// 대표 이미지 썸네일 (이미지 없거나 로딩 실패하면 계절색 자리표시)
+//  - 네이버 이미지는 외부 표시가 차단되므로 우리 서버(/api/img)를 경유해 표시
+function BlogThumb({ src, accent }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <div
+        className="blog-thumb blog-thumb-empty"
+        style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)` }}
+      >
+        📷
+      </div>
+    );
+  }
+  const proxied = `/api/img?url=${encodeURIComponent(src)}`;
+  return (
+    <div className="blog-thumb">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={proxied}
+        alt=""
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    </div>
+  );
+}
+
+// 축제 이름으로 네이버 블로그(최근 3년, 정확도순) 5개를 보여줍니다.
+export default function BlogList({ query, accent = "#c2578a" }) {
   const [state, setState] = useState({ status: "loading" });
+  const [isMobile, setIsMobile] = useState(false);
+
+  // 접속 기기에 맞는 네이버 '블로그검색' 결과 페이지 주소를 만듭니다.
+  //  - PC:    search.naver.com   ?ssc=tab.blog.all
+  //  - 모바일: m.search.naver.com ?ssc=tab.m_blog.all
+  useEffect(() => {
+    setIsMobile(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+  }, []);
+
+  const enc = encodeURIComponent(query);
+  const moreUrl = isMobile
+    ? `https://m.search.naver.com/search.naver?ssc=tab.m_blog.all&query=${enc}`
+    : `https://search.naver.com/search.naver?ssc=tab.blog.all&query=${enc}`;
 
   useEffect(() => {
     let alive = true;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
+    const timer = setTimeout(() => controller.abort(), 12000);
 
     fetch(`/api/blog?query=${encodeURIComponent(query)}`, {
       signal: controller.signal,
@@ -45,21 +85,15 @@ export default function BlogList({ query, fallbackUrl }) {
     };
   }, [query]);
 
-  // 네이버 블로그 검색으로 바로 연결하는 카드 (대체/보조 링크)
-  const fallbackCard = (
+  // 맨 아래 "네이버 블로그에서 더 보기" 버튼
+  const moreButton = (
     <a
-      className="weather-cta"
-      href={fallbackUrl}
+      className="blog-more-btn"
+      href={moreUrl}
       target="_blank"
       rel="noopener noreferrer"
     >
-      <span className="weather-cta-lead">
-        더 많은 후기가 궁금하신가요?
-      </span>
-      <span className="weather-cta-main">
-        <span>📝 네이버 블로그에서 검색해 보기</span>
-        <span className="weather-cta-arrow">→</span>
-      </span>
+      네이버 블로그에서 더 보기 →
     </a>
   );
 
@@ -70,40 +104,37 @@ export default function BlogList({ query, fallbackUrl }) {
   if (state.status === "error") {
     return (
       <div>
-        <div className="weather-error">블로그 후기를 잠시 불러올 수 없어요.</div>
-        {fallbackCard}
+        <p className="blog-empty-msg">블로그 후기를 잠시 불러올 수 없어요.</p>
+        {moreButton}
       </div>
     );
   }
 
-  // 키 미설정 → 링크아웃 안내
+  // 키 미설정 안내 (키를 넣으면 자동으로 목록이 표시됨)
   if (!state.configured) {
     return (
       <div>
-        <p className="blog-note">
-          💡 블로그 후기 목록은 네이버 검색 키를 등록하면 이 자리에 바로 표시돼요.
-          지금은 아래 버튼으로 네이버 블로그에서 확인하실 수 있어요.
+        <p className="blog-empty-msg">
+          블로그 후기 목록은 네이버 검색 키를 등록하면 이 자리에 표시돼요.
         </p>
-        {fallbackCard}
+        {moreButton}
       </div>
     );
   }
 
-  // 키는 있으나 최근 3년 글이 없는 경우
+  // 후기 0개 → 안내 + 더 보기 버튼만
   if (state.items.length === 0) {
     return (
       <div>
-        <p className="blog-note">최근 3년 이내의 블로그 후기를 찾지 못했어요.</p>
-        {fallbackCard}
+        <p className="blog-empty-msg">아직 등록된 후기가 없어요.</p>
+        {moreButton}
       </div>
     );
   }
 
+  // 후기 목록 (최대 5개)
   return (
     <div>
-      <p className="blog-note">
-        최근 3년간 이 축제를 다룬 블로그 후기예요. (정확도순 상위 {state.items.length}개)
-      </p>
       {state.items.map((post, i) => (
         <a
           key={post.link || i}
@@ -112,14 +143,16 @@ export default function BlogList({ query, fallbackUrl }) {
           target="_blank"
           rel="noopener noreferrer"
         >
-          <p className="blog-title">{post.title}</p>
-          {post.description && <p className="blog-desc">{post.description}</p>}
-          <p className="blog-meta">
-            ✍️ {post.blogger || "블로그"} · {prettyPostDate(post.postdate)}
-          </p>
+          <BlogThumb src={post.image} accent={accent} />
+          <div className="blog-card-body">
+            <p className="blog-title">{post.title}</p>
+            <p className="blog-meta">
+              ✍️ {post.blogger || "블로그"} · {prettyPostDate(post.postdate)}
+            </p>
+          </div>
         </a>
       ))}
-      {fallbackCard}
+      {moreButton}
     </div>
   );
 }

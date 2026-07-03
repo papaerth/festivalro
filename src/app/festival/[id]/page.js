@@ -8,6 +8,7 @@ import DirectionsButton from "@/components/DirectionsButton";
 import DetailMap from "@/components/DetailMap";
 import DetailTabs from "@/components/DetailTabs";
 import BlogList from "@/components/BlogList";
+import CoverImage from "@/components/CoverImage";
 
 // 축제 상세 화면 (서버에서 데이터를 불러온 뒤 렌더링)
 export default async function FestivalDetailPage({ params }) {
@@ -38,23 +39,27 @@ export default async function FestivalDetailPage({ params }) {
           ← 전체 축제 목록으로
         </Link>
 
-        {/* 상단 소개 */}
-        <section
-          className="detail-hero"
-          style={{
-            background: `linear-gradient(135deg, ${theme.color}, ${theme.color}cc)`,
-          }}
-        >
-          <span className={`badge ${status.key}`}>{status.label}</span>
-          <h1>
-            {theme.emoji} {festival.name}
-          </h1>
-          <p className="detail-period">
-            📅 {formatPeriod(festival.startDate, festival.endDate)}
-          </p>
-          <p className="detail-place">
-            📍 {festival.sido} {festival.sigungu}
-          </p>
+        {/* 상단 소개 (대표 이미지 배경 + 어둡게 덮어 글자 가독성 확보) */}
+        <section className="detail-hero">
+          <CoverImage
+            className="detail-hero-bg"
+            src={festival.image}
+            alt={festival.name}
+            accent={theme.color}
+          />
+          <div className="detail-hero-scrim" />
+          <div className="detail-hero-content">
+            <span className={`badge ${status.key}`}>{status.label}</span>
+            <h1>
+              {theme.emoji} {festival.name}
+            </h1>
+            <p className="detail-period">
+              📅 {formatPeriod(festival.startDate, festival.endDate)}
+            </p>
+            <p className="detail-place">
+              📍 {festival.sido} {festival.sigungu}
+            </p>
+          </div>
         </section>
 
         {/* 탭: 정보 / 날씨 / 블로그 */}
@@ -99,12 +104,7 @@ export default async function FestivalDetailPage({ params }) {
           blogPanel={
             <section className="section">
               <h2>📝 블로그 후기</h2>
-              <BlogList
-                query={festival.name}
-                fallbackUrl={`https://search.naver.com/search.naver?where=blog&query=${encodeURIComponent(
-                  festival.name
-                )}`}
-              />
+              <BlogList query={festival.name} accent={theme.color} />
             </section>
           }
         />
