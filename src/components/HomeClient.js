@@ -25,14 +25,27 @@ export default function HomeClient({ festivals, usingSample }) {
   const [season, setSeason] = useState(currentSeason());
   const [region, setRegion] = useState("all");
   const [statusFilter, setStatusFilter] = useState(null); // null=전체
+  const [query, setQuery] = useState("");
   const theme = SEASONS[season];
 
-  // 계절 + 지역으로 먼저 거른 목록 (상태 요약 개수의 기준)
+  const q = query.trim().toLowerCase();
+  const searching = q.length > 0;
+
+  // 검색 중이면: 계절/지역 무시하고 전국에서 이름·지역명으로 검색
+  // 아니면: 선택한 계절 + 지역으로 거름 (상태 요약 개수의 기준)
   const base = useMemo(() => {
+    if (searching) {
+      return festivals.filter(
+        (f) =>
+          f.name.toLowerCase().includes(q) ||
+          (f.sido || "").toLowerCase().includes(q) ||
+          (f.sigungu || "").toLowerCase().includes(q)
+      );
+    }
     return festivals
       .filter((f) => f.season === season)
       .filter((f) => (region === "all" ? true : f.region === region));
-  }, [festivals, season, region]);
+  }, [festivals, season, region, q, searching]);
 
   // 상태별 개수 요약 (진행중 / 예정 / 종료)
   const counts = useMemo(() => {
@@ -81,40 +94,71 @@ export default function HomeClient({ festivals, usingSample }) {
           <p>계절과 지역을 골라 전국 축제를 찾아보고, 날씨와 길찾기까지 확인하세요.</p>
         </section>
 
-        {/* 계절 선택 */}
-        <div className="filter-group">
-          <div className="filter-label">계절</div>
-          <div className="chip-row">
-            {SEASON_ORDER.map((key) => {
-              const s = SEASONS[key];
-              return (
-                <button
-                  key={key}
-                  className={`chip ${season === key ? "active" : ""}`}
-                  onClick={() => setSeason(key)}
-                >
-                  {s.emoji} {s.label}
-                </button>
-              );
-            })}
-          </div>
+        {/* 검색창 */}
+        <div className="search-box">
+          <span className="search-icon" aria-hidden="true">🔍</span>
+          <input
+            type="search"
+            className="search-input"
+            placeholder="축제 이름·지역으로 검색 (예: 머드, 부산)"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="축제 검색"
+          />
+          {searching && (
+            <button
+              className="search-clear"
+              onClick={() => setQuery("")}
+              aria-label="검색 지우기"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
-        {/* 지역 선택 */}
-        <div className="filter-group">
-          <div className="filter-label">지역</div>
-          <div className="chip-row">
-            {REGION_ORDER.map((key) => (
-              <button
-                key={key}
-                className={`chip ${region === key ? "active" : ""}`}
-                onClick={() => setRegion(key)}
-              >
-                {REGIONS[key]}
-              </button>
-            ))}
+        {searching ? (
+          /* 검색 중: 계절/지역 선택 대신 검색 결과 안내 */
+          <div className="search-result-head">
+            🔍 전국에서 <b>“{query.trim()}”</b> 검색 결과 <b>{base.length}</b>곳
           </div>
-        </div>
+        ) : (
+          <>
+            {/* 계절 선택 */}
+            <div className="filter-group">
+              <div className="filter-label">계절</div>
+              <div className="chip-row">
+                {SEASON_ORDER.map((key) => {
+                  const s = SEASONS[key];
+                  return (
+                    <button
+                      key={key}
+                      className={`chip ${season === key ? "active" : ""}`}
+                      onClick={() => setSeason(key)}
+                    >
+                      {s.emoji} {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 지역 선택 */}
+            <div className="filter-group">
+              <div className="filter-label">지역</div>
+              <div className="chip-row">
+                {REGION_ORDER.map((key) => (
+                  <button
+                    key={key}
+                    className={`chip ${region === key ? "active" : ""}`}
+                    onClick={() => setRegion(key)}
+                  >
+                    {REGIONS[key]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
 
         {/* 지도 */}
         <MapView festivals={filtered} />
@@ -156,9 +200,19 @@ export default function HomeClient({ festivals, usingSample }) {
         <div className="card-grid">
           {filtered.length === 0 ? (
             <div className="empty">
-              선택하신 조건에 맞는 축제가 아직 없어요.
-              <br />
-              다른 계절이나 지역을 선택해 보세요!
+              {searching ? (
+                <>
+                  “{query.trim()}” 검색 결과가 없어요.
+                  <br />
+                  다른 이름이나 지역으로 검색해 보세요!
+                </>
+              ) : (
+                <>
+                  선택하신 조건에 맞는 축제가 아직 없어요.
+                  <br />
+                  다른 계절이나 지역을 선택해 보세요!
+                </>
+              )}
             </div>
           ) : (
             filtered.map((f) => <FestivalCard key={f.id} festival={f} />)
