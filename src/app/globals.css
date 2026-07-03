@@ -371,6 +371,24 @@ h3 {
   padding: 12px 6px;
   text-align: center;
   box-shadow: var(--shadow);
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.weather-cell:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+.weather-cell.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent) inset, var(--shadow);
+}
+.weather-cell .w-more {
+  font-size: 10.5px;
+  color: var(--accent);
+  font-weight: 700;
+  margin-top: 6px;
 }
 .weather-cell .w-day {
   font-size: 12px;
@@ -411,6 +429,70 @@ h3 {
   border-radius: 14px;
   padding: 16px;
   text-align: center;
+}
+
+/* ── 시간대별 상세 (칸을 눌렀을 때 펼쳐짐) ── */
+.weather-detail {
+  margin-top: 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+}
+.wd-head {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.wd-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-soft);
+  margin-bottom: 12px;
+}
+.wd-slots {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.wd-slot {
+  display: grid;
+  grid-template-columns: 46px 30px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.wd-slot-label {
+  font-weight: 700;
+  font-size: 13px;
+}
+.wd-slot-emoji {
+  font-size: 20px;
+  text-align: center;
+}
+.wd-slot-sky {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.wd-slot-temp {
+  font-size: 14px;
+  font-weight: 700;
+}
+.wd-slot-rain {
+  font-size: 12px;
+  color: var(--status-upcoming);
+  min-width: 62px;
+  text-align: right;
+}
+.wd-empty {
+  font-size: 13px;
+  color: var(--text-soft);
+  margin: 0;
 }
 
 /* ── 길찾기 버튼 ── */
