@@ -77,8 +77,18 @@ function mapTourItem(item) {
 
 // TourAPI에서 축제 목록을 가져옵니다. 실패하면 예외를 던집니다.
 async function fetchFromTourApi(apiKey) {
+  // 공공데이터포털은 인증키를 두 종류(Encoding/Decoding)로 줍니다.
+  // 어떤 걸 넣어도 되도록, 먼저 디코딩해 원본으로 되돌린 뒤
+  // URLSearchParams가 한 번만 인코딩하도록 합니다. (이중 인코딩 방지)
+  let serviceKey = apiKey;
+  try {
+    serviceKey = decodeURIComponent(apiKey);
+  } catch {
+    serviceKey = apiKey;
+  }
+
   const params = new URLSearchParams({
-    serviceKey: apiKey,
+    serviceKey,
     MobileOS: "ETC",
     MobileApp: "chukjero",
     _type: "json",
@@ -96,8 +106,10 @@ async function fetchFromTourApi(apiKey) {
   if (!res.ok) throw new Error(`TourAPI 응답 오류: ${res.status}`);
 
   const data = await res.json();
-  const items = data?.response?.body?.items?.item;
-  if (!Array.isArray(items) || items.length === 0) {
+  const raw = data?.response?.body?.items?.item;
+  // 결과가 1개면 배열이 아니라 객체로 오므로 배열로 통일
+  const items = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  if (items.length === 0) {
     throw new Error("TourAPI에서 축제 목록을 찾지 못했습니다.");
   }
   return items
