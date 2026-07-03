@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { SEASONS, SEASON_ORDER, REGIONS, REGION_ORDER } from "@/lib/seasons";
-import { getStatus, STATUS_ORDER } from "@/lib/format";
+import { getStatusInfo, STATUS_ORDER } from "@/lib/format";
 import FestivalCard from "./FestivalCard";
 
 // 지도는 브라우저에서만 그려질 수 있어 ssr:false 로 불러옵니다.
@@ -24,22 +24,43 @@ function currentSeason() {
 export default function HomeClient({ festivals, usingSample }) {
   const [season, setSeason] = useState(currentSeason());
   const [region, setRegion] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(null); // null=전체
   const theme = SEASONS[season];
 
-  // 선택된 계절 + 지역으로 걸러낸 뒤, 진행중 → 예정 → 종료 순으로 정렬
-  const filtered = useMemo(() => {
+  // 계절 + 지역으로 먼저 거른 목록 (상태 요약 개수의 기준)
+  const base = useMemo(() => {
     return festivals
       .filter((f) => f.season === season)
-      .filter((f) => (region === "all" ? true : f.region === region))
-      .sort((a, b) => {
-        const sa = getStatus(a.startDate, a.endDate).key;
-        const sb = getStatus(b.startDate, b.endDate).key;
-        if (STATUS_ORDER[sa] !== STATUS_ORDER[sb]) {
-          return STATUS_ORDER[sa] - STATUS_ORDER[sb];
-        }
-        return a.startDate.localeCompare(b.startDate);
-      });
+      .filter((f) => (region === "all" ? true : f.region === region));
   }, [festivals, season, region]);
+
+  // 상태별 개수 요약 (진행중 / 예정 / 종료)
+  const counts = useMemo(() => {
+    const c = { ongoing: 0, upcoming: 0, ended: 0 };
+    base.forEach((f) => {
+      c[getStatusInfo(f.startDate, f.endDate).key]++;
+    });
+    return c;
+  }, [base]);
+
+  // 상태 필터 적용 후, 진행중 → 예정 → 종료 순(종료는 맨 뒤)으로 정렬
+  const filtered = useMemo(() => {
+    const list = statusFilter
+      ? base.filter((f) => getStatusInfo(f.startDate, f.endDate).key === statusFilter)
+      : base;
+    return [...list].sort((a, b) => {
+      const sa = getStatusInfo(a.startDate, a.endDate).key;
+      const sb = getStatusInfo(b.startDate, b.endDate).key;
+      if (STATUS_ORDER[sa] !== STATUS_ORDER[sb]) {
+        return STATUS_ORDER[sa] - STATUS_ORDER[sb];
+      }
+      return a.startDate.localeCompare(b.startDate);
+    });
+  }, [base, statusFilter]);
+
+  // 상태 요약 칩 클릭 → 해당 상태만 필터 (다시 누르면 해제)
+  const toggleStatus = (key) =>
+    setStatusFilter((prev) => (prev === key ? null : key));
 
   return (
     <div style={{ "--accent": theme.color, "--accent-soft": theme.soft }}>
@@ -98,10 +119,38 @@ export default function HomeClient({ festivals, usingSample }) {
         {/* 지도 */}
         <MapView festivals={filtered} />
 
-        <p className="result-count">
-          <strong>{theme.label}</strong> · {REGIONS[region]} 축제{" "}
-          <strong>{filtered.length}</strong>곳
-        </p>
+        {/* 상태별 개수 요약 (누르면 해당 상태만 필터) */}
+        <div className="status-summary" suppressHydrationWarning>
+          <button
+            className={`status-pill ongoing ${statusFilter === "ongoing" ? "active" : ""}`}
+            onClick={() => toggleStatus("ongoing")}
+            disabled={counts.ongoing === 0}
+          >
+            <span className="live-dot" />
+            진행중 {counts.ongoing}
+          </button>
+          <span className="status-sep">·</span>
+          <button
+            className={`status-pill upcoming ${statusFilter === "upcoming" ? "active" : ""}`}
+            onClick={() => toggleStatus("upcoming")}
+            disabled={counts.upcoming === 0}
+          >
+            예정 {counts.upcoming}
+          </button>
+          <span className="status-sep">·</span>
+          <button
+            className={`status-pill ended ${statusFilter === "ended" ? "active" : ""}`}
+            onClick={() => toggleStatus("ended")}
+            disabled={counts.ended === 0}
+          >
+            종료 {counts.ended}
+          </button>
+          {statusFilter && (
+            <button className="status-clear" onClick={() => setStatusFilter(null)}>
+              전체 보기 ✕
+            </button>
+          )}
+        </div>
 
         {/* 카드 목록 */}
         <div className="card-grid">

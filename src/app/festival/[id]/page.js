@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getFestivalById, getFestivals } from "@/lib/festivals";
 import { SEASONS, REGIONS } from "@/lib/seasons";
-import { formatPeriod, getStatus } from "@/lib/format";
+import { formatPeriod, getStatusInfo } from "@/lib/format";
 import WeatherPanel from "@/components/WeatherPanel";
 import DirectionsButton from "@/components/DirectionsButton";
 import DetailMap from "@/components/DetailMap";
@@ -20,7 +20,7 @@ export default async function FestivalDetailPage({ params }) {
   }
 
   const theme = SEASONS[festival.season] || SEASONS.spring;
-  const status = getStatus(festival.startDate, festival.endDate);
+  const status = getStatusInfo(festival.startDate, festival.endDate);
   const regionName = REGIONS[festival.region] || "";
 
   return (
@@ -49,7 +49,13 @@ export default async function FestivalDetailPage({ params }) {
           />
           <div className="detail-hero-scrim" />
           <div className="detail-hero-content">
-            <span className={`badge ${status.key}`}>{status.label}</span>
+            <span
+              className={`badge ${status.key}${status.soon ? " soon" : ""}`}
+              suppressHydrationWarning
+            >
+              {status.key === "ongoing" && <span className="live-dot" />}
+              {status.label}
+            </span>
             <h1>
               {theme.emoji} {festival.name}
             </h1>

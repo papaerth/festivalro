@@ -29,5 +29,25 @@ export function getStatus(startDate, endDate, now = new Date()) {
   return { key: "ongoing", label: "진행중" };
 }
 
+// 상태 + 화면 표시용 정보를 함께 계산
+//  - ongoing → { label: "LIVE 진행중" }
+//  - upcoming → { label: "D-14", dday, soon(7일 이내 여부) }
+//  - ended → { label: "종료" }
+export function getStatusInfo(startDate, endDate, now = new Date()) {
+  const s = toDate(startDate);
+  const e = new Date(toDate(endDate).getTime() + 24 * 60 * 60 * 1000 - 1);
+  if (now < s) {
+    const dday = Math.max(0, Math.ceil((s.getTime() - now.getTime()) / 86400000));
+    return {
+      key: "upcoming",
+      label: dday === 0 ? "D-DAY" : `D-${dday}`,
+      dday,
+      soon: dday <= 7, // 7일 이내면 조금 더 강조
+    };
+  }
+  if (now > e) return { key: "ended", label: "종료" };
+  return { key: "ongoing", label: "LIVE 진행중" };
+}
+
 // 카드 목록 정렬용 우선순위 (진행중 → 예정 → 종료)
 export const STATUS_ORDER = { ongoing: 0, upcoming: 1, ended: 2 };

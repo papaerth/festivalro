@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { SEASONS, REGIONS } from "@/lib/seasons";
-import { formatPeriod, getStatus } from "@/lib/format";
+import { formatPeriod, getStatusInfo } from "@/lib/format";
 import CoverImage from "./CoverImage";
 
 // 축제 하나를 카드 형태로 보여줍니다. (상단 대표 이미지 + 정보)
 export default function FestivalCard({ festival }) {
   const season = SEASONS[festival.season] || SEASONS.spring;
-  const status = getStatus(festival.startDate, festival.endDate);
+  const status = getStatusInfo(festival.startDate, festival.endDate);
   const regionName = REGIONS[festival.region] || "";
 
+  const badgeClass =
+    `badge card-badge ${status.key}` + (status.soon ? " soon" : "");
+
   return (
-    <Link href={`/festival/${festival.id}`} className="card">
+    <Link href={`/festival/${festival.id}`} className={`card card-${status.key}`}>
       <CoverImage
         className="card-cover"
         src={festival.image}
@@ -18,7 +21,10 @@ export default function FestivalCard({ festival }) {
         accent={season.color}
         emoji={season.emoji}
       />
-      <span className={`badge card-badge ${status.key}`}>{status.label}</span>
+      <span className={badgeClass} suppressHydrationWarning>
+        {status.key === "ongoing" && <span className="live-dot" />}
+        {status.label}
+      </span>
       <div className="card-body">
         <p className="card-title">{festival.name}</p>
         <p className="card-meta">{formatPeriod(festival.startDate, festival.endDate)}</p>
