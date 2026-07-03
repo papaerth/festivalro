@@ -640,6 +640,8 @@ h3 {
   color: var(--text);
   font-size: 15px;
   margin: 0;
+  white-space: pre-line; /* 소개문의 줄바꿈을 그대로 표시 */
+  line-height: 1.7;
 }
 
 /* ── 날씨 카드 ── */

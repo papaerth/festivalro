@@ -135,10 +135,74 @@ export async function getFestivals() {
   return SAMPLE_FESTIVALS;
 }
 
+// HTML 태그/특수문자를 사람이 읽기 좋은 순수 텍스트로 정리
+function cleanHtml(s = "") {
+  return s
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// TourAPI detailCommon2로 축제 상세 소개문(overview)을 가져옵니다. 실패하면 null.
+async function fetchOverview(contentId, apiKey) {
+  const base =
+    process.env.TOUR_DETAIL_BASE ||
+    "https://apis.data.go.kr/B551011/KorService2/detailCommon2";
+
+  let serviceKey = apiKey;
+  try {
+    serviceKey = decodeURIComponent(apiKey);
+  } catch {
+    serviceKey = apiKey;
+  }
+
+  const params = new URLSearchParams({
+    serviceKey,
+    MobileOS: "ETC",
+    MobileApp: "chukjero",
+    _type: "json",
+    contentId: String(contentId),
+  });
+
+  const res = await fetch(`${base}?${params.toString()}`, {
+    next: { revalidate: 60 * 60 * 24 }, // 하루 캐시
+  });
+  if (!res.ok) throw new Error(`detailCommon2 응답 오류: ${res.status}`);
+
+  const data = await res.json();
+  const raw = data?.response?.body?.items?.item;
+  const item = Array.isArray(raw) ? raw[0] : raw;
+  const overview = item?.overview;
+  return overview ? cleanHtml(overview) : null;
+}
+
 // [공개] id로 축제 1건 가져오기 (상세 화면에서 사용)
+// 실데이터인 경우 상세 소개문(overview)을 추가로 불러와 붙입니다.
 export async function getFestivalById(id) {
   const all = await getFestivals();
-  return all.find((f) => f.id === id) || null;
+  const festival = all.find((f) => f.id === id);
+  if (!festival) return null;
+
+  const apiKey = process.env.TOUR_API_KEY;
+  const hasRealKey = apiKey && apiKey !== "여기에_키를_붙여넣기";
+  if (hasRealKey) {
+    try {
+      const overview = await fetchOverview(festival.id, apiKey);
+      if (overview) return { ...festival, description: overview };
+    } catch (err) {
+      // 소개문을 못 불러와도 기본 정보는 그대로 보여줍니다.
+      console.warn("[축제로] 상세 소개문 불러오기 실패:", err.message);
+    }
+  }
+  return festival;
 }
 
 // [공개] 현재 실데이터를 쓰는 중인지 여부 (화면 안내용)

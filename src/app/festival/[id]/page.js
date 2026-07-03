@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getFestivalById, getFestivals } from "@/lib/festivals";
+import { getFestivalById } from "@/lib/festivals";
 import { SEASONS, REGIONS } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import WeatherPanel from "@/components/WeatherPanel";
@@ -125,8 +125,10 @@ export default async function FestivalDetailPage({ params }) {
   );
 }
 
-// 샘플 데이터의 축제들은 미리 정적 페이지로 만들어 둡니다(더 빠른 로딩).
+// 상세 페이지는 방문 시점에 만들고 하루 동안 캐시(ISR)합니다.
+// (실데이터 연동 시 빌드 때 수백 개 소개문을 미리 호출하지 않도록)
+export const revalidate = 86400;
+
 export async function generateStaticParams() {
-  const festivals = await getFestivals();
-  return festivals.map((f) => ({ id: f.id }));
+  return [];
 }
