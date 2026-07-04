@@ -71,6 +71,19 @@ export function AuthProvider({ children }) {
     if (error) throw error;
   };
 
+  // 카카오 소셜 로그인 (카카오 화면으로 이동 후 다시 사이트로 돌아옴)
+  const signInWithKakao = async () => {
+    if (!supabase) throw new Error("회원 기능이 아직 설정되지 않았어요.");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "kakao",
+      options: {
+        redirectTo:
+          typeof window !== "undefined" ? window.location.origin : undefined,
+      },
+    });
+    if (error) throw error;
+  };
+
   const signOut = async () => {
     if (!supabase) return;
     await supabase.auth.signOut();
@@ -103,6 +116,7 @@ export function AuthProvider({ children }) {
     loading,
     signUp,
     signIn,
+    signInWithKakao,
     signOut,
     updateNickname,
   };

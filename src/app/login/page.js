@@ -35,7 +35,7 @@ function toKorean(message = "") {
 }
 
 export default function LoginPage() {
-  const { configured, user, loading, signIn, signUp } = useAuth();
+  const { configured, user, loading, signIn, signUp, signInWithKakao } = useAuth();
   const router = useRouter();
 
   const [mode, setMode] = useState("login"); // "login" | "signup"
@@ -212,6 +212,26 @@ export default function LoginPage() {
                     : "가입하고 시작하기"}
                 </button>
               </form>
+
+              <div className="auth-divider">
+                <span>또는</span>
+              </div>
+
+              <button
+                type="button"
+                className="kakao-btn"
+                onClick={async () => {
+                  setError("");
+                  try {
+                    await signInWithKakao();
+                  } catch (err) {
+                    setError(toKorean(err.message));
+                  }
+                }}
+              >
+                <span className="kakao-icon">💬</span>
+                카카오로 시작하기
+              </button>
 
               <p className="auth-switch">
                 {mode === "login" ? (

@@ -286,6 +286,44 @@ h3 {
   opacity: 0.6;
   cursor: progress;
 }
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 14px;
+  color: var(--text-soft);
+  font-size: 12.5px;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.kakao-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: #fee500;
+  color: #191600;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+.kakao-btn:hover {
+  filter: brightness(0.97);
+}
+.kakao-icon {
+  font-size: 16px;
+}
 .auth-switch {
   text-align: center;
   font-size: 13.5px;
@@ -1616,6 +1654,38 @@ h3 {
   overflow: hidden;
   box-shadow: var(--shadow);
   border: 1px solid var(--line);
+}
+
+/* ── 법적 고지 페이지 ── */
+.legal {
+  max-width: 720px;
+  padding-bottom: 48px;
+  line-height: 1.7;
+  color: var(--text);
+}
+.legal-title {
+  font-size: 26px;
+  margin: 20px 0 4px;
+}
+.legal-updated {
+  color: var(--text-soft);
+  font-size: 13px;
+  margin: 0 0 18px;
+}
+.legal h2 {
+  font-size: 17px;
+  margin: 22px 0 8px;
+}
+.legal ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.legal li {
+  margin: 4px 0;
+}
+.legal-back {
+  margin-top: 28px;
+  font-weight: 700;
 }
 
 /* ── 하단 푸터 ── */
