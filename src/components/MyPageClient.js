@@ -5,8 +5,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
 import { useFavorites } from "@/lib/useFavorites";
+import { supabase } from "@/lib/supabaseClient";
 import AccountMenu from "./AccountMenu";
 import FestivalCard from "./FestivalCard";
+import StarRating from "./StarRating";
+
+function fmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+}
 
 export default function MyPageClient({ festivals }) {
   const { configured, user, loading, displayName, updateNickname, signOut } =
@@ -32,6 +42,35 @@ export default function MyPageClient({ festivals }) {
     ? festivals.filter((f) => favorites.includes(f.id))
     : [];
   const hiddenFav = ready ? favorites.length - favFestivals.length : 0;
+
+  // 내 후기 / 방문기록 불러오기
+  const [myReviews, setMyReviews] = useState([]);
+  const [myVisits, setMyVisits] = useState([]);
+  useEffect(() => {
+    if (!supabase || !user) return;
+    let alive = true;
+    (async () => {
+      const { data: rv } = await supabase
+        .from("reviews")
+        .select("festival_id,rating,content,updated_at,created_at")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false });
+      const { data: vs } = await supabase
+        .from("visits")
+        .select("id,festival_id,visited_on,created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+      if (!alive) return;
+      setMyReviews(rv || []);
+      setMyVisits(vs || []);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [user]);
+
+  const nameOf = (fid) =>
+    festivals.find((f) => f.id === fid)?.name || `축제 #${fid}`;
 
   const saveNickname = async (e) => {
     e.preventDefault();
@@ -132,19 +171,55 @@ export default function MyPageClient({ festivals }) {
               )}
             </section>
 
-            {/* 다음 단계 예정 */}
+            {/* 내가 쓴 후기 */}
             <section className="section">
-              <h2>📝 내가 쓴 후기</h2>
-              <p className="coming-soon">
-                곧 제공될 예정이에요. 축제 상세에서 별점·후기를 남기면 여기에 모여요!
-              </p>
+              <h2>📝 내가 쓴 후기 {myReviews.length > 0 ? myReviews.length : ""}</h2>
+              {myReviews.length === 0 ? (
+                <p className="coming-soon">
+                  아직 쓴 후기가 없어요. 축제 상세의 ⭐후기 탭에서 별점·후기를 남겨보세요!
+                </p>
+              ) : (
+                <ul className="review-list">
+                  {myReviews.map((r) => (
+                    <li key={r.festival_id} className="review-item">
+                      <div className="review-head">
+                        <Link href={`/festival/${r.festival_id}`} className="review-name">
+                          {nameOf(r.festival_id)}
+                        </Link>
+                        <StarRating value={r.rating} readOnly size={14} />
+                        <span className="review-date">
+                          {fmtDate(r.updated_at || r.created_at)}
+                        </span>
+                      </div>
+                      {r.content && <p className="review-content">{r.content}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
 
+            {/* 방문기록 */}
             <section className="section">
-              <h2>📍 방문기록</h2>
-              <p className="coming-soon">
-                곧 제공될 예정이에요. 다녀온 축제를 기록할 수 있게 준비 중이에요.
-              </p>
+              <h2>📍 방문한 축제 {myVisits.length > 0 ? myVisits.length : ""}</h2>
+              {myVisits.length === 0 ? (
+                <p className="coming-soon">
+                  아직 방문기록이 없어요. 축제 상세의 📍방문기록 버튼으로 기록해보세요!
+                </p>
+              ) : (
+                <ul className="visit-list">
+                  {myVisits.map((v) => (
+                    <li key={v.id}>
+                      <Link href={`/festival/${v.festival_id}`} className="visit-link">
+                        <span className="visit-check">✅</span>
+                        <span className="visit-name">{nameOf(v.festival_id)}</span>
+                        <span className="review-date">
+                          {fmtDate(v.visited_on || v.created_at)}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           </>
         )}

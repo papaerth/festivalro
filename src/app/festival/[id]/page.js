@@ -12,6 +12,8 @@ import CoverImage from "@/components/CoverImage";
 import ShareButton from "@/components/ShareButton";
 import FavoriteButton from "@/components/FavoriteButton";
 import AccountMenu from "@/components/AccountMenu";
+import Reviews from "@/components/Reviews";
+import VisitButton from "@/components/VisitButton";
 
 // 축제 상세 화면 (서버에서 데이터를 불러온 뒤 렌더링)
 export default async function FestivalDetailPage({ params }) {
@@ -73,9 +75,10 @@ export default async function FestivalDetailPage({ params }) {
           </div>
         </section>
 
-        {/* 즐겨찾기 + 공유 */}
+        {/* 즐겨찾기 + 방문기록 + 공유 */}
         <div className="detail-actions">
           <FavoriteButton id={festival.id} variant="labeled" />
+          <VisitButton festivalId={festival.id} />
           <ShareButton title={festival.name} />
         </div>
 
@@ -116,6 +119,12 @@ export default async function FestivalDetailPage({ params }) {
                 lng={festival.lng}
                 place={`${festival.sido} ${festival.sigungu}`}
               />
+            </section>
+          }
+          reviewsPanel={
+            <section className="section">
+              <h2>⭐ 후기·평점</h2>
+              <Reviews festivalId={festival.id} />
             </section>
           }
           blogPanel={

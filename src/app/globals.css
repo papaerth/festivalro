@@ -348,6 +348,200 @@ h3 {
   margin: 0;
   line-height: 1.6;
 }
+
+/* ── 별점 ── */
+.stars {
+  display: inline-flex;
+  line-height: 1;
+}
+.star {
+  background: none;
+  border: none;
+  padding: 0 1px;
+  cursor: default;
+  color: #d6d9df;
+  font-size: inherit;
+  line-height: 1;
+}
+.star.on {
+  color: #ffb703;
+}
+.stars:has(.star:not(:disabled)) .star {
+  cursor: pointer;
+}
+
+/* ── 방문기록 버튼 ── */
+.visit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.visit-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.visit-btn.active {
+  background: var(--status-ongoing);
+  border-color: var(--status-ongoing);
+  color: #fff;
+}
+
+/* ── 후기 ── */
+.review-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  margin-bottom: 14px;
+}
+.review-summary b {
+  color: var(--accent);
+  font-size: 17px;
+}
+.review-count {
+  color: var(--text-soft);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.review-form {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.review-form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.review-form-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+.review-textarea {
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  resize: vertical;
+}
+.review-textarea:focus {
+  border-color: var(--accent);
+}
+.review-form-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.review-submit {
+  flex: 1;
+  padding: 12px;
+  font-size: 15px;
+}
+.review-delete {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--status-ended);
+  cursor: pointer;
+}
+.review-delete:hover {
+  border-color: #e03131;
+  color: #e03131;
+}
+.review-login {
+  background: var(--accent-soft);
+  border-radius: 12px;
+  padding: 14px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-soft);
+  margin-bottom: 18px;
+}
+.review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.review-item {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.review-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.review-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.review-date {
+  font-size: 12px;
+  color: var(--text-soft);
+  margin-left: auto;
+}
+.review-content {
+  font-size: 14px;
+  color: var(--text);
+  margin: 8px 0 0;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+/* ── 방문 목록(마이페이지) ── */
+.visit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.visit-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.visit-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
 .profile-logout {
   width: 100%;
   margin-top: 14px;
@@ -991,17 +1185,18 @@ h3 {
 }
 .tab {
   flex: 1;
-  padding: 12px 8px;
+  padding: 12px 4px;
   margin-bottom: -2px;
   background: none;
   border: none;
   border-bottom: 3px solid transparent;
   font-family: inherit;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text-soft);
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
 }
 .tab:hover {
   color: var(--accent);
