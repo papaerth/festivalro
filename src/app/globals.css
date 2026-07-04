@@ -90,6 +90,207 @@ h3 {
   margin-left: auto;
 }
 
+/* ── 헤더 계정 영역 ── */
+.header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+.account-login {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  padding: 6px 14px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.account-login:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.account-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.account-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-logout {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.account-logout:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.account-loading {
+  width: 60px;
+  height: 20px;
+}
+
+/* ── 로그인 / 프로필 화면 ── */
+.auth-wrap {
+  max-width: 460px;
+  padding-bottom: 40px;
+}
+.auth-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 20px;
+  margin-top: 8px;
+}
+.auth-title {
+  font-size: 24px;
+  margin-bottom: 16px;
+}
+.auth-note {
+  color: var(--text-soft);
+  font-size: 14px;
+}
+.auth-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+  border-bottom: 2px solid var(--line);
+}
+.auth-tab {
+  flex: 1;
+  padding: 10px;
+  margin-bottom: -2px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.auth-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.auth-field span {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+.auth-field input {
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 13px 14px;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.auth-field input:focus {
+  border-color: var(--accent);
+}
+.auth-error {
+  color: #e03131;
+  font-size: 13.5px;
+  margin: 0;
+}
+.auth-info {
+  color: var(--status-ongoing);
+  font-size: 13.5px;
+  margin: 0;
+  line-height: 1.5;
+}
+.auth-submit {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 15px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 2px;
+  transition: filter 0.15s ease;
+}
+.auth-submit:hover {
+  filter: brightness(1.05);
+}
+.auth-submit:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.auth-switch {
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-soft);
+  margin-top: 16px;
+}
+.auth-switch button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.auth-guest {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  line-height: 1.6;
+  margin-top: 18px;
+}
+.profile-email {
+  font-size: 14px;
+  color: var(--text-soft);
+  margin: 0 0 16px;
+}
+.profile-logout {
+  width: 100%;
+  margin-top: 14px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.profile-logout:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* ── 히어로(인사말) ── */
 .hero {
   padding: 22px 0 6px;

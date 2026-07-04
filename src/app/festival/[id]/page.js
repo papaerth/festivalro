@@ -11,6 +11,7 @@ import BlogList from "@/components/BlogList";
 import CoverImage from "@/components/CoverImage";
 import ShareButton from "@/components/ShareButton";
 import FavoriteButton from "@/components/FavoriteButton";
+import AccountMenu from "@/components/AccountMenu";
 
 // 축제 상세 화면 (서버에서 데이터를 불러온 뒤 렌더링)
 export default async function FestivalDetailPage({ params }) {
@@ -32,7 +33,9 @@ export default async function FestivalDetailPage({ params }) {
           <Link href="/" className="brand">
             축제로
           </Link>
-          <span className="brand-sub">전국 사계절 축제 지도</span>
+          <div className="header-right">
+            <AccountMenu />
+          </div>
         </div>
       </header>
 

@@ -1,5 +1,6 @@
 import { Black_Han_Sans, Noto_Sans_KR } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/lib/AuthProvider";
 
 // 제목용 폰트: Black Han Sans
 const blackHanSans = Black_Han_Sans({
@@ -33,7 +34,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="ko">
       <body className={`${blackHanSans.variable} ${notoSansKr.variable}`}>
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

@@ -7,6 +7,7 @@ import { getStatusInfo, STATUS_ORDER } from "@/lib/format";
 import { useFavorites } from "@/lib/useFavorites";
 import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
+import AccountMenu from "./AccountMenu";
 
 // 지도는 브라우저에서만 그려질 수 있어 ssr:false 로 불러옵니다.
 const MapView = dynamic(() => import("./MapView"), {
@@ -139,7 +140,9 @@ export default function HomeClient({ festivals, usingSample }) {
       <header className="site-header">
         <div className="container">
           <span className="brand">축제로</span>
-          <span className="brand-sub">전국 사계절 축제 지도</span>
+          <div className="header-right">
+            <AccountMenu />
+          </div>
         </div>
       </header>
 
