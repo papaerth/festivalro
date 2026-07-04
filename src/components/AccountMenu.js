@@ -15,9 +15,14 @@ export default function AccountMenu() {
 
   if (!user) {
     return (
-      <Link href="/login" className="account-login">
-        로그인
-      </Link>
+      <div className="account-menu">
+        <Link href="/login" className="account-login">
+          로그인
+        </Link>
+        <Link href="/login?mode=signup" className="account-signup">
+          회원가입
+        </Link>
+      </div>
     );
   }
 

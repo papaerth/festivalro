@@ -6,6 +6,21 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
 import AccountMenu from "@/components/AccountMenu";
 
+// 비밀번호 보안 규칙: 8자 이상 + 영문 + 숫자 + 기호
+const PW_SYMBOL = /[~!@#$%^&*()\-_=+[\]{}\\|;:'",.<>/?]/;
+function checkPassword(pw) {
+  return {
+    length: pw.length >= 8,
+    letter: /[A-Za-z]/.test(pw),
+    number: /[0-9]/.test(pw),
+    symbol: PW_SYMBOL.test(pw),
+  };
+}
+function passwordOk(pw) {
+  const c = checkPassword(pw);
+  return c.length && c.letter && c.number && c.symbol;
+}
+
 // Supabase 오류 메시지를 이해하기 쉬운 한글로 변환
 function toKorean(message = "") {
   const m = message.toLowerCase();
@@ -36,10 +51,22 @@ export default function LoginPage() {
     if (!loading && user) router.replace("/");
   }, [loading, user, router]);
 
+  // 헤더의 "회원가입" 버튼(?mode=signup)으로 들어오면 회원가입 탭으로 시작
+  useEffect(() => {
+    const m = new URLSearchParams(window.location.search).get("mode");
+    if (m === "signup") setMode("signup");
+  }, []);
+
+  const pwChecks = checkPassword(password);
+
   const submit = async (e) => {
     e.preventDefault();
     setError("");
     setInfo("");
+    if (mode === "signup" && !passwordOk(password)) {
+      setError("비밀번호는 8자 이상이며 영문·숫자·기호를 모두 포함해야 해요.");
+      return;
+    }
     setBusy(true);
     try {
       if (mode === "login") {
@@ -148,17 +175,36 @@ export default function LoginPage() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="6자 이상"
+                    placeholder={
+                      mode === "signup"
+                        ? "8자 이상, 영문·숫자·기호 포함"
+                        : "비밀번호"
+                    }
                     required
-                    minLength={6}
-                    autoComplete={mode === "login" ? "current-password" : "new-password"}
+                    minLength={mode === "signup" ? 8 : undefined}
+                    autoComplete={
+                      mode === "login" ? "current-password" : "new-password"
+                    }
                   />
                 </label>
+
+                {mode === "signup" && (
+                  <ul className="pw-rules" aria-label="비밀번호 규칙">
+                    <li className={pwChecks.length ? "ok" : ""}>8자 이상</li>
+                    <li className={pwChecks.letter ? "ok" : ""}>영문 포함</li>
+                    <li className={pwChecks.number ? "ok" : ""}>숫자 포함</li>
+                    <li className={pwChecks.symbol ? "ok" : ""}>기호 포함</li>
+                  </ul>
+                )}
 
                 {error && <p className="auth-error">{error}</p>}
                 {info && <p className="auth-info">{info}</p>}
 
-                <button className="auth-submit" type="submit" disabled={busy}>
+                <button
+                  className="auth-submit"
+                  type="submit"
+                  disabled={busy || (mode === "signup" && !passwordOk(password))}
+                >
                   {busy
                     ? "처리 중…"
                     : mode === "login"
