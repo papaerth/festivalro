@@ -117,3 +117,16 @@ grant select on public.reviews to anon, authenticated;
 grant insert, update, delete on public.reviews to authenticated;
 
 grant select, insert, delete on public.visits to authenticated;
+
+
+-- 5) 축제별 평균 별점/후기 수 집계 뷰 (목록·지도 표시용)
+create or replace view public.review_stats
+with (security_invoker = true) as
+select
+  festival_id,
+  round(avg(rating)::numeric, 1) as avg_rating,
+  count(*)::int as review_count
+from public.reviews
+group by festival_id;
+
+grant select on public.review_stats to anon, authenticated;

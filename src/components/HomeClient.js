@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { SEASONS, SEASON_ORDER, REGIONS, REGION_ORDER } from "@/lib/seasons";
 import { getStatusInfo, STATUS_ORDER } from "@/lib/format";
 import { useFavorites } from "@/lib/useFavorites";
+import { useReviewStats } from "@/lib/useReviewStats";
 import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
 import AccountMenu from "./AccountMenu";
@@ -65,6 +66,7 @@ export default function HomeClient({ festivals, usingSample }) {
   const theme = SEASONS[season];
 
   const { favorites, ready: favReady } = useFavorites();
+  const ratings = useReviewStats();
 
   const q = query.trim().toLowerCase();
   const searching = q.length > 0;
@@ -265,7 +267,7 @@ export default function HomeClient({ festivals, usingSample }) {
         )}
 
         {/* 지도 */}
-        <MapView festivals={filtered} />
+        <MapView festivals={filtered} ratings={ratings} />
 
         {/* 상태별 개수 요약 (누르면 해당 상태만 필터) */}
         <div className="status-summary" suppressHydrationWarning>
@@ -331,7 +333,9 @@ export default function HomeClient({ festivals, usingSample }) {
               )}
             </div>
           ) : (
-            filtered.map((f) => <FestivalCard key={f.id} festival={f} />)
+            filtered.map((f) => (
+              <FestivalCard key={f.id} festival={f} rating={ratings[f.id]} />
+            ))
           )}
         </div>
 

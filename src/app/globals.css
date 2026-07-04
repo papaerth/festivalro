@@ -1022,6 +1022,17 @@ h3 {
   color: var(--text-soft);
   margin: 0;
 }
+.card-rating {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b8860b;
+  margin: 2px 0 3px;
+}
+.card-rating-count {
+  color: var(--text-soft);
+  font-weight: 500;
+  margin-left: 3px;
+}
 .card-region {
   display: inline-block;
   font-size: 12px;

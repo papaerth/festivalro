@@ -33,7 +33,7 @@ function FitBounds({ points }) {
   return null;
 }
 
-export default function MapView({ festivals }) {
+export default function MapView({ festivals, ratings = {} }) {
   const points = festivals.map((f) => [f.lat, f.lng]);
 
   return (
@@ -49,12 +49,21 @@ export default function MapView({ festivals }) {
       />
       {festivals.map((f) => {
         const color = (SEASONS[f.season] || SEASONS.spring).color;
+        const r = ratings[f.id];
         return (
           <Marker key={f.id} position={[f.lat, f.lng]} icon={makePin(color)}>
             <Popup>
               <strong>{f.name}</strong>
               <br />
               <span>{formatPeriod(f.startDate, f.endDate)}</span>
+              {r && r.count > 0 && (
+                <>
+                  <br />
+                  <span>
+                    ⭐ {r.avg.toFixed(1)} ({r.count})
+                  </span>
+                </>
+              )}
               <br />
               <Link className="popup-link" href={`/festival/${f.id}`}>
                 상세보기 →
