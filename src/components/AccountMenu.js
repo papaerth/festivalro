@@ -28,7 +28,7 @@ export default function AccountMenu() {
 
   return (
     <div className="account-menu">
-      <Link href="/profile" className="account-name" title="프로필">
+      <Link href="/mypage" className="account-name" title="내 페이지">
         👤 {displayName}
       </Link>
       <button className="account-logout" onClick={signOut}>
