@@ -7,6 +7,9 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { SEASONS } from "@/lib/seasons";
 import { formatPeriod } from "@/lib/format";
+import { useI18n } from "@/lib/I18nProvider";
+
+const VIEW_DETAIL = { ko: "상세보기 →", en: "View →", ja: "詳細 →", zh: "查看 →" };
 
 // 계절 색으로 물방울 모양 핀 아이콘을 만듭니다.
 function makePin(color) {
@@ -37,6 +40,8 @@ function FitBounds({ points }) {
 const MARKER_CAP = 500;
 
 export default function MapView({ festivals, ratings = {} }) {
+  const { locale, href } = useI18n();
+  const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 좌표가 있는 축제만 마커로 (좌표 없는 축제는 목록에만 표시)
   const withCoords = festivals.filter(
     (f) => Number.isFinite(f.lat) && Number.isFinite(f.lng)
@@ -73,8 +78,8 @@ export default function MapView({ festivals, ratings = {} }) {
                 </>
               )}
               <br />
-              <Link className="popup-link" href={`/festival/${f.id}`}>
-                상세보기 →
+              <Link className="popup-link" href={href(`/festival/${f.id}`)}>
+                {viewDetail}
               </Link>
             </Popup>
           </Marker>

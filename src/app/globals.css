@@ -131,6 +131,59 @@ h3 {
   margin-left: auto;
   display: flex;
   align-items: center;
+  gap: 8px;
+}
+
+/* ── 언어 전환기 ── */
+.lang-switch {
+  position: relative;
+}
+.lang-btn {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 11px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: border-color var(--t-fast), color var(--t-fast);
+}
+.lang-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.lang-switch:hover .lang-menu,
+.lang-switch:focus-within .lang-menu {
+  display: block;
+}
+.lang-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  min-width: 130px;
+  z-index: 600;
+}
+.lang-item {
+  display: block;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.lang-item:hover {
+  background: var(--accent-soft);
+}
+.lang-item.active {
+  color: var(--accent);
+  font-weight: 800;
 }
 .account-login {
   font-size: 14px;

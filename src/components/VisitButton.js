@@ -4,10 +4,12 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/AuthProvider";
+import { useI18n } from "@/lib/I18nProvider";
 
 // 방문기록 토글. 로그인 사용자가 '방문함'을 켜고 끌 수 있어요(본인만).
 export default function VisitButton({ festivalId }) {
   const { user, configured } = useAuth();
+  const { t, href } = useI18n();
   const [visited, setVisited] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -30,8 +32,8 @@ export default function VisitButton({ festivalId }) {
 
   if (!user) {
     return (
-      <Link href="/login" className="visit-btn" title="로그인하고 방문기록">
-        📍 방문기록
+      <Link href={href("/login")} className="visit-btn" title={t.detail.visit}>
+        {t.detail.visit}
       </Link>
     );
   }
@@ -61,7 +63,7 @@ export default function VisitButton({ festivalId }) {
       onClick={toggle}
       disabled={busy}
     >
-      {visited ? "✅ 방문함" : "📍 방문기록"}
+      {visited ? t.detail.visited : t.detail.visit}
     </button>
   );
 }

@@ -5,10 +5,66 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
 import { useFavorites } from "@/lib/useFavorites";
+import { useI18n } from "@/lib/I18nProvider";
 import { supabase } from "@/lib/supabaseClient";
 import AccountMenu from "./AccountMenu";
 import FestivalCard from "./FestivalCard";
 import StarRating from "./StarRating";
+
+const MP = {
+  ko: {
+    backHome: "← 홈으로", pageSub: "님의 페이지",
+    notConfigured: "회원 기능이 아직 설정되지 않았어요.", loading: "불러오는 중…",
+    profile: "🙋 프로필", nickname: "닉네임", nicknamePh: "닉네임",
+    saving: "저장 중…", saved: "✅ 저장됐어요", saveNick: "닉네임 저장", logout: "로그아웃",
+    favs: "❤️ 즐겨찾기한 축제",
+    favEmpty1: "아직 즐겨찾기한 축제가 없어요.", favEmpty2: "축제 카드의 🤍 하트를 눌러 담아보세요!",
+    favHidden: (n) => `일부 즐겨찾기(${n}곳)는 현재 목록에 없어 표시되지 않았어요.`,
+    reviews: "📝 내가 쓴 후기", reviewsEmpty: "아직 쓴 후기가 없어요. 축제 상세의 ⭐후기 탭에서 별점·후기를 남겨보세요!",
+    visits: "📍 방문한 축제", visitsEmpty: "아직 방문기록이 없어요. 축제 상세의 📍방문기록 버튼으로 기록해보세요!",
+    fallbackName: (fid) => `축제 #${fid}`, saveError: "저장에 실패했어요.",
+    footer: "축제로 · 나만의 축제 페이지",
+  },
+  en: {
+    backHome: "← Home", pageSub: "'s page",
+    notConfigured: "Membership isn't set up yet.", loading: "Loading…",
+    profile: "🙋 Profile", nickname: "Nickname", nicknamePh: "Nickname",
+    saving: "Saving…", saved: "✅ Saved", saveNick: "Save nickname", logout: "Log out",
+    favs: "❤️ Favorite festivals",
+    favEmpty1: "No favorites yet.", favEmpty2: "Tap the 🤍 on a festival card to save it!",
+    favHidden: (n) => `${n} favorite(s) aren't in the current list, so they're hidden.`,
+    reviews: "📝 My reviews", reviewsEmpty: "No reviews yet. Leave a rating on the ⭐ Reviews tab of a festival.",
+    visits: "📍 Festivals visited", visitsEmpty: "No visits yet. Use the 📍 Visit button on a festival page.",
+    fallbackName: (fid) => `Festival #${fid}`, saveError: "Failed to save.",
+    footer: "Chukjero · Your festival page",
+  },
+  ja: {
+    backHome: "← ホームへ", pageSub: "さんのページ",
+    notConfigured: "会員機能はまだ設定されていません。", loading: "読み込み中…",
+    profile: "🙋 プロフィール", nickname: "ニックネーム", nicknamePh: "ニックネーム",
+    saving: "保存中…", saved: "✅ 保存しました", saveNick: "ニックネームを保存", logout: "ログアウト",
+    favs: "❤️ お気に入りのお祭り",
+    favEmpty1: "まだお気に入りがありません。", favEmpty2: "お祭りカードの🤍を押して保存しましょう！",
+    favHidden: (n) => `一部のお気に入り（${n}件）は現在のリストにないため表示されていません。`,
+    reviews: "📝 書いたレビュー", reviewsEmpty: "まだレビューがありません。お祭り詳細の⭐レビュータブで評価を残しましょう！",
+    visits: "📍 訪れたお祭り", visitsEmpty: "まだ訪問記録がありません。お祭り詳細の📍訪問ボタンで記録しましょう！",
+    fallbackName: (fid) => `お祭り #${fid}`, saveError: "保存に失敗しました。",
+    footer: "祝祭ロ · あなたのお祭りページ",
+  },
+  zh: {
+    backHome: "← 首页", pageSub: " 的页面",
+    notConfigured: "会员功能尚未设置。", loading: "加载中…",
+    profile: "🙋 个人资料", nickname: "昵称", nicknamePh: "昵称",
+    saving: "保存中…", saved: "✅ 已保存", saveNick: "保存昵称", logout: "退出登录",
+    favs: "❤️ 收藏的庆典",
+    favEmpty1: "还没有收藏的庆典。", favEmpty2: "点击庆典卡片上的🤍即可收藏！",
+    favHidden: (n) => `部分收藏（${n} 个）不在当前列表中，因此未显示。`,
+    reviews: "📝 我的点评", reviewsEmpty: "还没有点评。在庆典详情的⭐点评标签中评分吧！",
+    visits: "📍 到访的庆典", visitsEmpty: "还没有访问记录。在庆典详情用📍访问按钮记录吧！",
+    fallbackName: (fid) => `庆典 #${fid}`, saveError: "保存失败。",
+    footer: "庆典路 · 你的庆典页面",
+  },
+};
 
 function fmtDate(iso) {
   if (!iso) return "";
@@ -22,6 +78,9 @@ export default function MyPageClient({ festivals }) {
   const { configured, user, loading, displayName, updateNickname, signOut } =
     useAuth();
   const { favorites, ready } = useFavorites();
+  const { locale, href } = useI18n();
+  const mp = MP[locale] || MP.ko;
+  const home = href("/");
   const router = useRouter();
 
   const [nickname, setNickname] = useState("");
@@ -31,8 +90,8 @@ export default function MyPageClient({ festivals }) {
 
   // 로그인 안 되어 있으면 로그인으로
   useEffect(() => {
-    if (configured && !loading && !user) router.replace("/login");
-  }, [configured, loading, user, router]);
+    if (configured && !loading && !user) router.replace(href("/login"));
+  }, [configured, loading, user, router, href]);
 
   useEffect(() => {
     setNickname(displayName || "");
@@ -70,7 +129,7 @@ export default function MyPageClient({ festivals }) {
   }, [user]);
 
   const nameOf = (fid) =>
-    festivals.find((f) => f.id === fid)?.name || `축제 #${fid}`;
+    festivals.find((f) => f.id === fid)?.name || mp.fallbackName(fid);
 
   const saveNickname = async (e) => {
     e.preventDefault();
@@ -82,7 +141,7 @@ export default function MyPageClient({ festivals }) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
-      setError(err.message || "저장에 실패했어요.");
+      setError(err.message || mp.saveError);
     } finally {
       setBusy(false);
     }
@@ -92,7 +151,7 @@ export default function MyPageClient({ festivals }) {
     <div>
       <header className="site-header">
         <div className="container">
-          <Link href="/" className="brand">
+          <Link href={home} className="brand">
             축제로
           </Link>
           <div className="header-right">
@@ -102,44 +161,44 @@ export default function MyPageClient({ festivals }) {
       </header>
 
       <main className="container">
-        <Link href="/" className="back-link">
-          ← 홈으로
+        <Link href={home} className="back-link">
+          {mp.backHome}
         </Link>
 
         <h1 className="mypage-title">
           👤 {displayName}
-          <span className="mypage-title-sub">님의 페이지</span>
+          <span className="mypage-title-sub">{mp.pageSub}</span>
         </h1>
 
         {!configured ? (
-          <p className="auth-note">회원 기능이 아직 설정되지 않았어요.</p>
+          <p className="auth-note">{mp.notConfigured}</p>
         ) : loading || !user ? (
-          <p className="auth-note">불러오는 중…</p>
+          <p className="auth-note">{mp.loading}</p>
         ) : (
           <>
             {/* 프로필 */}
             <section className="section">
-              <h2>🙋 프로필</h2>
+              <h2>{mp.profile}</h2>
               <div className="mypage-card">
                 <p className="profile-email">📧 {user.email}</p>
                 <form className="auth-form" onSubmit={saveNickname}>
                   <label className="auth-field">
-                    <span>닉네임</span>
+                    <span>{mp.nickname}</span>
                     <input
                       type="text"
                       value={nickname}
                       onChange={(e) => setNickname(e.target.value)}
                       maxLength={20}
-                      placeholder="닉네임"
+                      placeholder={mp.nicknamePh}
                     />
                   </label>
                   {error && <p className="auth-error">{error}</p>}
                   <button className="auth-submit" type="submit" disabled={busy}>
-                    {busy ? "저장 중…" : saved ? "✅ 저장됐어요" : "닉네임 저장"}
+                    {busy ? mp.saving : saved ? mp.saved : mp.saveNick}
                   </button>
                 </form>
                 <button className="profile-logout" onClick={signOut}>
-                  로그아웃
+                  {mp.logout}
                 </button>
               </div>
             </section>
@@ -147,13 +206,13 @@ export default function MyPageClient({ festivals }) {
             {/* 즐겨찾기 */}
             <section className="section">
               <h2 suppressHydrationWarning>
-                ❤️ 즐겨찾기한 축제{ready && favFestivals.length > 0 ? ` ${favFestivals.length}` : ""}
+                {mp.favs}{ready && favFestivals.length > 0 ? ` ${favFestivals.length}` : ""}
               </h2>
               {favFestivals.length === 0 ? (
                 <div className="empty">
-                  아직 즐겨찾기한 축제가 없어요.
+                  {mp.favEmpty1}
                   <br />
-                  축제 카드의 🤍 하트를 눌러 담아보세요!
+                  {mp.favEmpty2}
                 </div>
               ) : (
                 <>
@@ -163,9 +222,7 @@ export default function MyPageClient({ festivals }) {
                     ))}
                   </div>
                   {hiddenFav > 0 && (
-                    <p className="mypage-note">
-                      일부 즐겨찾기({hiddenFav}곳)는 현재 목록에 없어 표시되지 않았어요.
-                    </p>
+                    <p className="mypage-note">{mp.favHidden(hiddenFav)}</p>
                   )}
                 </>
               )}
@@ -173,17 +230,15 @@ export default function MyPageClient({ festivals }) {
 
             {/* 내가 쓴 후기 */}
             <section className="section">
-              <h2>📝 내가 쓴 후기 {myReviews.length > 0 ? myReviews.length : ""}</h2>
+              <h2>{mp.reviews} {myReviews.length > 0 ? myReviews.length : ""}</h2>
               {myReviews.length === 0 ? (
-                <p className="coming-soon">
-                  아직 쓴 후기가 없어요. 축제 상세의 ⭐후기 탭에서 별점·후기를 남겨보세요!
-                </p>
+                <p className="coming-soon">{mp.reviewsEmpty}</p>
               ) : (
                 <ul className="review-list">
                   {myReviews.map((r) => (
                     <li key={r.festival_id} className="review-item">
                       <div className="review-head">
-                        <Link href={`/festival/${r.festival_id}`} className="review-name">
+                        <Link href={href(`/festival/${r.festival_id}`)} className="review-name">
                           {nameOf(r.festival_id)}
                         </Link>
                         <StarRating value={r.rating} readOnly size={14} />
@@ -200,16 +255,14 @@ export default function MyPageClient({ festivals }) {
 
             {/* 방문기록 */}
             <section className="section">
-              <h2>📍 방문한 축제 {myVisits.length > 0 ? myVisits.length : ""}</h2>
+              <h2>{mp.visits} {myVisits.length > 0 ? myVisits.length : ""}</h2>
               {myVisits.length === 0 ? (
-                <p className="coming-soon">
-                  아직 방문기록이 없어요. 축제 상세의 📍방문기록 버튼으로 기록해보세요!
-                </p>
+                <p className="coming-soon">{mp.visitsEmpty}</p>
               ) : (
                 <ul className="visit-list">
                   {myVisits.map((v) => (
                     <li key={v.id}>
-                      <Link href={`/festival/${v.festival_id}`} className="visit-link">
+                      <Link href={href(`/festival/${v.festival_id}`)} className="visit-link">
                         <span className="visit-check">✅</span>
                         <span className="visit-name">{nameOf(v.festival_id)}</span>
                         <span className="review-date">
@@ -226,7 +279,7 @@ export default function MyPageClient({ festivals }) {
       </main>
 
       <footer className="site-footer">
-        <div className="container">축제로 · 나만의 축제 페이지</div>
+        <div className="container">{mp.footer}</div>
       </footer>
     </div>
   );

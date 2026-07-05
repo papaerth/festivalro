@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/lib/AuthProvider";
+import { useI18n } from "@/lib/I18nProvider";
 
 // 헤더 우측 계정 영역.
 //  - 회원 기능 미설정 → 아무것도 안 보임 (축제 조회는 그대로 동작)
@@ -9,6 +10,7 @@ import { useAuth } from "@/lib/AuthProvider";
 //  - 로그인 상태 → 닉네임(프로필 링크) + 로그아웃
 export default function AccountMenu() {
   const { configured, user, displayName, loading, signOut } = useAuth();
+  const { t, href } = useI18n();
 
   if (!configured) return null;
   if (loading) return <span className="account-loading" aria-hidden="true" />;
@@ -16,11 +18,11 @@ export default function AccountMenu() {
   if (!user) {
     return (
       <div className="account-menu">
-        <Link href="/login" className="account-login">
-          로그인
+        <Link href={href("/login")} className="account-login">
+          {t.nav.login}
         </Link>
-        <Link href="/login?mode=signup" className="account-signup">
-          회원가입
+        <Link href={href("/login?mode=signup")} className="account-signup">
+          {t.nav.signup}
         </Link>
       </div>
     );
@@ -28,11 +30,11 @@ export default function AccountMenu() {
 
   return (
     <div className="account-menu">
-      <Link href="/mypage" className="account-name" title="내 페이지">
+      <Link href={href("/mypage")} className="account-name" title={t.nav.mypage}>
         👤 {displayName}
       </Link>
       <button className="account-logout" onClick={signOut}>
-        로그아웃
+        {t.nav.logout}
       </button>
     </div>
   );

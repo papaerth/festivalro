@@ -6,9 +6,11 @@ import { SEASONS, SEASON_ORDER, REGIONS, REGION_ORDER } from "@/lib/seasons";
 import { getStatusInfo, STATUS_ORDER } from "@/lib/format";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
+import { useI18n } from "@/lib/I18nProvider";
 import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
 import AccountMenu from "./AccountMenu";
+import LangSwitcher from "./LangSwitcher";
 
 // 지도는 브라우저에서만 그려질 수 있어 ssr:false 로 불러옵니다.
 const MapView = dynamic(() => import("./MapView"), {
@@ -67,6 +69,8 @@ export default function HomeClient({ festivals, usingSample }) {
 
   const { favorites, ready: favReady } = useFavorites();
   const ratings = useReviewStats();
+  const { t } = useI18n();
+  const periodLabel = period === "weekend" ? t.filters.weekend : t.filters.month;
 
   const q = query.trim().toLowerCase();
   const searching = q.length > 0;
@@ -100,7 +104,6 @@ export default function HomeClient({ festivals, usingSample }) {
     setQuery("");
     setShowFavorites(false);
   };
-  const periodLabel = period === "weekend" ? "📅 이번 주말" : "🗓️ 이번 달";
 
   // 즐겨찾기만 보기 토글
   const toggleFavorites = () => {
@@ -154,6 +157,7 @@ export default function HomeClient({ festivals, usingSample }) {
         <div className="container">
           <span className="brand">축제로</span>
           <div className="header-right">
+            <LangSwitcher />
             <AccountMenu />
           </div>
         </div>
@@ -162,10 +166,12 @@ export default function HomeClient({ festivals, usingSample }) {
       <main className="container">
         <section className="hero">
           <h1>
-            지금 가장 예쁜<br />
-            <span className="accent">{theme.emoji} {theme.label}</span> 축제, 한눈에
+            {t.hero.titleA}
+            <br />
+            <span className="accent">{theme.emoji} {t.seasons[season]}</span>{" "}
+            {t.hero.titleB}
           </h1>
-          <p>계절·지역으로 골라보고, 날씨·길찾기까지 한 번에.</p>
+          <p>{t.hero.subtitle}</p>
 
           {/* 검색창 (히어로 안에 통합) */}
           <div className="search-box">
@@ -173,7 +179,7 @@ export default function HomeClient({ festivals, usingSample }) {
             <input
               type="search"
               className="search-input"
-              placeholder="축제 이름·지역 검색 (예: 머드, 부산)"
+              placeholder={t.hero.searchPlaceholder}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -182,13 +188,13 @@ export default function HomeClient({ festivals, usingSample }) {
                   setShowFavorites(false);
                 }
               }}
-              aria-label="축제 검색"
+              aria-label={t.hero.searchPlaceholder}
             />
             {searching && (
               <button
                 className="search-clear"
                 onClick={() => setQuery("")}
-                aria-label="검색 지우기"
+                aria-label="✕"
               >
                 ✕
               </button>
@@ -202,20 +208,21 @@ export default function HomeClient({ festivals, usingSample }) {
             className={`quick-chip ${period === "weekend" ? "active" : ""}`}
             onClick={() => togglePeriod("weekend")}
           >
-            📅 이번 주말
+            {t.filters.weekend}
           </button>
           <button
             className={`quick-chip ${period === "month" ? "active" : ""}`}
             onClick={() => togglePeriod("month")}
           >
-            🗓️ 이번 달
+            {t.filters.month}
           </button>
           <button
             className={`quick-chip ${showFavorites ? "active" : ""}`}
             onClick={toggleFavorites}
             suppressHydrationWarning
           >
-            ❤️ 즐겨찾기{favReady && favorites.length > 0 ? ` ${favorites.length}` : ""}
+            ❤️ {t.filters.favorites}
+            {favReady && favorites.length > 0 ? ` ${favorites.length}` : ""}
           </button>
         </div>
 
@@ -225,23 +232,23 @@ export default function HomeClient({ festivals, usingSample }) {
         {searching ? (
           /* 검색 중: 계절/지역 선택 대신 검색 결과 안내 */
           <div className="search-result-head">
-            🔍 전국에서 <b>“{query.trim()}”</b> 검색 결과 <b>{base.length}</b>곳
+            {t.list.searchResult(query.trim(), base.length)}
           </div>
         ) : period ? (
           /* 기간 바로가기: 계절/지역 대신 기간 결과 안내 */
           <div className="search-result-head">
-            {periodLabel}에 열리는 축제 <b>{base.length}</b>곳
+            {t.list.periodResult(periodLabel, base.length)}
           </div>
         ) : showFavorites ? (
           /* 즐겨찾기: 계절/지역 대신 안내 */
           <div className="search-result-head" suppressHydrationWarning>
-            ❤️ 즐겨찾기한 축제 <b>{base.length}</b>곳
+            {t.list.favResult(base.length)}
           </div>
         ) : (
           <>
             {/* 계절 선택 */}
             <div className="filter-group">
-              <div className="filter-label">계절</div>
+              <div className="filter-label">{t.filters.season}</div>
               <div className="chip-row">
                 {SEASON_ORDER.map((key) => {
                   const s = SEASONS[key];
@@ -251,7 +258,7 @@ export default function HomeClient({ festivals, usingSample }) {
                       className={`chip ${season === key ? "active" : ""}`}
                       onClick={() => setSeason(key)}
                     >
-                      {s.emoji} {s.label}
+                      {s.emoji} {t.seasons[key]}
                     </button>
                   );
                 })}
@@ -260,7 +267,7 @@ export default function HomeClient({ festivals, usingSample }) {
 
             {/* 지역 선택 */}
             <div className="filter-group">
-              <div className="filter-label">지역</div>
+              <div className="filter-label">{t.filters.region}</div>
               <div className="chip-row">
                 {REGION_ORDER.map((key) => (
                   <button
@@ -268,7 +275,7 @@ export default function HomeClient({ festivals, usingSample }) {
                     className={`chip ${region === key ? "active" : ""}`}
                     onClick={() => setRegion(key)}
                   >
-                    {REGIONS[key]}
+                    {t.regions[key]}
                   </button>
                 ))}
               </div>
@@ -287,7 +294,7 @@ export default function HomeClient({ festivals, usingSample }) {
             disabled={counts.ongoing === 0}
           >
             <span className="live-dot" />
-            진행중 {counts.ongoing}
+            {t.status.ongoingShort} {counts.ongoing}
           </button>
           <span className="status-sep">·</span>
           <button
@@ -295,7 +302,7 @@ export default function HomeClient({ festivals, usingSample }) {
             onClick={() => toggleStatus("upcoming")}
             disabled={counts.upcoming === 0}
           >
-            예정 {counts.upcoming}
+            {t.status.upcoming} {counts.upcoming}
           </button>
           <span className="status-sep">·</span>
           <button
@@ -303,11 +310,11 @@ export default function HomeClient({ festivals, usingSample }) {
             onClick={() => toggleStatus("ended")}
             disabled={counts.ended === 0}
           >
-            종료 {counts.ended}
+            {t.status.ended} {counts.ended}
           </button>
           {statusFilter && (
             <button className="status-clear" onClick={() => setStatusFilter(null)}>
-              전체 보기 ✕
+              {t.filters.clearAll}
             </button>
           )}
         </div>
@@ -316,31 +323,13 @@ export default function HomeClient({ festivals, usingSample }) {
         <div className="card-grid">
           {filtered.length === 0 ? (
             <div className="empty">
-              {searching ? (
-                <>
-                  “{query.trim()}” 검색 결과가 없어요.
-                  <br />
-                  다른 이름이나 지역으로 검색해 보세요!
-                </>
-              ) : period ? (
-                <>
-                  {periodLabel}에 열리는 축제가 없어요.
-                  <br />
-                  다른 기간이나 계절을 살펴보세요!
-                </>
-              ) : showFavorites ? (
-                <>
-                  아직 즐겨찾기한 축제가 없어요.
-                  <br />
-                  축제 카드의 🤍 하트를 눌러 담아보세요!
-                </>
-              ) : (
-                <>
-                  선택하신 조건에 맞는 축제가 아직 없어요.
-                  <br />
-                  다른 계절이나 지역을 선택해 보세요!
-                </>
-              )}
+              {searching
+                ? t.list.emptySearch
+                : period
+                ? t.list.emptyPeriod
+                : showFavorites
+                ? t.list.emptyFav
+                : t.list.emptyDefault}
             </div>
           ) : (
             visible.map((f) => (
@@ -354,24 +343,14 @@ export default function HomeClient({ festivals, usingSample }) {
             className="load-more"
             onClick={() => setVisibleCount((c) => c + PAGE)}
           >
-            더 보기 <span>({filtered.length - visibleCount}곳 남음)</span>
+            {t.list.loadMore}{" "}
+            <span>{t.list.remain(filtered.length - visibleCount)}</span>
           </button>
-        )}
-
-        {usingSample && (
-          <p className="notice">
-            💡 지금은 <b>내장 샘플 축제 데이터</b>로 보고 있어요. 한국관광공사 TourAPI 키를
-            등록하면 전국 실시간 축제 정보로 자동 전환됩니다.
-          </p>
         )}
       </main>
 
       <footer className="site-footer">
-        <div className="container">
-          축제로 · 지도 © OpenStreetMap · 날씨 © Open-Meteo
-          <br />
-          축제에 놀러 가려는 모두를 위한 서비스
-        </div>
+        <div className="container">{t.footer}</div>
       </footer>
     </div>
   );

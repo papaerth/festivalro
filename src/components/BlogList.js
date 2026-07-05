@@ -1,6 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useI18n } from "@/lib/I18nProvider";
+
+const BL = {
+  ko: {
+    more: "네이버 블로그에서 더 보기 →", loading: "블로그 불러오는 중",
+    error: "블로그 후기를 잠시 불러올 수 없어요.",
+    noKey: "블로그 후기 목록은 네이버 검색 키를 등록하면 이 자리에 표시돼요.",
+    empty: "아직 등록된 후기가 없어요.", blogger: "블로그",
+  },
+  en: {
+    more: "See more on Naver Blog →", loading: "Loading blogs",
+    error: "Blog reviews are unavailable right now.",
+    noKey: "Blog reviews appear here once a Naver search key is set.",
+    empty: "No blog reviews yet.", blogger: "Blog",
+  },
+  ja: {
+    more: "NAVERブログでもっと見る →", loading: "ブログを読み込み中",
+    error: "ブログのレビューを読み込めませんでした。",
+    noKey: "NAVER検索キーを設定すると、ここにブログのレビューが表示されます。",
+    empty: "まだレビューがありません。", blogger: "ブログ",
+  },
+  zh: {
+    more: "在 NAVER 博客查看更多 →", loading: "正在加载博客",
+    error: "暂时无法获取博客点评。",
+    noKey: "设置 NAVER 搜索密钥后，这里会显示博客点评。",
+    empty: "暂无博客点评。", blogger: "博客",
+  },
+};
 
 // "20240715" → "2024.07.15"
 function prettyPostDate(s) {
@@ -38,6 +66,8 @@ function BlogThumb({ src, accent }) {
 
 // 축제 이름으로 네이버 블로그(최근 3년, 정확도순) 5개를 보여줍니다.
 export default function BlogList({ query, accent = "#c2578a" }) {
+  const { locale } = useI18n();
+  const b = BL[locale] || BL.ko;
   const [state, setState] = useState({ status: "loading" });
   const [isMobile, setIsMobile] = useState(false);
 
@@ -93,13 +123,13 @@ export default function BlogList({ query, accent = "#c2578a" }) {
       target="_blank"
       rel="noopener noreferrer"
     >
-      네이버 블로그에서 더 보기 →
+      {b.more}
     </a>
   );
 
   if (state.status === "loading") {
     return (
-      <div className="skel-blog" aria-label="블로그 불러오는 중">
+      <div className="skel-blog" aria-label={b.loading}>
         <div className="skeleton" />
         <div className="skeleton" />
         <div className="skeleton" />
@@ -110,7 +140,7 @@ export default function BlogList({ query, accent = "#c2578a" }) {
   if (state.status === "error") {
     return (
       <div>
-        <p className="blog-empty-msg">블로그 후기를 잠시 불러올 수 없어요.</p>
+        <p className="blog-empty-msg">{b.error}</p>
         {moreButton}
       </div>
     );
@@ -120,9 +150,7 @@ export default function BlogList({ query, accent = "#c2578a" }) {
   if (!state.configured) {
     return (
       <div>
-        <p className="blog-empty-msg">
-          블로그 후기 목록은 네이버 검색 키를 등록하면 이 자리에 표시돼요.
-        </p>
+        <p className="blog-empty-msg">{b.noKey}</p>
         {moreButton}
       </div>
     );
@@ -132,7 +160,7 @@ export default function BlogList({ query, accent = "#c2578a" }) {
   if (state.items.length === 0) {
     return (
       <div>
-        <p className="blog-empty-msg">아직 등록된 후기가 없어요.</p>
+        <p className="blog-empty-msg">{b.empty}</p>
         {moreButton}
       </div>
     );
@@ -153,7 +181,7 @@ export default function BlogList({ query, accent = "#c2578a" }) {
           <div className="blog-card-body">
             <p className="blog-title">{post.title}</p>
             <p className="blog-meta">
-              ✍️ {post.blogger || "블로그"} · {prettyPostDate(post.postdate)}
+              ✍️ {post.blogger || b.blogger} · {prettyPostDate(post.postdate)}
             </p>
           </div>
         </a>

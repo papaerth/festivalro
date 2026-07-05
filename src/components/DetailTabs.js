@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useI18n } from "@/lib/I18nProvider";
 
 // 축제 상세 화면의 탭 (정보 / 날씨 / 후기 / 블로그)
 //  - 정보·날씨는 계속 살려두어(display 토글) 상태 유지
@@ -11,6 +12,7 @@ export default function DetailTabs({
   reviewsPanel,
   blogPanel,
 }) {
+  const { t } = useI18n();
   const [active, setActive] = useState("info");
   // 처음부터 살려둘 탭(info/weather) + 방문한 탭 기록
   const [visited, setVisited] = useState({ info: true, weather: true });
@@ -21,10 +23,10 @@ export default function DetailTabs({
   };
 
   const TABS = [
-    { key: "info", label: "정보", icon: "🎪" },
-    { key: "weather", label: "날씨", icon: "🌤️" },
-    { key: "reviews", label: "후기", icon: "⭐" },
-    { key: "blog", label: "블로그", icon: "📝" },
+    { key: "info", label: t.detail.tabs.info, icon: "🎪" },
+    { key: "weather", label: t.detail.tabs.weather, icon: "🌤️" },
+    { key: "reviews", label: t.detail.tabs.reviews, icon: "⭐" },
+    { key: "blog", label: t.detail.tabs.blog, icon: "📝" },
   ];
   const panels = {
     info: infoPanel,
