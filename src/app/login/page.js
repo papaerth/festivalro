@@ -6,6 +6,11 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
 import AccountMenu from "@/components/AccountMenu";
 
+// 카카오 로그인 노출 여부.
+//  - 카카오는 이메일(account_email) 사용에 '개인 비즈니스 정보 검수'가 필요해요.
+//  - 검수가 끝나면 이 값을 true 로만 바꾸면 카카오 버튼이 다시 나옵니다.
+const KAKAO_ENABLED = false;
+
 // 비밀번호 보안 규칙: 8자 이상 + 영문 + 숫자 + 기호
 const PW_SYMBOL = /[~!@#$%^&*()\-_=+[\]{}\\|;:'",.<>/?]/;
 function checkPassword(pw) {
@@ -213,25 +218,29 @@ export default function LoginPage() {
                 </button>
               </form>
 
-              <div className="auth-divider">
-                <span>또는</span>
-              </div>
+              {KAKAO_ENABLED && (
+                <>
+                  <div className="auth-divider">
+                    <span>또는</span>
+                  </div>
 
-              <button
-                type="button"
-                className="kakao-btn"
-                onClick={async () => {
-                  setError("");
-                  try {
-                    await signInWithKakao();
-                  } catch (err) {
-                    setError(toKorean(err.message));
-                  }
-                }}
-              >
-                <span className="kakao-icon">💬</span>
-                카카오로 시작하기
-              </button>
+                  <button
+                    type="button"
+                    className="kakao-btn"
+                    onClick={async () => {
+                      setError("");
+                      try {
+                        await signInWithKakao();
+                      } catch (err) {
+                        setError(toKorean(err.message));
+                      }
+                    }}
+                  >
+                    <span className="kakao-icon">💬</span>
+                    카카오로 시작하기
+                  </button>
+                </>
+              )}
 
               <p className="auth-switch">
                 {mode === "login" ? (
