@@ -58,7 +58,14 @@ export default function WeatherPanel({ lat, lng, place }) {
   }, [lat, lng]);
 
   if (state.status === "loading") {
-    return <div className="weather-loading">날씨 정보를 불러오는 중…</div>;
+    return (
+      <div className="skel-weather" aria-label="날씨 불러오는 중">
+        <div className="skeleton" />
+        <div className="skeleton" />
+        <div className="skeleton" />
+        <div className="skeleton" />
+      </div>
+    );
   }
   if (state.status === "error") {
     return <div className="weather-error">날씨 정보를 잠시 불러올 수 없어요.</div>;

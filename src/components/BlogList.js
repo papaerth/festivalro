@@ -98,7 +98,13 @@ export default function BlogList({ query, accent = "#c2578a" }) {
   );
 
   if (state.status === "loading") {
-    return <div className="weather-loading">블로그 후기를 불러오는 중…</div>;
+    return (
+      <div className="skel-blog" aria-label="블로그 불러오는 중">
+        <div className="skeleton" />
+        <div className="skeleton" />
+        <div className="skeleton" />
+      </div>
+    );
   }
 
   if (state.status === "error") {

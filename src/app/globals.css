@@ -7,23 +7,59 @@
   --accent: #c2578a;
   --accent-soft: #f7e4ee;
 
-  --bg: #fbfbfd;
+  --bg: #f6f7f9;
   --surface: #ffffff;
-  --text: #22232a;
-  --text-soft: #6b6f7a;
-  --line: #ececf1;
+  --text: #191b22;
+  --text-soft: #7a7f8c;
+  --line: #eef0f4;
 
   --status-ongoing: #2f9e44;
   --status-upcoming: #1971c2;
-  --status-ended: #868e96;
+  --status-ended: #9aa0a8;
 
-  --radius: 16px;
-  --shadow: 0 6px 20px rgba(30, 32, 40, 0.08);
+  --radius: 22px;
+  --radius-sm: 16px;
+  --radius-lg: 28px;
+
+  --shadow-sm: 0 1px 3px rgba(24, 27, 34, 0.05);
+  --shadow: 0 6px 22px rgba(24, 27, 34, 0.07), 0 1px 3px rgba(24, 27, 34, 0.04);
+  --shadow-lg: 0 14px 40px rgba(24, 27, 34, 0.12);
+
+  /* 부드러운 전환/이징 (마이크로 인터랙션 표준) */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-fast: 0.16s var(--ease);
+  --t: 0.24s var(--ease);
+
   --max: 900px;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* 계절 색이 바뀔 때 전체 색이 0.3초로 부드럽게 전환 */
+.season-root {
+  transition: background-color 0.3s var(--ease);
+}
+
+/* 페이지 진입 시 살짝 떠오르는 전환 */
+@keyframes pageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+main.container {
+  animation: pageIn 0.3s var(--ease) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  main.container {
+    animation: none;
+  }
 }
 
 html,
@@ -598,22 +634,42 @@ h3 {
   color: var(--accent);
 }
 
-/* ── 히어로(인사말) ── */
+/* ── 히어로(인사말) — 계절 그라데이션 패널 ── */
 .hero {
-  padding: 22px 0 6px;
+  position: relative;
+  margin: 12px 0 8px;
+  padding: 28px 22px 22px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  color: #fff;
+  background-color: var(--accent);
+  background-image: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.22),
+    rgba(0, 0, 0, 0.16)
+  );
+  box-shadow: var(--shadow-lg);
+  transition: background-color 0.3s var(--ease);
 }
 .hero h1 {
-  font-size: 26px;
-  line-height: 1.25;
+  font-size: 30px;
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
 }
 .hero h1 .accent {
-  color: var(--accent);
-  transition: color 0.3s ease;
+  color: #fff;
 }
 .hero p {
-  margin: 8px 0 0;
-  color: var(--text-soft);
+  margin: 10px 0 0;
+  color: rgba(255, 255, 255, 0.92);
   font-size: 14px;
+  line-height: 1.55;
+}
+/* 히어로 안에 들어간 검색창 여백 */
+.hero .search-box {
+  margin: 18px 0 2px;
+  box-shadow: var(--shadow-sm);
 }
 
 /* ── 검색창 ── */
@@ -686,25 +742,29 @@ h3 {
 }
 .quick-chip {
   flex: 1;
-  padding: 11px 14px;
+  padding: 13px 12px;
   border: 1.5px solid var(--line);
   background: var(--surface);
   color: var(--text);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform var(--t-fast), border-color var(--t-fast),
+    background var(--t-fast), color var(--t-fast), box-shadow var(--t-fast);
 }
 .quick-chip:hover {
   border-color: var(--accent);
+}
+.quick-chip:active {
+  transform: scale(0.97);
 }
 .quick-chip.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
-  box-shadow: 0 4px 14px var(--accent-soft);
+  box-shadow: 0 6px 18px var(--accent-soft);
 }
 
 /* ── 즐겨찾기 시작 알림 배너 ── */
@@ -809,12 +869,13 @@ h3 {
   border: 1.5px solid var(--line);
   background: var(--surface);
   color: var(--text-soft);
-  padding: 8px 14px;
+  padding: 10px 16px;
   border-radius: 999px;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 14.5px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: transform var(--t-fast), border-color var(--t-fast),
+    background var(--t-fast), color var(--t-fast), box-shadow var(--t-fast);
   font-family: inherit;
   display: inline-flex;
   align-items: center;
@@ -823,10 +884,14 @@ h3 {
 .chip:hover {
   border-color: var(--accent);
 }
+.chip:active {
+  transform: scale(0.95);
+}
 .chip.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+  box-shadow: 0 5px 16px var(--accent-soft);
 }
 
 /* ── 지도 ── */
@@ -968,11 +1033,14 @@ h3 {
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform var(--t), box-shadow var(--t);
 }
 .card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 26px rgba(30, 32, 40, 0.12);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+}
+.card:active {
+  transform: scale(0.985);
 }
 /* 진행중 카드: 계절색 테두리 + 은은한 링으로 강조 */
 .card-ongoing {
@@ -994,7 +1062,7 @@ h3 {
 }
 .card-cover {
   width: 100%;
-  height: 150px;
+  height: 190px;
   display: block;
 }
 .card-cover img {
@@ -1002,6 +1070,10 @@ h3 {
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform 0.4s var(--ease);
+}
+.card:hover .card-cover img {
+  transform: scale(1.05);
 }
 .card-badge {
   position: absolute;
@@ -1045,12 +1117,13 @@ h3 {
 }
 .card-body {
   min-width: 0;
-  padding: 12px 14px 14px;
+  padding: 14px 16px 16px;
 }
 .card-title {
-  font-size: 16px;
-  font-weight: 700;
-  margin: 0 0 3px;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 0 0 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1175,14 +1248,14 @@ h3 {
 }
 .detail-hero {
   position: relative;
-  border-radius: var(--radius);
-  padding: 26px 20px;
-  min-height: 190px;
+  border-radius: var(--radius-lg);
+  padding: 26px 22px;
+  min-height: 220px;
   display: flex;
   align-items: flex-end;
   color: #fff;
   overflow: hidden;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lg);
 }
 .detail-hero-bg {
   position: absolute;
@@ -1211,8 +1284,9 @@ h3 {
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
 }
 .detail-hero h1 {
-  font-size: 28px;
-  line-height: 1.2;
+  font-size: 30px;
+  line-height: 1.18;
+  letter-spacing: -0.02em;
 }
 .detail-hero .detail-period {
   margin-top: 10px;
@@ -1225,34 +1299,41 @@ h3 {
   opacity: 0.9;
   margin-top: 2px;
 }
-/* ── 상세 화면 탭 ── */
+/* ── 상세 화면 탭 (세그먼트 알약 컨트롤) ── */
 .tabbar {
   display: flex;
   gap: 4px;
-  margin: 20px 0 4px;
-  border-bottom: 2px solid var(--line);
+  margin: 20px 0 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px;
+  box-shadow: var(--shadow-sm);
 }
 .tab {
   flex: 1;
-  padding: 12px 4px;
-  margin-bottom: -2px;
+  padding: 11px 4px;
   background: none;
   border: none;
-  border-bottom: 3px solid transparent;
+  border-radius: 999px;
   font-family: inherit;
   font-size: 14px;
   font-weight: 700;
   color: var(--text-soft);
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition: color var(--t-fast), background var(--t-fast), transform var(--t-fast);
   white-space: nowrap;
 }
 .tab:hover {
-  color: var(--accent);
+  color: var(--text);
+}
+.tab:active {
+  transform: scale(0.96);
 }
 .tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 4px 12px var(--accent-soft);
 }
 
 /* ── 즐겨찾기 + 공유 버튼 ── */
@@ -1686,6 +1767,97 @@ h3 {
 .legal-back {
   margin-top: 28px;
   font-weight: 700;
+}
+
+/* ── 버튼 공통 누름 효과 (가벼운 마이크로 인터랙션) ── */
+.directions-btn,
+.auth-submit,
+.share-btn,
+.fav-btn-labeled,
+.visit-btn,
+.blog-more-btn,
+.account-login,
+.account-signup,
+.kakao-btn,
+.weather-cta,
+.fav-alert-btn {
+  transition: transform var(--t-fast), background var(--t-fast),
+    color var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast),
+    filter var(--t-fast);
+}
+.directions-btn:active,
+.auth-submit:active,
+.share-btn:active,
+.fav-btn-labeled:active,
+.visit-btn:active,
+.blog-more-btn:active,
+.account-login:active,
+.account-signup:active,
+.kakao-btn:active,
+.weather-cta:active,
+.auth-submit:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* ── 스켈레톤 로딩 UI ── */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #e7e9ef;
+  border-radius: var(--radius-sm);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.65),
+    transparent
+  );
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+  }
+}
+.skel-map {
+  width: 100%;
+  height: 60vh;
+  min-height: 340px;
+  max-height: 520px;
+  border-radius: var(--radius);
+}
+.skel-minimap {
+  width: 100%;
+  height: 260px;
+  border-radius: var(--radius);
+}
+.skel-weather {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.skel-weather > div {
+  height: 120px;
+  border-radius: 14px;
+}
+.skel-blog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.skel-blog > div {
+  height: 108px;
+  border-radius: 14px;
 }
 
 /* ── 하단 푸터 ── */

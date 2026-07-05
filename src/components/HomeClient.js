@@ -13,7 +13,7 @@ import AccountMenu from "./AccountMenu";
 // 지도는 브라우저에서만 그려질 수 있어 ssr:false 로 불러옵니다.
 const MapView = dynamic(() => import("./MapView"), {
   ssr: false,
-  loading: () => <div className="map map-loading">지도를 불러오는 중…</div>,
+  loading: () => <div className="skeleton skel-map" />,
 });
 
 // 오늘 날짜로 현재 계절을 계산 (첫 화면 기본값)
@@ -138,7 +138,10 @@ export default function HomeClient({ festivals, usingSample }) {
     setStatusFilter((prev) => (prev === key ? null : key));
 
   return (
-    <div style={{ "--accent": theme.color, "--accent-soft": theme.soft }}>
+    <div
+      className="season-root"
+      style={{ "--accent": theme.color, "--accent-soft": theme.soft }}
+    >
       <header className="site-header">
         <div className="container">
           <span className="brand">축제로</span>
@@ -151,40 +154,39 @@ export default function HomeClient({ festivals, usingSample }) {
       <main className="container">
         <section className="hero">
           <h1>
-            지금 가장 예쁜 <span className="accent">{theme.emoji} {theme.label}</span> 축제,
-            <br />
-            지도에서 한눈에 보세요
+            지금 가장 예쁜<br />
+            <span className="accent">{theme.emoji} {theme.label}</span> 축제, 한눈에
           </h1>
-          <p>계절과 지역을 골라 전국 축제를 찾아보고, 날씨와 길찾기까지 확인하세요.</p>
-        </section>
+          <p>계절·지역으로 골라보고, 날씨·길찾기까지 한 번에.</p>
 
-        {/* 검색창 */}
-        <div className="search-box">
-          <span className="search-icon" aria-hidden="true">🔍</span>
-          <input
-            type="search"
-            className="search-input"
-            placeholder="축제 이름·지역으로 검색 (예: 머드, 부산)"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              if (e.target.value.trim()) {
-                setPeriod(null);
-                setShowFavorites(false);
-              }
-            }}
-            aria-label="축제 검색"
-          />
-          {searching && (
-            <button
-              className="search-clear"
-              onClick={() => setQuery("")}
-              aria-label="검색 지우기"
-            >
-              ✕
-            </button>
-          )}
-        </div>
+          {/* 검색창 (히어로 안에 통합) */}
+          <div className="search-box">
+            <span className="search-icon" aria-hidden="true">🔍</span>
+            <input
+              type="search"
+              className="search-input"
+              placeholder="축제 이름·지역 검색 (예: 머드, 부산)"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                if (e.target.value.trim()) {
+                  setPeriod(null);
+                  setShowFavorites(false);
+                }
+              }}
+              aria-label="축제 검색"
+            />
+            {searching && (
+              <button
+                className="search-clear"
+                onClick={() => setQuery("")}
+                aria-label="검색 지우기"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </section>
 
         {/* 기간 바로가기 */}
         <div className="quick-filters">
