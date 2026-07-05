@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 // 지원 언어 (i18n.js와 동일). 미들웨어를 가볍게 유지하려고 여기선 상수만 사용.
-const LOCALES = ["ko", "en", "ja", "zh"];
+const LOCALES = ["ko","en","ja","zh","zh-TW","es","fr","ru","de","ar","vi","id","th"];
 const DEFAULT_LOCALE = "ko";
 
 // 경로에 언어 접두어(/en, /ja, /zh, /ko)가 없으면

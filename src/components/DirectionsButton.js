@@ -4,6 +4,15 @@ import { useState } from "react";
 import { useI18n } from "@/lib/I18nProvider";
 
 const DIR = {
+  "zh-TW": { locating: "定位中…", hint: "允許定位，即可從您所在位置開始導航。" },
+  es: { locating: "Localizando…", hint: "Permite el acceso a la ubicación para iniciar la ruta desde donde estás." },
+  fr: { locating: "Localisation…", hint: "Autorisez la localisation pour démarrer l'itinéraire depuis votre position." },
+  ru: { locating: "Определение местоположения…", hint: "Разрешите доступ к геолокации, чтобы построить маршрут от вашего местоположения." },
+  de: { locating: "Standort wird ermittelt…", hint: "Erlaube den Standortzugriff, um die Wegbeschreibung von deinem aktuellen Standort aus zu starten." },
+  ar: { locating: "جارٍ تحديد الموقع…", hint: "اسمح بالوصول إلى الموقع لبدء الاتجاهات من مكانك." },
+  vi: { locating: "Đang định vị…", hint: "Cho phép truy cập vị trí để bắt đầu chỉ đường từ nơi bạn đang đứng." },
+  id: { locating: "Mencari lokasi…", hint: "Izinkan lokasi untuk memulai petunjuk arah dari tempat Anda berada." },
+  th: { locating: "กำลังค้นหาตำแหน่ง…", hint: "อนุญาตการเข้าถึงตำแหน่งเพื่อเริ่มเส้นทางจากที่ที่คุณอยู่" },
   ko: { locating: "내 위치 확인 중…", hint: "위치 권한을 허용하면 내 위치에서 출발하는 길찾기가 열려요." },
   en: { locating: "Locating…", hint: "Allow location to start directions from where you are." },
   ja: { locating: "現在地を確認中…", hint: "位置情報を許可すると、現在地からのルート案内が開きます。" },

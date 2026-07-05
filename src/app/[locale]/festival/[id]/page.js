@@ -87,7 +87,9 @@ export default async function FestivalDetailPage({ params }) {
   const status = getStatusInfo(festival.startDate, festival.endDate);
   const statusLabel =
     status.key === "upcoming" ? status.label : dict.status[status.key];
-  const sourceLabel = festival.source ? SOURCE[festival.source]?.[loc] : null;
+  const sourceLabel = festival.source
+    ? SOURCE[festival.source]?.[loc] || SOURCE[festival.source]?.en
+    : null;
   const homeHref = localeHref(loc, "/");
 
   return (

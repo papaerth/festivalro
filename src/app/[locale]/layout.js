@@ -10,6 +10,7 @@ import {
   HTML_LANG,
   SITE_URL,
   localeHref,
+  isRtl,
 } from "@/lib/i18n";
 
 const blackHanSans = Black_Han_Sans({
@@ -72,7 +73,7 @@ export default async function RootLayout({ children, params }) {
   const loc = isLocale(locale) ? locale : DEFAULT_LOCALE;
 
   return (
-    <html lang={HTML_LANG[loc]}>
+    <html lang={HTML_LANG[loc]} dir={isRtl(loc) ? "rtl" : "ltr"}>
       <body className={`${blackHanSans.variable} ${notoSansKr.variable}`}>
         <I18nProvider locale={loc}>
           <AuthProvider>{children}</AuthProvider>

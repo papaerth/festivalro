@@ -4,6 +4,15 @@ import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/I18nProvider";
 
 const BL = {
+  "zh-TW": { more: "在 Naver 部落格查看更多 →", loading: "正在載入部落格", error: "目前無法取得部落格評論。", noKey: "設定 Naver 搜尋金鑰後，部落格評論將顯示於此。", empty: "尚無部落格評論。", blogger: "部落格" },
+  es: { more: "Ver más en Naver Blog →", loading: "Cargando blogs", error: "Las reseñas de blogs no están disponibles ahora mismo.", noKey: "Las reseñas de blogs aparecerán aquí una vez que se configure una clave de búsqueda de Naver.", empty: "Aún no hay reseñas de blogs.", blogger: "Blog" },
+  fr: { more: "Voir plus sur Naver Blog →", loading: "Chargement des blogs", error: "Les avis de blog ne sont pas disponibles pour le moment.", noKey: "Les avis de blog apparaîtront ici une fois qu'une clé de recherche Naver sera configurée.", empty: "Aucun avis de blog pour l'instant.", blogger: "Blog" },
+  ru: { more: "Смотреть больше на Naver Blog →", loading: "Загрузка блогов", error: "Отзывы из блогов сейчас недоступны.", noKey: "Отзывы из блогов появятся здесь после настройки ключа поиска Naver.", empty: "Пока нет отзывов из блогов.", blogger: "Блог" },
+  de: { more: "Mehr auf Naver Blog ansehen →", loading: "Blogs werden geladen", error: "Blog-Rezensionen sind derzeit nicht verfügbar.", noKey: "Blog-Rezensionen erscheinen hier, sobald ein Naver-Suchschlüssel festgelegt ist.", empty: "Noch keine Blog-Rezensionen.", blogger: "Blog" },
+  ar: { more: "شاهد المزيد على Naver Blog →", loading: "جارٍ تحميل المدونات", error: "مراجعات المدونة غير متوفرة حاليًا.", noKey: "تظهر مراجعات المدونة هنا بمجرد ضبط مفتاح بحث Naver.", empty: "لا توجد مراجعات مدونة بعد.", blogger: "المدونة" },
+  vi: { more: "Xem thêm trên Naver Blog →", loading: "Đang tải blog", error: "Hiện chưa có bài đánh giá blog.", noKey: "Bài đánh giá blog sẽ hiển thị ở đây khi đã thiết lập khóa tìm kiếm Naver.", empty: "Chưa có bài đánh giá blog.", blogger: "Blog" },
+  id: { more: "Lihat lebih banyak di Naver Blog →", loading: "Memuat blog", error: "Ulasan blog sedang tidak tersedia saat ini.", noKey: "Ulasan blog akan muncul di sini setelah kunci pencarian Naver disetel.", empty: "Belum ada ulasan blog.", blogger: "Blog" },
+  th: { more: "ดูเพิ่มเติมบน Naver Blog →", loading: "กำลังโหลดบล็อก", error: "ขณะนี้ไม่มีรีวิวบล็อก", noKey: "รีวิวบล็อกจะปรากฏที่นี่เมื่อมีการตั้งค่าคีย์การค้นหา Naver", empty: "ยังไม่มีรีวิวบล็อก", blogger: "บล็อก" },
   ko: {
     more: "네이버 블로그에서 더 보기 →", loading: "블로그 불러오는 중",
     error: "블로그 후기를 잠시 불러올 수 없어요.",

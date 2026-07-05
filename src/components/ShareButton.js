@@ -4,6 +4,15 @@ import { useState } from "react";
 import { useI18n } from "@/lib/I18nProvider";
 
 const SH = {
+  "zh-TW": { copied: "✅ 已複製連結", text: (name) => `快來 Chukjero 看看 ${name}！`, prompt: "請複製下方網址" },
+  es: { copied: "✅ Enlace copiado", text: (name) => `¡Mira ${name} en Chukjero!`, prompt: "Copia la dirección de abajo" },
+  fr: { copied: "✅ Lien copié", text: (name) => `Découvrez ${name} sur Chukjero !`, prompt: "Copiez l'adresse ci-dessous" },
+  ru: { copied: "✅ Ссылка скопирована", text: (name) => `Посмотрите ${name} на Chukjero!`, prompt: "Скопируйте адрес ниже" },
+  de: { copied: "✅ Link kopiert", text: (name) => `Schau dir ${name} auf Chukjero an!`, prompt: "Kopiere die Adresse unten" },
+  ar: { copied: "✅ تم نسخ الرابط", text: (name) => `اطّلع على ${name} على Chukjero!`, prompt: "انسخ العنوان أدناه" },
+  vi: { copied: "✅ Đã sao chép liên kết", text: (name) => `Xem ${name} trên Chukjero nhé!`, prompt: "Sao chép địa chỉ bên dưới" },
+  id: { copied: "✅ Tautan disalin", text: (name) => `Lihat ${name} di Chukjero!`, prompt: "Salin alamat di bawah ini" },
+  th: { copied: "✅ คัดลอกลิงก์แล้ว", text: (name) => `มาดู ${name} บน Chukjero กันเถอะ!`, prompt: "คัดลอกที่อยู่ด้านล่าง" },
   ko: {
     copied: "✅ 링크가 복사됐어요",
     text: (t) => `${t} 축제 정보를 축제로에서 확인해보세요!`,

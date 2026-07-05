@@ -10,6 +10,15 @@ const WINDOW_DAYS = 7; // 시작 7일 이내를 '곧 시작'으로 봄
 const NOTIFY_KEY = "chukjero:lastNotified";
 
 const FA = {
+  "zh-TW": { title: "🔔 收藏慶典通知", on: "通知已開啟 ✓", enable: "取得開始通知", ongoing: "進行中", notiTitle: "Chukjero · 收藏通知", notiBody: (n) => `您有 ${n} 場收藏的慶典即將開始或正在進行中！` },
+  es: { title: "🔔 Alertas de festivales favoritos", on: "Alertas activadas ✓", enable: "Recibir alertas de inicio", ongoing: "En curso", notiTitle: "Chukjero · Alertas de favoritos", notiBody: (n) => `¡${n} de tus festivales favoritos están por empezar o ya están en curso!` },
+  fr: { title: "🔔 Alertes des festivals favoris", on: "Alertes activées ✓", enable: "Recevoir les alertes de début", ongoing: "En cours", notiTitle: "Chukjero · Alertes favoris", notiBody: (n) => `${n} de vos festivals favoris commencent bientôt ou sont en cours !` },
+  ru: { title: "🔔 Уведомления об избранных фестивалях", on: "Уведомления включены ✓", enable: "Получать уведомления о старте", ongoing: "Идёт сейчас", notiTitle: "Chukjero · Уведомления об избранном", notiBody: (n) => `${n} из ваших избранных фестивалей скоро начнутся или уже идут!` },
+  de: { title: "🔔 Benachrichtigungen für Lieblingsfestivals", on: "Benachrichtigungen an ✓", enable: "Start-Benachrichtigungen erhalten", ongoing: "Laufend", notiTitle: "Chukjero · Favoriten-Benachrichtigungen", notiBody: (n) => `${n} deiner Lieblingsfestivals beginnen bald oder laufen gerade!` },
+  ar: { title: "🔔 تنبيهات المهرجانات المفضلة", on: "التنبيهات مفعّلة ✓", enable: "احصل على تنبيهات البدء", ongoing: "جارٍ الآن", notiTitle: "Chukjero · تنبيهات المفضلة", notiBody: (n) => `${n} من مهرجاناتك المفضلة على وشك البدء أو جارية الآن!` },
+  vi: { title: "🔔 Thông báo lễ hội yêu thích", on: "Đã bật thông báo ✓", enable: "Nhận thông báo khi bắt đầu", ongoing: "Đang diễn ra", notiTitle: "Chukjero · Thông báo yêu thích", notiBody: (n) => `${n} lễ hội yêu thích của bạn sắp bắt đầu hoặc đang diễn ra!` },
+  id: { title: "🔔 Pemberitahuan festival favorit", on: "Pemberitahuan aktif ✓", enable: "Dapatkan pemberitahuan mulai", ongoing: "Sedang berlangsung", notiTitle: "Chukjero · Pemberitahuan favorit", notiBody: (n) => `${n} festival favorit Anda akan segera dimulai atau sedang berlangsung!` },
+  th: { title: "🔔 การแจ้งเตือนเทศกาลที่ชื่นชอบ", on: "เปิดการแจ้งเตือน ✓", enable: "รับการแจ้งเตือนเมื่อเริ่ม", ongoing: "กำลังจัด", notiTitle: "Chukjero · การแจ้งเตือนรายการโปรด", notiBody: (n) => `${n} เทศกาลที่คุณชื่นชอบกำลังจะเริ่มเร็ว ๆ นี้หรือกำลังจัดอยู่!` },
   ko: {
     title: "🔔 즐겨찾기한 축제 알림", on: "알림 켜짐 ✓", enable: "시작 알림 받기",
     ongoing: "진행중", notiTitle: "축제로 · 즐겨찾기 알림",

@@ -8,6 +8,15 @@ import { useI18n } from "@/lib/I18nProvider";
 import AccountMenu from "@/components/AccountMenu";
 
 const PF = {
+  "zh-TW": { backHome: "← 首頁", title: "我的個人檔案", notConfigured: "會員功能尚未設定。", loading: "載入中…", nickname: "暱稱", nicknamePh: "暱稱", saving: "儲存中…", saved: "✅ 已儲存", saveNick: "儲存暱稱", logout: "登出", saveError: "儲存失敗。" },
+  es: { backHome: "← Inicio", title: "Mi perfil", notConfigured: "La membresía aún no está configurada.", loading: "Cargando…", nickname: "Apodo", nicknamePh: "Apodo", saving: "Guardando…", saved: "✅ Guardado", saveNick: "Guardar apodo", logout: "Cerrar sesión", saveError: "No se pudo guardar." },
+  fr: { backHome: "← Accueil", title: "Mon profil", notConfigured: "L'adhésion n'est pas encore configurée.", loading: "Chargement…", nickname: "Pseudo", nicknamePh: "Pseudo", saving: "Enregistrement…", saved: "✅ Enregistré", saveNick: "Enregistrer le pseudo", logout: "Se déconnecter", saveError: "Échec de l'enregistrement." },
+  ru: { backHome: "← На главную", title: "Мой профиль", notConfigured: "Членство ещё не настроено.", loading: "Загрузка…", nickname: "Никнейм", nicknamePh: "Никнейм", saving: "Сохранение…", saved: "✅ Сохранено", saveNick: "Сохранить никнейм", logout: "Выйти", saveError: "Не удалось сохранить." },
+  de: { backHome: "← Startseite", title: "Mein Profil", notConfigured: "Die Mitgliedschaft ist noch nicht eingerichtet.", loading: "Wird geladen…", nickname: "Spitzname", nicknamePh: "Spitzname", saving: "Wird gespeichert…", saved: "✅ Gespeichert", saveNick: "Spitznamen speichern", logout: "Abmelden", saveError: "Speichern fehlgeschlagen." },
+  ar: { backHome: "← الرئيسية", title: "ملفي الشخصي", notConfigured: "لم يتم إعداد العضوية بعد.", loading: "جارٍ التحميل…", nickname: "الاسم المستعار", nicknamePh: "الاسم المستعار", saving: "جارٍ الحفظ…", saved: "✅ تم الحفظ", saveNick: "حفظ الاسم المستعار", logout: "تسجيل الخروج", saveError: "فشل الحفظ." },
+  vi: { backHome: "← Trang chủ", title: "Hồ sơ của tôi", notConfigured: "Chức năng thành viên chưa được thiết lập.", loading: "Đang tải…", nickname: "Biệt danh", nicknamePh: "Biệt danh", saving: "Đang lưu…", saved: "✅ Đã lưu", saveNick: "Lưu biệt danh", logout: "Đăng xuất", saveError: "Lưu thất bại." },
+  id: { backHome: "← Beranda", title: "Profil saya", notConfigured: "Keanggotaan belum disiapkan.", loading: "Memuat…", nickname: "Nama panggilan", nicknamePh: "Nama panggilan", saving: "Menyimpan…", saved: "✅ Tersimpan", saveNick: "Simpan nama panggilan", logout: "Keluar", saveError: "Gagal menyimpan." },
+  th: { backHome: "← หน้าแรก", title: "โปรไฟล์ของฉัน", notConfigured: "ยังไม่ได้ตั้งค่าการเป็นสมาชิก", loading: "กำลังโหลด…", nickname: "ชื่อเล่น", nicknamePh: "ชื่อเล่น", saving: "กำลังบันทึก…", saved: "✅ บันทึกแล้ว", saveNick: "บันทึกชื่อเล่น", logout: "ออกจากระบบ", saveError: "บันทึกไม่สำเร็จ" },
   ko: {
     backHome: "← 홈으로", title: "내 프로필",
     notConfigured: "회원 기능이 아직 설정되지 않았어요.", loading: "불러오는 중…",

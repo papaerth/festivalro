@@ -5,8 +5,26 @@ import { usePathname } from "next/navigation";
 import { LOCALES, DEFAULT_LOCALE, localeHref } from "@/lib/i18n";
 import { useI18n } from "@/lib/I18nProvider";
 
-const LABELS = { ko: "한국어", en: "English", ja: "日本語", zh: "简体中文" };
-const SHORT = { ko: "KO", en: "EN", ja: "JA", zh: "ZH" };
+const LABELS = {
+  "zh-TW": "繁體中文",
+  es: "Español",
+  fr: "Français",
+  ru: "Русский",
+  de: "Deutsch",
+  ar: "العربية",
+  vi: "Tiếng Việt",
+  id: "Bahasa Indonesia",
+  th: "ไทย", ko: "한국어", en: "English", ja: "日本語", zh: "简体中文" };
+const SHORT = {
+  "zh-TW": "繁",
+  es: "ES",
+  fr: "FR",
+  ru: "RU",
+  de: "DE",
+  ar: "AR",
+  vi: "VI",
+  id: "ID",
+  th: "TH", ko: "KO", en: "EN", ja: "JA", zh: "ZH" };
 
 // 현재 페이지의 다른 언어 버전으로 이동하는 전환기 (같은 경로 유지)
 export default function LangSwitcher() {

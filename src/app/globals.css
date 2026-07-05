@@ -168,7 +168,9 @@ h3 {
   border-radius: 14px;
   box-shadow: var(--shadow-lg);
   padding: 6px;
-  min-width: 130px;
+  min-width: 140px;
+  max-height: min(70vh, 440px);
+  overflow-y: auto;
   z-index: 600;
 }
 .lang-item {
@@ -1956,4 +1958,24 @@ h3 {
   text-align: center;
   color: var(--text-soft);
   font-size: 12.5px;
+}
+
+/* ─── 아랍어 등 오른쪽→왼쪽(RTL) 언어 보정 ─── */
+[dir="rtl"] .lang-menu {
+  right: auto;
+  left: 0;
+}
+/* 목록/입력/후기 등 왼쪽 정렬로 굳어진 요소를 방향에 맞게 */
+[dir="rtl"] .review-textarea,
+[dir="rtl"] .auth-field input,
+[dir="rtl"] .review-content,
+[dir="rtl"] .desc,
+[dir="rtl"] .legal {
+  text-align: right;
+}
+/* 이메일·주소 등은 항상 왼→오(LTR)로 표기해야 자연스러움 */
+[dir="rtl"] .profile-email,
+[dir="rtl"] input[type="email"] {
+  direction: ltr;
+  text-align: right;
 }

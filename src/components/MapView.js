@@ -9,7 +9,16 @@ import { SEASONS } from "@/lib/seasons";
 import { formatPeriod } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
 
-const VIEW_DETAIL = { ko: "상세보기 →", en: "View →", ja: "詳細 →", zh: "查看 →" };
+const VIEW_DETAIL = {
+  "zh-TW": "查看 →",
+  es: "Ver →",
+  fr: "Voir →",
+  ru: "Подробнее →",
+  de: "Ansehen →",
+  ar: "عرض →",
+  vi: "Xem →",
+  id: "Lihat →",
+  th: "ดู →", ko: "상세보기 →", en: "View →", ja: "詳細 →", zh: "查看 →" };
 
 // 계절 색으로 물방울 모양 핀 아이콘을 만듭니다.
 function makePin(color) {

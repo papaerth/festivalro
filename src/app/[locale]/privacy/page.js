@@ -83,13 +83,13 @@ const PRIV = {
 export async function generateMetadata({ params }) {
   const { locale } = await params;
   const loc = isLocale(locale) ? locale : DEFAULT_LOCALE;
-  return { title: (PRIV[loc] || PRIV.ko).metaTitle };
+  return { title: (PRIV[loc] || PRIV.en).metaTitle };
 }
 
 export default async function PrivacyPage({ params }) {
   const { locale } = await params;
   const loc = isLocale(locale) ? locale : DEFAULT_LOCALE;
-  const p = PRIV[loc] || PRIV.ko;
+  const p = PRIV[loc] || PRIV.en;
   const home = localeHref(loc, "/");
 
   return (
