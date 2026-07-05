@@ -177,7 +177,7 @@ function mapStandardItem(item) {
     season: seasonOf(startDate),
     startDate,
     endDate,
-    description: (item.fstvlCn || item.opar || "").trim(),
+    description: (item.fstvlCo || item.fstvlCn || item.opar || "").trim(),
     image: null, // 표준데이터엔 이미지가 없음 → 화면에서 계절색 카드로 대체
     source: "standard", // 출처: 지자체 표준데이터(행정안전부)
     addr,
