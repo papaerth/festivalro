@@ -1224,6 +1224,42 @@ h3 {
   border-radius: var(--radius);
 }
 
+/* ── 더 보기 버튼 (목록 페이지네이션) ── */
+.load-more {
+  display: block;
+  width: 100%;
+  margin: 4px 0 24px;
+  padding: 15px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--t-fast), border-color var(--t-fast);
+}
+.load-more span {
+  color: var(--text-soft);
+  font-weight: 500;
+  font-size: 13px;
+}
+.load-more:hover {
+  border-color: var(--accent);
+}
+.load-more:active {
+  transform: scale(0.99);
+}
+
+/* ── 출처 표기 (상세) ── */
+.detail-source {
+  font-size: 12px;
+  color: var(--text-soft);
+  margin: 8px 2px 0;
+}
+
 /* ── 안내 배너(샘플 데이터) ── */
 .notice {
   font-size: 12.5px;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { SEASONS, SEASON_ORDER, REGIONS, REGION_ORDER } from "@/lib/seasons";
 import { getStatusInfo, STATUS_ORDER } from "@/lib/format";
@@ -136,6 +136,14 @@ export default function HomeClient({ festivals, usingSample }) {
   // 상태 요약 칩 클릭 → 해당 상태만 필터 (다시 누르면 해제)
   const toggleStatus = (key) =>
     setStatusFilter((prev) => (prev === key ? null : key));
+
+  // 목록은 한 번에 일부만 그려 성능 유지 ("더 보기"로 확장)
+  const PAGE = 24;
+  const [visibleCount, setVisibleCount] = useState(PAGE);
+  useEffect(() => {
+    setVisibleCount(PAGE);
+  }, [season, region, q, period, showFavorites, statusFilter]);
+  const visible = filtered.slice(0, visibleCount);
 
   return (
     <div
@@ -335,11 +343,20 @@ export default function HomeClient({ festivals, usingSample }) {
               )}
             </div>
           ) : (
-            filtered.map((f) => (
+            visible.map((f) => (
               <FestivalCard key={f.id} festival={f} rating={ratings[f.id]} />
             ))
           )}
         </div>
+
+        {filtered.length > visibleCount && (
+          <button
+            className="load-more"
+            onClick={() => setVisibleCount((c) => c + PAGE)}
+          >
+            더 보기 <span>({filtered.length - visibleCount}곳 남음)</span>
+          </button>
+        )}
 
         {usingSample && (
           <p className="notice">

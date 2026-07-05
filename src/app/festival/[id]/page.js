@@ -28,6 +28,12 @@ export default async function FestivalDetailPage({ params }) {
   const status = getStatusInfo(festival.startDate, festival.endDate);
   const regionName = REGIONS[festival.region] || "";
 
+  const SOURCE_LABEL = {
+    tour: "한국관광공사 TourAPI",
+    standard: "전국문화축제표준데이터 (행정안전부)",
+  };
+  const sourceLabel = SOURCE_LABEL[festival.source];
+
   return (
     <div style={{ "--accent": theme.color, "--accent-soft": theme.soft }}>
       <header className="site-header">
@@ -81,6 +87,8 @@ export default async function FestivalDetailPage({ params }) {
           <VisitButton festivalId={festival.id} />
           <ShareButton title={festival.name} />
         </div>
+
+        {sourceLabel && <p className="detail-source">출처 · {sourceLabel}</p>}
 
         {/* 탭: 정보 / 날씨 / 블로그 */}
         <DetailTabs

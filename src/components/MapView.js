@@ -33,8 +33,16 @@ function FitBounds({ points }) {
   return null;
 }
 
+// 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
+const MARKER_CAP = 500;
+
 export default function MapView({ festivals, ratings = {} }) {
-  const points = festivals.map((f) => [f.lat, f.lng]);
+  // 좌표가 있는 축제만 마커로 (좌표 없는 축제는 목록에만 표시)
+  const withCoords = festivals.filter(
+    (f) => Number.isFinite(f.lat) && Number.isFinite(f.lng)
+  );
+  const shown = withCoords.slice(0, MARKER_CAP);
+  const points = shown.map((f) => [f.lat, f.lng]);
 
   return (
     <MapContainer
@@ -47,7 +55,7 @@ export default function MapView({ festivals, ratings = {} }) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 기여자'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {festivals.map((f) => {
+      {shown.map((f) => {
         const color = (SEASONS[f.season] || SEASONS.spring).color;
         const r = ratings[f.id];
         return (

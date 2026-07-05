@@ -72,6 +72,10 @@ function mapTourItem(item) {
     endDate,
     description: item.addr1 || "",
     image: item.firstimage || null,
+    source: "tour", // 출처: 한국관광공사 TourAPI
+    addr: item.addr1 || "",
+    homepage: null,
+    tel: null,
   };
 }
 
@@ -116,23 +120,163 @@ async function fetchFromTourApi(apiKey) {
     .filter((f) => f.name && Number.isFinite(f.lat) && Number.isFinite(f.lng));
 }
 
+// ── 전국문화축제표준데이터 (행정안전부, 공공데이터포털) ──
+const STANDARD_API_BASE =
+  process.env.STANDARD_API_BASE ||
+  "https://api.data.go.kr/openapi/tn_pubr_public_cltur_fstvl_api";
+
+// "2026-05-01" 또는 "20260501" → "2026-05-01"
+function normalizeDateFlex(raw = "") {
+  const digits = String(raw).replace(/[^0-9]/g, "");
+  if (digits.length < 8) return "";
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+}
+
+// "YYYY-MM-DD"의 월로 계절 추정
+function seasonOf(startDate = "") {
+  const m = Number(String(startDate).slice(5, 7));
+  if (m >= 3 && m <= 5) return "spring";
+  if (m >= 6 && m <= 8) return "summer";
+  if (m >= 9 && m <= 11) return "autumn";
+  return "winter";
+}
+
+// 주소 → 시/도, 시군구
+function splitAddr(addr = "") {
+  const parts = String(addr).trim().split(/\s+/);
+  return { sido: parts[0] || "", sigungu: parts[1] || "" };
+}
+
+// 문자열 → 짧고 안정적인 id (즐겨찾기/후기 저장용으로 일관성 유지)
+function stableId(str = "") {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = (h << 5) + h + str.charCodeAt(i);
+    h |= 0;
+  }
+  return (h >>> 0).toString(36);
+}
+
+// 표준데이터 1건 → 우리 축제 객체로 변환 (좌표 없으면 lat/lng = null)
+function mapStandardItem(item) {
+  const addr = item.rdnmadr || item.lnmadr || "";
+  const { sido, sigungu } = splitAddr(addr);
+  const name = (item.fstvlNm || "").trim();
+  const startDate = normalizeDateFlex(item.fstvlStartDate);
+  const endDate = normalizeDateFlex(item.fstvlEndDate) || startDate;
+  const lat = Number(item.latitude);
+  const lng = Number(item.longitude);
+  return {
+    id: "s" + stableId(`${name}|${startDate}|${sigungu}`),
+    name,
+    sido,
+    sigungu,
+    region: sidoToRegion(sido),
+    lat: Number.isFinite(lat) && lat !== 0 ? lat : null,
+    lng: Number.isFinite(lng) && lng !== 0 ? lng : null,
+    season: seasonOf(startDate),
+    startDate,
+    endDate,
+    description: (item.fstvlCn || item.opar || "").trim(),
+    image: null, // 표준데이터엔 이미지가 없음 → 화면에서 계절색 카드로 대체
+    source: "standard", // 출처: 지자체 표준데이터(행정안전부)
+    addr,
+    homepage: item.homepageUrl || null,
+    tel: item.phoneNumber || null,
+  };
+}
+
+// 표준데이터에서 축제 목록을 가져옵니다. 실패하면 예외를 던집니다.
+async function fetchFromStandardApi(apiKey) {
+  let serviceKey = apiKey;
+  try {
+    serviceKey = decodeURIComponent(apiKey);
+  } catch {
+    serviceKey = apiKey;
+  }
+
+  const params = new URLSearchParams({
+    serviceKey,
+    pageNo: "1",
+    numOfRows: "1000",
+    type: "json",
+  });
+
+  const res = await fetch(`${STANDARD_API_BASE}?${params.toString()}`, {
+    next: { revalidate: 60 * 60 * 24 },
+  });
+  if (!res.ok) throw new Error(`표준데이터 응답 오류: ${res.status}`);
+
+  const data = await res.json();
+  let raw = data?.response?.body?.items;
+  if (raw && raw.item) raw = raw.item; // 혹시 items.item 형태면 처리
+  const items = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  if (items.length === 0) {
+    throw new Error("표준데이터에서 축제 목록을 찾지 못했습니다.");
+  }
+
+  // 올해 이후(종료되지 않은/올해 진행) 축제만 → 데이터 양·관련성 관리
+  const cutoff = `${new Date().getFullYear()}-01-01`;
+  return items
+    .map(mapStandardItem)
+    .filter((f) => f.name && f.startDate && f.endDate >= cutoff);
+}
+
+// 중복 판정용 정규화 이름 (공백·숫자·흔한 접미사 제거)
+function normName(name = "") {
+  return String(name)
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[0-9]/g, "")
+    .replace(/(축제|페스티벌|festival|문화제|엑스포|expo|행사)/g, "")
+    .replace(/[^가-힣a-z]/g, "");
+}
+function dedupKey(f) {
+  return `${normName(f.name)}|${f.sigungu || f.sido || ""}`;
+}
+
+// TourAPI(우선) + 표준데이터 합치기, 이름+지역 유사 시 표준데이터 중복 제거
+function mergeFestivals(tourList, stdList) {
+  const seen = new Set();
+  for (const f of tourList) {
+    const k = dedupKey(f);
+    if (normName(f.name).length > 1) seen.add(k);
+  }
+  const merged = [...tourList];
+  for (const f of stdList) {
+    const k = dedupKey(f);
+    if (normName(f.name).length > 1 && seen.has(k)) continue; // 이미 TourAPI에 있음
+    seen.add(k);
+    merged.push(f);
+  }
+  return merged;
+}
+
 // [공개] 전체 축제 목록 가져오기 (서버 컴포넌트에서 사용)
+//  - TourAPI + 표준데이터를 병렬로 불러와 합칩니다.
+//  - 한쪽이 실패해도 다른 쪽 데이터로 동작하고, 둘 다 실패하면 샘플로 대체합니다.
 export async function getFestivals() {
   const apiKey = process.env.TOUR_API_KEY;
-
-  // 키가 예시값 그대로이거나 비어 있으면 샘플로
   const hasRealKey = apiKey && apiKey !== "여기에_키를_붙여넣기";
+  if (!hasRealKey) return SAMPLE_FESTIVALS;
 
-  if (hasRealKey) {
-    try {
-      return await fetchFromTourApi(apiKey);
-    } catch (err) {
-      // 실데이터 실패 시에도 서비스가 멈추지 않도록 샘플로 안전하게 대체
-      console.warn("[축제로] TourAPI 호출 실패 → 샘플 데이터로 대체합니다.", err.message);
-      return SAMPLE_FESTIVALS;
-    }
-  }
-  return SAMPLE_FESTIVALS;
+  const standardEnabled = process.env.STANDARD_API_ENABLED !== "false";
+
+  const [tourRes, stdRes] = await Promise.allSettled([
+    fetchFromTourApi(apiKey),
+    standardEnabled ? fetchFromStandardApi(apiKey) : Promise.resolve([]),
+  ]);
+
+  const tourList = tourRes.status === "fulfilled" ? tourRes.value : [];
+  const stdList = stdRes.status === "fulfilled" ? stdRes.value : [];
+  if (tourRes.status === "rejected")
+    console.warn("[축제로] TourAPI 실패:", tourRes.reason?.message);
+  if (stdRes.status === "rejected")
+    console.warn("[축제로] 표준데이터 실패:", stdRes.reason?.message);
+
+  const merged = mergeFestivals(tourList, stdList);
+  if (merged.length === 0) return SAMPLE_FESTIVALS; // 둘 다 실패 → 안전장치
+  return merged;
 }
 
 // HTML 태그/특수문자를 사람이 읽기 좋은 순수 텍스트로 정리
@@ -193,7 +337,8 @@ export async function getFestivalById(id) {
 
   const apiKey = process.env.TOUR_API_KEY;
   const hasRealKey = apiKey && apiKey !== "여기에_키를_붙여넣기";
-  if (hasRealKey) {
+  // 소개문 보강은 TourAPI 축제(숫자 contentid)만 — 표준데이터는 자체 소개문 사용
+  if (hasRealKey && festival.source === "tour") {
     try {
       const overview = await fetchOverview(festival.id, apiKey);
       if (overview) return { ...festival, description: overview };
