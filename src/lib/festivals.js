@@ -8,6 +8,7 @@
 //  즉, 지금은 키 없이도 샘플로 잘 돌아가고,
 //  나중에 키만 넣으면 코드 수정 없이 실데이터로 전환됩니다.
 // ────────────────────────────────────────────────────────────────
+import { unstable_cache } from "next/cache";
 import { SAMPLE_FESTIVALS } from "./sampleFestivals";
 
 // TourAPI searchFestival2 엔드포인트 기본 주소 (필요시 .env로 덮어쓸 수 있음)
@@ -186,8 +187,10 @@ function mapStandardItem(item) {
   };
 }
 
-// 표준데이터에서 축제 목록을 가져옵니다. 실패하면 예외를 던집니다.
-async function fetchFromStandardApi(apiKey) {
+// 표준데이터 원본 호출 (fetch 레벨 캐시는 쓰지 않음 — 오류 응답이 캐시를
+// 오염시키지 못하도록 no-store로 받고, 캐싱은 unstable_cache가 '성공 결과만' 담당).
+async function fetchStandardRaw() {
+  const apiKey = process.env.TOUR_API_KEY;
   let serviceKey = apiKey;
   try {
     serviceKey = decodeURIComponent(apiKey);
@@ -203,16 +206,18 @@ async function fetchFromStandardApi(apiKey) {
   });
 
   const res = await fetch(`${STANDARD_API_BASE}?${params.toString()}`, {
-    next: { revalidate: 60 * 60 * 24 },
+    cache: "no-store",
   });
   if (!res.ok) throw new Error(`표준데이터 응답 오류: ${res.status}`);
 
   const data = await res.json();
+  const resultCode = data?.response?.header?.resultCode;
   let raw = data?.response?.body?.items;
   if (raw && raw.item) raw = raw.item; // 혹시 items.item 형태면 처리
   const items = Array.isArray(raw) ? raw : raw ? [raw] : [];
-  if (items.length === 0) {
-    throw new Error("표준데이터에서 축제 목록을 찾지 못했습니다.");
+  // 정상(00)이 아니거나 결과가 없으면 예외 → unstable_cache가 캐시하지 않음(오염 방지)
+  if (resultCode !== "00" || items.length === 0) {
+    throw new Error(`표준데이터 오류/빈 결과 (resultCode=${resultCode})`);
   }
 
   // 올해 이후(종료되지 않은/올해 진행) 축제만 → 데이터 양·관련성 관리
@@ -221,6 +226,11 @@ async function fetchFromStandardApi(apiKey) {
     .map(mapStandardItem)
     .filter((f) => f.name && f.startDate && f.endDate >= cutoff);
 }
+
+// 성공한 결과만 캐시(6시간). 캐시 키에 버전(v2)을 넣어 예전 오염 캐시를 무시.
+const fetchFromStandardApi = unstable_cache(fetchStandardRaw, ["standard-festivals-v2"], {
+  revalidate: 60 * 60 * 6,
+});
 
 // 중복 판정용 정규화 이름 (공백·숫자·흔한 접미사 제거)
 function normName(name = "") {
@@ -264,7 +274,7 @@ export async function getFestivals() {
 
   const [tourRes, stdRes] = await Promise.allSettled([
     fetchFromTourApi(apiKey),
-    standardEnabled ? fetchFromStandardApi(apiKey) : Promise.resolve([]),
+    standardEnabled ? fetchFromStandardApi() : Promise.resolve([]),
   ]);
 
   const tourList = tourRes.status === "fulfilled" ? tourRes.value : [];
