@@ -75,7 +75,7 @@ export default function MapView({ festivals, ratings = {} }) {
         return (
           <Marker key={f.id} position={[f.lat, f.lng]} icon={makePin(color)}>
             <Popup>
-              <strong>{f.name}</strong>
+              <strong>{f.displayName || f.name}</strong>
               <br />
               <span>{formatPeriod(f.startDate, f.endDate)}</span>
               {r && r.count > 0 && (

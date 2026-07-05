@@ -82,6 +82,7 @@ export default function HomeClient({ festivals, usingSample }) {
       return festivals.filter(
         (f) =>
           f.name.toLowerCase().includes(q) ||
+          (f.displayName || "").toLowerCase().includes(q) ||
           (f.sido || "").toLowerCase().includes(q) ||
           (f.sigungu || "").toLowerCase().includes(q)
       );

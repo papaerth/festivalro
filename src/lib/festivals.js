@@ -338,26 +338,159 @@ async function fetchOverview(contentId, apiKey) {
   return overview ? cleanHtml(overview) : null;
 }
 
+// ── TourAPI 다국어 서비스 (contentId는 언어 서비스 간 공통) ──
+//  국문(KorService2)과 별개로, 언어별 서비스가 축제 이름·소개문을 공식 번역해 제공합니다.
+//  ※ 지원 언어만(아래 8종). 지원되지 않는 언어·표준데이터 축제는 한국어를 그대로 씁니다.
+//  ※ 번역 호출이 실패하면 조용히 한국어로 폴백 → 한국어 사이트는 영향 없음.
+const LANG_SERVICE = {
+  en: "EngService2",
+  ja: "JpnService2",
+  zh: "ChsService2", // 중국어 간체
+  "zh-TW": "ChtService2", // 중국어 번체
+  de: "GerService2",
+  fr: "FreService2",
+  es: "SpnService2",
+  ru: "RusService2",
+};
+const TRANS_HOST = process.env.TOUR_TRANS_HOST || "https://apis.data.go.kr/B551011";
+
+function svcKey(apiKey) {
+  try {
+    return decodeURIComponent(apiKey);
+  } catch {
+    return apiKey;
+  }
+}
+
+// 언어별 '축제 이름 맵' {contentId: 번역된제목} 원본 호출. 실패하면 예외(캐시 오염 방지).
+async function fetchNameMapRaw(locale) {
+  const apiKey = process.env.TOUR_API_KEY;
+  const service = LANG_SERVICE[locale];
+  if (!apiKey || !service) return {};
+
+  const params = new URLSearchParams({
+    serviceKey: svcKey(apiKey),
+    MobileOS: "ETC",
+    MobileApp: "chukjero",
+    _type: "json",
+    arrange: "A",
+    numOfRows: "400",
+    pageNo: "1",
+    eventStartDate: "20260101",
+  });
+
+  const res = await fetch(`${TRANS_HOST}/${service}/searchFestival2?${params.toString()}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`${service} searchFestival2 응답 오류: ${res.status}`);
+
+  const data = await res.json();
+  const raw = data?.response?.body?.items?.item;
+  const items = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  const map = {};
+  for (const it of items) {
+    if (it.contentid && it.title) map[String(it.contentid)] = it.title;
+  }
+  if (Object.keys(map).length === 0) throw new Error(`${service} 축제 이름 맵이 비어 있음`);
+  return map;
+}
+
+// 성공 결과만 캐시(6시간). 캐시 키에 locale 인자가 포함됨.
+const nameMapCached = unstable_cache(fetchNameMapRaw, ["tour-namemap-v1"], {
+  revalidate: 60 * 60 * 6,
+});
+
+// [공개] 언어별 축제 이름 맵. 지원 언어가 아니거나 실패하면 {} (→ 한국어 이름 유지).
+export async function getFestivalNameMap(locale) {
+  if (!LANG_SERVICE[locale]) return {};
+  const apiKey = process.env.TOUR_API_KEY;
+  if (!apiKey || apiKey === "여기에_키를_붙여넣기") return {};
+  try {
+    return await nameMapCached(locale);
+  } catch (err) {
+    console.warn("[축제로] 이름 번역 맵 실패:", locale, err.message);
+    return {};
+  }
+}
+
+// 언어 서비스의 detailCommon2로 번역된 제목·소개문을 가져옵니다. 없으면 null.
+async function fetchTranslationRaw(contentId, locale) {
+  const apiKey = process.env.TOUR_API_KEY;
+  const service = LANG_SERVICE[locale];
+  if (!apiKey || !service) return null;
+
+  const params = new URLSearchParams({
+    serviceKey: svcKey(apiKey),
+    MobileOS: "ETC",
+    MobileApp: "chukjero",
+    _type: "json",
+    contentId: String(contentId),
+  });
+
+  const res = await fetch(`${TRANS_HOST}/${service}/detailCommon2?${params.toString()}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`${service} detailCommon2 응답 오류: ${res.status}`);
+
+  const data = await res.json();
+  const raw = data?.response?.body?.items?.item;
+  const item = Array.isArray(raw) ? raw[0] : raw;
+  if (!item) return null;
+  return {
+    title: item.title || null,
+    overview: item.overview ? cleanHtml(item.overview) : null,
+  };
+}
+const translationCached = unstable_cache(fetchTranslationRaw, ["tour-trans-v1"], {
+  revalidate: 60 * 60 * 24,
+});
+async function getTranslation(contentId, locale) {
+  try {
+    return await translationCached(contentId, locale);
+  } catch (err) {
+    console.warn("[축제로] 상세 번역 실패:", locale, err.message);
+    return null;
+  }
+}
+
+// 한국어 소개문 보강(실패 시 null) — 내부 도우미
+async function safeOverview(contentId, apiKey) {
+  try {
+    return await fetchOverview(contentId, apiKey);
+  } catch (err) {
+    console.warn("[축제로] 상세 소개문 불러오기 실패:", err.message);
+    return null;
+  }
+}
+
 // [공개] id로 축제 1건 가져오기 (상세 화면에서 사용)
-// 실데이터인 경우 상세 소개문(overview)을 추가로 불러와 붙입니다.
-export async function getFestivalById(id) {
+//  - TourAPI 축제(숫자 contentid): 소개문(overview)을 추가로 붙입니다.
+//  - 지원 언어면 이름·소개문을 TourAPI 다국어 번역으로 대체(실패 시 한국어 폴백).
+export async function getFestivalById(id, locale = "ko") {
   const all = await getFestivals();
   const festival = all.find((f) => f.id === id);
   if (!festival) return null;
 
   const apiKey = process.env.TOUR_API_KEY;
   const hasRealKey = apiKey && apiKey !== "여기에_키를_붙여넣기";
-  // 소개문 보강은 TourAPI 축제(숫자 contentid)만 — 표준데이터는 자체 소개문 사용
-  if (hasRealKey && festival.source === "tour") {
-    try {
-      const overview = await fetchOverview(festival.id, apiKey);
-      if (overview) return { ...festival, description: overview };
-    } catch (err) {
-      // 소개문을 못 불러와도 기본 정보는 그대로 보여줍니다.
-      console.warn("[축제로] 상세 소개문 불러오기 실패:", err.message);
+  // 소개문·번역 보강은 TourAPI 축제만 — 표준데이터는 자체 소개문(한국어) 사용
+  if (!(hasRealKey && festival.source === "tour")) return festival;
+
+  // 지원 언어(en/ja/zh/zh-TW/de/fr/es/ru): 번역 제목·소개문 시도
+  if (LANG_SERVICE[locale]) {
+    const tr = await getTranslation(festival.id, locale);
+    const name = tr?.title || festival.name; // 번역 제목 없으면 한국어 이름
+    let description = tr?.overview; // 번역 소개문 우선
+    if (!description) {
+      // 번역 소개문이 없으면 한국어 소개문으로 폴백
+      description = (await safeOverview(festival.id, apiKey)) || festival.description;
     }
+    return { ...festival, name, description };
   }
-  return festival;
+
+  // 한국어(및 미지원 언어): 한국어 소개문 보강
+  const overview = await safeOverview(festival.id, apiKey);
+  return overview ? { ...festival, description: overview } : festival;
 }
 
 // [공개] 현재 실데이터를 쓰는 중인지 여부 (화면 안내용)

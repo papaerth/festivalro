@@ -38,7 +38,7 @@ export default function FestivalCard({ festival, rating }) {
       </span>
       <FavoriteButton id={festival.id} />
       <div className="card-body">
-        <p className="card-title">{festival.name}</p>
+        <p className="card-title">{festival.displayName || festival.name}</p>
         {rating && rating.count > 0 && (
           <p className="card-rating">
             ⭐ {rating.avg.toFixed(1)}

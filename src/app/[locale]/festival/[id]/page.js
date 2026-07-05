@@ -45,7 +45,7 @@ export async function generateMetadata({ params }) {
   const { id, locale } = await params;
   const loc = isLocale(locale) ? locale : DEFAULT_LOCALE;
   const dict = getDictionary(loc);
-  const festival = await getFestivalById(id);
+  const festival = await getFestivalById(id, loc);
   if (!festival) return { title: dict.meta.homeTitle };
 
   const place = `${festival.sido} ${festival.sigungu}`.trim();
@@ -77,7 +77,7 @@ export default async function FestivalDetailPage({ params }) {
   const { id, locale } = await params;
   const loc = isLocale(locale) ? locale : DEFAULT_LOCALE;
   const dict = getDictionary(loc);
-  const festival = await getFestivalById(id);
+  const festival = await getFestivalById(id, loc);
 
   if (!festival) {
     notFound();
