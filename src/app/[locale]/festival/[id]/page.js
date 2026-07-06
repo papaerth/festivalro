@@ -20,6 +20,7 @@ import DirectionsButton from "@/components/DirectionsButton";
 import DetailMap from "@/components/DetailMap";
 import DetailTabs from "@/components/DetailTabs";
 import BlogList from "@/components/BlogList";
+import VideoSection from "@/components/VideoSection";
 import CoverImage from "@/components/CoverImage";
 import ShareButton from "@/components/ShareButton";
 import FavoriteButton from "@/components/FavoriteButton";
@@ -187,6 +188,15 @@ export default async function FestivalDetailPage({ params }) {
                   <p className="desc">{festival.description}</p>
                 </section>
               )}
+
+              {/* 영상으로 미리 보는 축제 — 유튜브 쇼츠(지연 로딩) + 인스타/틱톡 바로가기.
+                  유튜브 실패·한도초과·키없음이면 영상 목록만 조용히 숨고 페이지는 정상.
+                  제목·버튼 문구는 컴포넌트 내부에서 다국어 처리됨. */}
+              <VideoSection
+                query={festival.name}
+                curatedVideos={curated && curated.videos}
+                accent={theme.color}
+              />
 
               {/* 방문자 블로그 후기 (소개 바로 아래). 블로그는 클라이언트에서
                   스켈레톤 → 로드되므로 정보 탭 표시를 늦추지 않음. 실패 시 안내 문구. */}
