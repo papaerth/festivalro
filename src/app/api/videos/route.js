@@ -18,6 +18,19 @@ const YT_SEARCH = "https://www.googleapis.com/youtube/v3/search";
 const YT_VIDEOS = "https://www.googleapis.com/youtube/v3/videos";
 const DAY = 60 * 60 * 24;
 
+// 검색 결과에서 뉴스/방송 클립은 뒤로, 브이로그·공식/지자체 채널은 앞으로
+// 정렬하기 위한 판별용 패턴 (채널명/제목 기준).
+const NEWS_RE = /news|뉴스|kbs|mbc|sbs|ytn|jtbc|mbn|연합뉴스|채널a|tv조선|tvchosun|tbc|obs|보도|앵커|뉴스데스크/i;
+const VLOG_RE = /브이로그|vlog|다녀|후기|여행|먹방|일상|가족|커플|데이트|당일치기|힐링|투어|즐기기/i;
+const OFFICIAL_RE = /공식|official|시청|군청|도청|관광재단|문화재단|관광공사|축제위원회|조직위|관광|시ㅣ/i;
+
+// 썸네일 중 큰 것 우선으로 URL 하나 고르기
+function pickThumb(thumbs) {
+  if (!thumbs) return null;
+  const t = thumbs.high || thumbs.medium || thumbs.default;
+  return t ? t.url : null;
+}
+
 async function fetchWithTimeout(url, ms = 6000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -32,13 +45,14 @@ async function fetchWithTimeout(url, ms = 6000) {
   }
 }
 
-// 검색어로 '짧은 영상(쇼츠 우선)' ID 목록을 가져옵니다.
-//  - videoDuration=short : 4분 미만(쇼츠·짧은 영상)
-//  - order=relevance     : 관련성순(최신 영상도 상위에 잘 섞임)
-//  - regionCode=KR       : 한국 지역 기준
-async function searchIds(key, q, max) {
+// 검색어로 영상 ID 목록을 가져옵니다.
+//  - duration : "short"(4분 미만·쇼츠) / "medium"(4~20분·브이로그) / 없으면 전체
+//  - order=relevance : 관련성순(최신 영상도 상위에 잘 섞임)
+//  - regionCode=KR   : 한국 지역 기준
+async function searchIds(key, q, max, duration) {
+  const dur = duration ? `&videoDuration=${duration}` : "";
   const url =
-    `${YT_SEARCH}?key=${key}&part=snippet&type=video&videoDuration=short` +
+    `${YT_SEARCH}?key=${key}&part=snippet&type=video${dur}` +
     `&order=relevance&maxResults=${max}&regionCode=KR&safeSearch=moderate` +
     `&q=${encodeURIComponent(q)}`;
   const res = await fetchWithTimeout(url);
@@ -64,12 +78,28 @@ export async function GET(request) {
   }
 
   try {
-    // 축제명 + "축제"로 관련도를 높이고, 영어권이면 "korea festival"도 병행.
-    const idLists = await Promise.all([
-      searchIds(key, `${query} 축제`, 10),
-      en ? searchIds(key, `${query} korea festival`, 8) : Promise.resolve([]),
-    ]);
-    const ids = [...new Set(idLists.flat())].slice(0, 12);
+    // 여러 각도로 검색해 뉴스 편중을 줄입니다:
+    //  - 쇼츠(짧은 영상): "축제명 축제"
+    //  - 브이로그(중간 길이): "축제명 브이로그" — 쇼츠 필터는 브이로그를 걸러내므로 별도 확보
+    //  - 영어 페이지: korea festival / korea vlog 병행(외국인 브이로그)
+    const searches = [
+      searchIds(key, `${query} 축제`, 10, "short"),
+      searchIds(key, `${query} 브이로그`, 8, "medium"),
+    ];
+    if (en) {
+      searches.push(searchIds(key, `${query} korea festival`, 8, "short"));
+      searches.push(searchIds(key, `${query} korea vlog`, 6, "medium"));
+    }
+    const lists = await Promise.all(searches.map((p) => p.catch(() => [])));
+
+    // id별 '최고 관련도 순위'(작을수록 상위) 기록 — 중복 제거 겸 정렬 힌트
+    const rank = new Map();
+    lists.forEach((ids) => {
+      ids.forEach((id, i) => {
+        if (!rank.has(id) || i < rank.get(id)) rank.set(id, i);
+      });
+    });
+    const ids = [...rank.keys()].slice(0, 16);
     if (ids.length === 0) {
       return NextResponse.json({ configured: true, items: [] });
     }
@@ -80,24 +110,26 @@ export async function GET(request) {
     if (!vres.ok) throw new Error(`yt videos ${vres.status}`);
     const vdata = await vres.json();
 
-    const items = (vdata.items || [])
-      .map((v) => ({
-        id: v.id,
-        title: (v.snippet && v.snippet.title) || "",
-        channel: (v.snippet && v.snippet.channelTitle) || "",
-        views: Number((v.statistics && v.statistics.viewCount) || 0),
-        thumb:
-          (v.snippet &&
-            v.snippet.thumbnails &&
-            (v.snippet.thumbnails.high ||
-              v.snippet.thumbnails.medium ||
-              v.snippet.thumbnails.default) &&
-            (v.snippet.thumbnails.high ||
-              v.snippet.thumbnails.medium ||
-              v.snippet.thumbnails.default).url) ||
-          null,
-      }))
-      .slice(0, 6);
+    const cand = (vdata.items || []).map((v) => ({
+      id: v.id,
+      title: (v.snippet && v.snippet.title) || "",
+      channel: (v.snippet && v.snippet.channelTitle) || "",
+      views: Number((v.statistics && v.statistics.viewCount) || 0),
+      thumb: pickThumb(v.snippet && v.snippet.thumbnails),
+    }));
+
+    // 뉴스/방송 채널은 감점, 브이로그·공식/지자체 채널은 가점, 관련도도 반영해 정렬.
+    //  (뉴스는 완전히 빼지 않고 뒤로만 밀어, 영상이 뉴스뿐인 축제도 빈 섹션이 안 되게)
+    const scored = cand.map((v) => {
+      const text = `${v.channel} ${v.title}`;
+      let s = Math.max(0, 16 - (rank.get(v.id) ?? 16));
+      if (NEWS_RE.test(v.channel)) s -= 100;
+      if (VLOG_RE.test(text)) s += 40;
+      if (OFFICIAL_RE.test(v.channel)) s += 30;
+      return { v, s };
+    });
+    scored.sort((a, b) => b.s - a.s);
+    const items = scored.slice(0, 6).map((x) => x.v);
 
     return NextResponse.json(
       { configured: true, items },
