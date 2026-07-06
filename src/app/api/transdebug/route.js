@@ -66,8 +66,12 @@ export async function GET(request) {
     searchTitles = { count: items.length, sample: items.slice(0, 5).map((x) => ({ contentid: x.contentid, title: x.title })) };
   } catch (e) { searchTitles = "err: " + e.message; }
 
+  // 대조군: 같은 키로 국문 KorService2 (앱에서 정상 동작 중) → 200이면 키는 정상, 언어서비스만 미승인
+  const korControl = await hit(`${HOST}/KorService2/detailCommon2?${common}`);
+
   return Response.json({
     id, locale, service,
+    KorService2_control: korControl,
     detailCommon2_head: await hit(`${HOST}/${service}/detailCommon2?${common}`),
     detailCommon2_item: detailItem,
     searchFestival2_head: await hit(`${HOST}/${service}/searchFestival2?${search}`),
