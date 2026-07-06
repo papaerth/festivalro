@@ -80,6 +80,19 @@ function mapTourItem(item) {
   };
 }
 
+// 외부 API가 느리거나 멈춰도 무한정 기다리지 않도록 타임아웃(기본 15초)을 겁니다.
+//  - 특히 빌드 때 홈페이지 정적 생성이 60초를 넘겨 실패하는 것을 방지합니다.
+//  - 시간 초과 시 예외가 나고, 호출한 쪽에서 다른 소스/샘플로 안전하게 대체합니다.
+async function fetchWithTimeout(url, options = {}, ms = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // TourAPI에서 축제 목록을 가져옵니다. 실패하면 예외를 던집니다.
 async function fetchFromTourApi(apiKey) {
   // 공공데이터포털은 인증키를 두 종류(Encoding/Decoding)로 줍니다.
@@ -103,7 +116,7 @@ async function fetchFromTourApi(apiKey) {
     eventStartDate: "20260101", // 이 날짜 이후 시작하는 축제
   });
 
-  const res = await fetch(`${TOUR_API_BASE}?${params.toString()}`, {
+  const res = await fetchWithTimeout(`${TOUR_API_BASE}?${params.toString()}`, {
     // 서버에서 하루(초 단위) 캐시 — 매 요청마다 외부 API를 부르지 않도록
     next: { revalidate: 60 * 60 * 24 },
   });
@@ -205,7 +218,7 @@ async function fetchStandardRaw() {
     type: "json",
   });
 
-  const res = await fetch(`${STANDARD_API_BASE}?${params.toString()}`, {
+  const res = await fetchWithTimeout(`${STANDARD_API_BASE}?${params.toString()}`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`표준데이터 응답 오류: ${res.status}`);
@@ -379,7 +392,7 @@ async function fetchNameMapRaw(locale) {
     eventStartDate: "20260101",
   });
 
-  const res = await fetch(`${TRANS_HOST}/${service}/searchFestival2?${params.toString()}`, {
+  const res = await fetchWithTimeout(`${TRANS_HOST}/${service}/searchFestival2?${params.toString()}`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`${service} searchFestival2 응답 오류: ${res.status}`);
