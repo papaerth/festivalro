@@ -21,10 +21,17 @@ export default async function HomePage({ params }) {
         )
       : festivals;
 
-  // 다가오는 인기 축제(복합 점수) — 하단 시트용
+  // 다가오는 인기 축제(복합 점수: 블로그 글 수 등) → 카드별 점수 힌트맵
   const popular = await getPopularFestivals(localized);
+  const popScoreById = Object.fromEntries(
+    popular.map((f) => [f.id, f.popScore])
+  );
 
   return (
-    <HomeClient festivals={localized} usingSample={usingSample} popular={popular} />
+    <HomeClient
+      festivals={localized}
+      usingSample={usingSample}
+      popScoreById={popScoreById}
+    />
   );
 }

@@ -12,7 +12,7 @@ import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
 import AccountMenu from "./AccountMenu";
 import LangSwitcher from "./LangSwitcher";
-import PopularSheet from "./PopularSheet";
+import HeroCarousel from "./HeroCarousel";
 
 // 지도는 브라우저에서만 그려질 수 있어 ssr:false 로 불러옵니다.
 const MapView = dynamic(() => import("./MapView"), {
@@ -60,7 +60,7 @@ function overlaps(startDate, endDate, rangeStart, rangeEnd) {
   return startDate <= rangeEnd && endDate >= rangeStart;
 }
 
-export default function HomeClient({ festivals, usingSample, popular = [] }) {
+export default function HomeClient({ festivals, usingSample, popScoreById = {} }) {
   const [season, setSeason] = useState(currentSeason());
   const [region, setRegion] = useState("all");
   const [statusFilter, setStatusFilter] = useState(null); // null=전체
@@ -110,6 +110,29 @@ export default function HomeClient({ festivals, usingSample, popular = [] }) {
       .filter((f) => f.season === season)
       .filter((f) => (region === "all" ? true : f.region === region));
   }, [festivals, season, region, q, searching, period, showFavorites, favorites]);
+
+  // 히어로 캐러셀: 현재 계절/지역 필터에 맞는 '다가오는 인기 축제' 상위 10개
+  //  (진행중·예정만, 인기점수+임박도 순 — 필터를 바꾸면 즉시 갱신)
+  const carousel = useMemo(() => {
+    const now = new Date();
+    const scored = festivals
+      .filter((f) => f.season === season)
+      .filter((f) => (region === "all" ? true : f.region === region))
+      .map((f) => ({ f, st: getStatusInfo(f.startDate, f.endDate, now) }))
+      .filter((x) => x.st.key !== "ended")
+      .map(({ f, st }) => {
+        const ongoing = st.key === "ongoing";
+        const dday = ongoing ? 0 : st.dday;
+        const cheap =
+          (f.image ? 2 : 0) +
+          (f.source === "tour" ? 1 : 0) +
+          (ongoing ? 3 : Math.max(0, (90 - dday) / 90) * 2);
+        const recency = ongoing ? 1 : Math.max(0, (30 - dday) / 30);
+        return { f, score: (popScoreById[f.id] ?? cheap) + recency };
+      });
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 10).map((x) => x.f);
+  }, [festivals, season, region, popScoreById]);
 
   // 기간 바로가기 토글 (다시 누르면 해제). 다른 모드와는 상호배타적.
   const togglePeriod = (key) => {
@@ -296,10 +319,10 @@ export default function HomeClient({ festivals, usingSample, popular = [] }) {
           </>
         )}
 
-        {/* 지도 + 다가오는 인기 축제 하단 시트 */}
+        {/* 지도 + 다가오는 인기 축제 대형 히어로 캐러셀 */}
         <div className="map-wrap">
           <MapView festivals={filtered} ratings={ratings} focus={mapFocus} />
-          <PopularSheet festivals={popular} ratings={ratings} onPick={handlePick} />
+          <HeroCarousel festivals={carousel} onPick={handlePick} />
         </div>
 
         {/* 상태별 개수 요약 (누르면 해당 상태만 필터) */}
