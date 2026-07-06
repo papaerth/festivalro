@@ -188,6 +188,13 @@ export default async function FestivalDetailPage({ params }) {
                 </section>
               )}
 
+              {/* 방문자 블로그 후기 (소개 바로 아래). 블로그는 클라이언트에서
+                  스켈레톤 → 로드되므로 정보 탭 표시를 늦추지 않음. 실패 시 안내 문구. */}
+              <section className="section">
+                <h2>{dict.detail.blog}</h2>
+                <BlogList query={festival.name} accent={theme.color} />
+              </section>
+
               {/* 핵심 요약 바 */}
               <SummaryBar festival={festival} extras={extras} loc={loc} />
 
@@ -263,12 +270,6 @@ export default async function FestivalDetailPage({ params }) {
             <section className="section">
               <h2>{dict.detail.reviews}</h2>
               <Reviews festivalId={festival.id} />
-            </section>
-          }
-          blogPanel={
-            <section className="section">
-              <h2>{dict.detail.blog}</h2>
-              <BlogList query={festival.name} accent={theme.color} />
             </section>
           }
         />
