@@ -2599,3 +2599,14 @@ h3 {
   border-radius: 999px;
   text-decoration: none;
 }
+
+/* 큐레이션: 지난 회차 안내 */
+.cur-stale {
+  font-size: 13.5px;
+  color: var(--text-soft);
+  background: rgba(130, 130, 130, 0.1);
+  border-radius: 12px;
+  padding: 12px 14px;
+  line-height: 1.55;
+  margin: 0;
+}

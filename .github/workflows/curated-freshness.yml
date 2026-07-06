@@ -1,0 +1,19 @@
+name: 큐레이션 최신성 점검
+
+# 매월 1일 자동 실행 + 수동 실행(Actions 탭 → Run workflow) 가능
+on:
+  schedule:
+    - cron: "0 0 1 * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # 오래되거나 year가 없는 큐레이션 파일을 로그에 출력합니다.
+      # (자동 수집 섹션은 TourAPI가 매년 갱신하므로 점검 대상이 아닙니다.)
+      - run: node scripts/refresh-curated.mjs

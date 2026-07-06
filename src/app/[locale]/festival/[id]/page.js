@@ -103,6 +103,7 @@ export default async function FestivalDetailPage({ params }) {
     getCurated(festival.id),
   ]);
   const S = getSections(loc);
+  const fYear = festival.startDate ? festival.startDate.slice(0, 4) : null;
 
   const theme = SEASONS[festival.season] || SEASONS.spring;
   const status = getStatusInfo(festival.startDate, festival.endDate);
@@ -191,13 +192,13 @@ export default async function FestivalDetailPage({ params }) {
               <SummaryBar festival={festival} extras={extras} loc={loc} />
 
               {/* 타임테이블 · 라인업 (큐레이션) */}
-              <CuratedSections curated={curated} only="top" />
+              <CuratedSections curated={curated} only="top" festivalYear={fYear} />
 
               {/* 프로그램 (API) */}
               <ProgramSection text={extras.program} loc={loc} />
 
               {/* 셔틀 · 주차 (큐레이션) */}
-              <CuratedSections curated={curated} only="mid" />
+              <CuratedSections curated={curated} only="mid" festivalYear={fYear} />
 
               {/* 오시는 길 */}
               <section className="section">
@@ -221,7 +222,7 @@ export default async function FestivalDetailPage({ params }) {
               </section>
 
               {/* 먹거리 (큐레이션) */}
-              <CuratedSections curated={curated} only="food" />
+              <CuratedSections curated={curated} only="food" festivalYear={fYear} />
 
               {/* 주변 숙소 · 맛집 · 관광지 (API) */}
               <NearbyList title={S.titles.stay} icon="🏨" items={extras.stay} loc={loc} />
@@ -236,10 +237,10 @@ export default async function FestivalDetailPage({ params }) {
               <PetInfo data={extras.pet} loc={loc} />
 
               {/* 현장 시설 · 꿀팁 (큐레이션) */}
-              <CuratedSections curated={curated} only="bottom" />
+              <CuratedSections curated={curated} only="bottom" festivalYear={fYear} />
 
               {/* 외국인 방문객 안내 (큐레이션) */}
-              <CuratedSections curated={curated} only="foreigner" />
+              <CuratedSections curated={curated} only="foreigner" festivalYear={fYear} />
 
               {/* 이용 안내 (API) */}
               <UsageSection items={extras.usage} loc={loc} />

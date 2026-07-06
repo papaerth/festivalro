@@ -11,13 +11,18 @@ function shortDate(d = "") {
 }
 
 // 큐레이션(직접 입력) 정보 섹션들. 데이터가 있는 것만 렌더링합니다.
-export default function CuratedSections({ curated, only }) {
+export default function CuratedSections({ curated, only, festivalYear }) {
   const { locale } = useI18n();
   const S = getSections(locale);
   const T = S.titles;
   const koTag = locale !== "ko";
 
   if (!curated) return null;
+
+  // 연도 안전장치: 큐레이션 year가 축제의 현재 연도와 다르면
+  // 날짜에 민감한 타임테이블·라인업은 자동으로 숨김(지난 회차 일정 노출 방지).
+  const stale =
+    curated.year && festivalYear && String(curated.year) !== String(festivalYear);
 
   const Tag = () => (koTag ? <span className="ko-tag">(Korean)</span> : null);
 
@@ -30,8 +35,17 @@ export default function CuratedSections({ curated, only }) {
 
   return (
     <>
+      {/* 지난 회차 일정 안내 (연도 불일치 시) */}
+      {show("top") && stale && (timetable.length > 0 || (curated.lineup || []).length > 0) && (
+        <section className="section">
+          <p className="cur-stale">
+            🗓️ 지난 회차({curated.year}년) 일정이라 표시하지 않았어요. 새 회차 정보는 준비되는 대로 업데이트됩니다.
+          </p>
+        </section>
+      )}
+
       {/* 🗓️ 타임테이블 (날짜별 탭) */}
-      {show("top") && timetable.length > 0 && (
+      {show("top") && !stale && timetable.length > 0 && (
         <TimetableSection
           timetable={timetable}
           dates={dates}
@@ -41,7 +55,7 @@ export default function CuratedSections({ curated, only }) {
       )}
 
       {/* 🎤 라인업 */}
-      {show("top") && Array.isArray(curated.lineup) && curated.lineup.length > 0 && (
+      {show("top") && !stale && Array.isArray(curated.lineup) && curated.lineup.length > 0 && (
         <section className="section">
           <h2>🎤 {T.lineup} <Tag /></h2>
           <ul className="cur-lineup">
