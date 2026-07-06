@@ -1,5 +1,6 @@
 import HomeClient from "@/components/HomeClient";
 import { getFestivals, getFestivalNameMap, isUsingSampleData } from "@/lib/festivals";
+import { getPopularFestivals } from "@/lib/popular";
 import { isLocale, DEFAULT_LOCALE } from "@/lib/i18n";
 
 // 이 페이지는 서버에서 축제 데이터를 먼저 불러온 뒤,
@@ -20,5 +21,10 @@ export default async function HomePage({ params }) {
         )
       : festivals;
 
-  return <HomeClient festivals={localized} usingSample={usingSample} />;
+  // 다가오는 인기 축제(복합 점수) — 하단 시트용
+  const popular = await getPopularFestivals(localized);
+
+  return (
+    <HomeClient festivals={localized} usingSample={usingSample} popular={popular} />
+  );
 }

@@ -2,6 +2,7 @@ import { Black_Han_Sans, Noto_Sans_KR } from "next/font/google";
 import "../globals.css";
 import { AuthProvider } from "@/lib/AuthProvider";
 import { I18nProvider } from "@/lib/I18nProvider";
+import { CardNewsProvider } from "@/components/CardNewsProvider";
 import {
   LOCALES,
   DEFAULT_LOCALE,
@@ -76,7 +77,9 @@ export default async function RootLayout({ children, params }) {
     <html lang={HTML_LANG[loc]} dir={isRtl(loc) ? "rtl" : "ltr"}>
       <body className={`${blackHanSans.variable} ${notoSansKr.variable}`}>
         <I18nProvider locale={loc}>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <CardNewsProvider>{children}</CardNewsProvider>
+          </AuthProvider>
         </I18nProvider>
       </body>
     </html>

@@ -7,10 +7,12 @@ import { getStatusInfo, STATUS_ORDER } from "@/lib/format";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
+import { useCardNews } from "./CardNewsProvider";
 import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
 import AccountMenu from "./AccountMenu";
 import LangSwitcher from "./LangSwitcher";
+import PopularSheet from "./PopularSheet";
 
 // 지도는 브라우저에서만 그려질 수 있어 ssr:false 로 불러옵니다.
 const MapView = dynamic(() => import("./MapView"), {
@@ -58,18 +60,28 @@ function overlaps(startDate, endDate, rangeStart, rangeEnd) {
   return startDate <= rangeEnd && endDate >= rangeStart;
 }
 
-export default function HomeClient({ festivals, usingSample }) {
+export default function HomeClient({ festivals, usingSample, popular = [] }) {
   const [season, setSeason] = useState(currentSeason());
   const [region, setRegion] = useState("all");
   const [statusFilter, setStatusFilter] = useState(null); // null=전체
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState(null); // null | "weekend" | "month"
   const [showFavorites, setShowFavorites] = useState(false);
+  const [mapFocus, setMapFocus] = useState(null); // 인기 시트에서 고른 축제 위치
   const theme = SEASONS[season];
 
   const { favorites, ready: favReady } = useFavorites();
   const ratings = useReviewStats();
   const { t } = useI18n();
+  const { open: openCardNews } = useCardNews();
+
+  // 인기 시트 카드 탭 → 지도 이동 + 카드뉴스 뷰어 열기
+  const handlePick = (f) => {
+    if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) {
+      setMapFocus({ lat: f.lat, lng: f.lng, ts: Date.now() });
+    }
+    openCardNews(f);
+  };
   const periodLabel = period === "weekend" ? t.filters.weekend : t.filters.month;
 
   const q = query.trim().toLowerCase();
@@ -284,8 +296,11 @@ export default function HomeClient({ festivals, usingSample }) {
           </>
         )}
 
-        {/* 지도 */}
-        <MapView festivals={filtered} ratings={ratings} />
+        {/* 지도 + 다가오는 인기 축제 하단 시트 */}
+        <div className="map-wrap">
+          <MapView festivals={filtered} ratings={ratings} focus={mapFocus} />
+          <PopularSheet festivals={popular} ratings={ratings} onPick={handlePick} />
+        </div>
 
         {/* 상태별 개수 요약 (누르면 해당 상태만 필터) */}
         <div className="status-summary" suppressHydrationWarning>

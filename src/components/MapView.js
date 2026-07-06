@@ -45,10 +45,20 @@ function FitBounds({ points }) {
   return null;
 }
 
+// 인기 시트에서 축제를 고르면 그 위치로 부드럽게 이동합니다.
+function FocusFly({ focus }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!focus || !Number.isFinite(focus.lat) || !Number.isFinite(focus.lng)) return;
+    map.flyTo([focus.lat, focus.lng], 12, { duration: 0.6 });
+  }, [focus, map]);
+  return null;
+}
+
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
-export default function MapView({ festivals, ratings = {} }) {
+export default function MapView({ festivals, ratings = {}, focus = null }) {
   const { locale, href } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 좌표가 있는 축제만 마커로 (좌표 없는 축제는 목록에만 표시)
@@ -95,6 +105,7 @@ export default function MapView({ festivals, ratings = {} }) {
         );
       })}
       <FitBounds points={points} />
+      <FocusFly focus={focus} />
     </MapContainer>
   );
 }
