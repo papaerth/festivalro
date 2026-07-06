@@ -2437,3 +2437,165 @@ h3 {
   .container-wide { padding-left: 12px; padding-right: 12px; }
   .map-section .map { height: 56vh; }
 }
+
+/* ═══════════ 상세페이지 확장 섹션 ═══════════ */
+.ko-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: rgba(130, 130, 130, 0.12);
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* 핵심 요약 바 */
+.summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 14px 16px;
+  margin: 4px 0 8px;
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+}
+.summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.summary-ic { font-size: 15px; }
+
+/* 타임테이블 */
+.tt-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+.tt-tab {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-soft);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tt-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.tt-list { list-style: none; padding: 0; margin: 0; }
+.tt-list li {
+  display: flex;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.tt-time {
+  flex: 0 0 54px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.tt-title { color: var(--text); }
+
+/* 라인업 */
+.cur-lineup { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.cur-lineup li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.cur-lineup-name { font-weight: 800; font-size: 15px; }
+.cur-lineup-when { font-size: 12.5px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+
+/* 먹거리 */
+.cur-food { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.cur-food li { padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.cur-food-name { font-weight: 700; margin-right: 8px; }
+.cur-food-desc { font-size: 13.5px; color: var(--text-soft); }
+
+/* 꿀팁 */
+.cur-tips { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.cur-tips li { line-height: 1.6; }
+
+/* 외국인 안내 / 무장애 / 이용안내 공통 dl */
+.cur-foreigner, .bf-list, .usage-list { margin: 0; }
+.cur-foreigner dt, .bf-row dt, .usage-row dt {
+  font-weight: 800;
+  color: var(--accent);
+  margin-top: 12px;
+  margin-bottom: 3px;
+}
+.cur-foreigner dd, .bf-row dd, .usage-row dd {
+  margin: 0;
+  line-height: 1.6;
+  color: var(--text);
+}
+.usage-row, .bf-row { display: block; }
+.usage-row dt { color: var(--text-soft); font-size: 13px; font-weight: 700; }
+
+/* 주변 목록 (관광지·숙소·맛집) */
+.nearby-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+.nearby-card { text-align: left; }
+.nearby-thumb {
+  width: 100%;
+  height: 100px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.nearby-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.nearby-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  margin: 8px 2px 2px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.nearby-dist { font-size: 12px; color: var(--text-soft); margin: 0 2px; }
+
+/* 캠핑장 */
+.camp-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.camp-list li {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.camp-name { font-weight: 800; display: block; margin-bottom: 3px; }
+.camp-meta { font-size: 12.5px; color: var(--text-soft); }
+
+/* 반려동물 */
+.pet-allowed { font-weight: 800; color: var(--accent); margin: 0 0 6px; }
+
+/* 공식 홈페이지 버튼 */
+.homepage-btn {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  padding: 12px 22px;
+  border-radius: 999px;
+  text-decoration: none;
+}

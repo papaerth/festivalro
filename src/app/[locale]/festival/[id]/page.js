@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getFestivalById } from "@/lib/festivals";
+import { getFestivalExtras } from "@/lib/festivalExtra";
+import { getCurated } from "@/lib/curated";
 import { SEASONS } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import {
@@ -8,6 +10,7 @@ import {
   DEFAULT_LOCALE,
   isLocale,
   getDictionary,
+  getSections,
   localeHref,
   HTML_LANG,
   SITE_URL,
@@ -24,6 +27,17 @@ import AccountMenu from "@/components/AccountMenu";
 import LangSwitcher from "@/components/LangSwitcher";
 import Reviews from "@/components/Reviews";
 import VisitButton from "@/components/VisitButton";
+import CuratedSections from "@/components/CuratedSections";
+import {
+  SummaryBar,
+  NearbyList,
+  CampingList,
+  BarrierFree,
+  PetInfo,
+  ProgramSection,
+  UsageSection,
+  HomepageSection,
+} from "@/components/DetailExtra";
 
 // 출처 이름(언어별)
 const SOURCE = {
@@ -82,6 +96,13 @@ export default async function FestivalDetailPage({ params }) {
   if (!festival) {
     notFound();
   }
+
+  // 자동 수집(API) + 큐레이션(직접 입력) 정보 — 각각 실패/없으면 빈 값 → 섹션 숨김
+  const [extras, curated] = await Promise.all([
+    getFestivalExtras(festival),
+    getCurated(festival.id),
+  ]);
+  const S = getSections(loc);
 
   const theme = SEASONS[festival.season] || SEASONS.spring;
   const status = getStatusInfo(festival.startDate, festival.endDate);
@@ -158,11 +179,27 @@ export default async function FestivalDetailPage({ params }) {
         <DetailTabs
           infoPanel={
             <>
-              <section className="section">
-                <h2>{dict.detail.about}</h2>
-                <p className="desc">{festival.description}</p>
-              </section>
+              {/* 소개 */}
+              {festival.description && (
+                <section className="section">
+                  <h2>{dict.detail.about}</h2>
+                  <p className="desc">{festival.description}</p>
+                </section>
+              )}
 
+              {/* 핵심 요약 바 */}
+              <SummaryBar festival={festival} extras={extras} loc={loc} />
+
+              {/* 타임테이블 · 라인업 (큐레이션) */}
+              <CuratedSections curated={curated} only="top" />
+
+              {/* 프로그램 (API) */}
+              <ProgramSection text={extras.program} loc={loc} />
+
+              {/* 셔틀 · 주차 (큐레이션) */}
+              <CuratedSections curated={curated} only="mid" />
+
+              {/* 오시는 길 */}
               <section className="section">
                 <h2>{dict.detail.directions}</h2>
                 <DirectionsButton
@@ -172,6 +209,7 @@ export default async function FestivalDetailPage({ params }) {
                 />
               </section>
 
+              {/* 위치 */}
               <section className="section">
                 <h2>{dict.detail.location}</h2>
                 <DetailMap
@@ -181,6 +219,33 @@ export default async function FestivalDetailPage({ params }) {
                   color={theme.color}
                 />
               </section>
+
+              {/* 먹거리 (큐레이션) */}
+              <CuratedSections curated={curated} only="food" />
+
+              {/* 주변 숙소 · 맛집 · 관광지 (API) */}
+              <NearbyList title={S.titles.stay} icon="🏨" items={extras.stay} loc={loc} />
+              <NearbyList title={S.titles.restaurants} icon="🍽️" items={extras.restaurants} loc={loc} />
+              <NearbyList title={S.titles.tourSpots} icon="🏞️" items={extras.tourSpots} loc={loc} />
+
+              {/* 주변 캠핑장 (API) */}
+              <CampingList items={extras.camping} loc={loc} />
+
+              {/* 무장애 · 반려동물 (API) */}
+              <BarrierFree data={extras.barrierFree} loc={loc} />
+              <PetInfo data={extras.pet} loc={loc} />
+
+              {/* 현장 시설 · 꿀팁 (큐레이션) */}
+              <CuratedSections curated={curated} only="bottom" />
+
+              {/* 외국인 방문객 안내 (큐레이션) */}
+              <CuratedSections curated={curated} only="foreigner" />
+
+              {/* 이용 안내 (API) */}
+              <UsageSection items={extras.usage} loc={loc} />
+
+              {/* 공식 홈페이지 (API) */}
+              <HomepageSection url={extras.homepage} loc={loc} />
             </>
           }
           weatherPanel={
