@@ -2215,45 +2215,48 @@ h3 {
   .cn-arrow { display: none; }
 }
 
-/* ═══════════ 다가오는 인기 축제 대형 히어로 캐러셀 ═══════════ */
-.map-wrap {
-  position: relative;
-  height: 60vh;
-  min-height: 340px;
-  max-height: 520px;
+/* ═══════════ 풀와이드 홈 레이아웃 ═══════════ */
+.container-wide {
+  max-width: none;
+  padding-left: clamp(14px, 3vw, 40px);
+  padding-right: clamp(14px, 3vw, 40px);
 }
-.map-wrap .map {
-  height: 100%;
-  min-height: 0;
-  max-height: none;
+.home-main {
+  width: 100%;
+  max-width: none;
+  margin: 0 auto;
+  padding: 0 clamp(14px, 3vw, 40px) 48px;
 }
+.home-main > .hero {
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.home-main .card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+
+/* 시군구(2단계) 칩 — 조금 작게 */
+.filter-sigungu { margin-top: -2px; }
+.chip.chip-sm {
+  font-size: 12.5px;
+  padding: 6px 12px;
+}
+
+/* ═══════════ 다가오는 인기 축제 대형 히어로 캐러셀 (독립 섹션) ═══════════ */
 .hero-carousel {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 500;
-  background: var(--surface);
-  border-top-left-radius: 20px;
-  border-top-right-radius: 20px;
-  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.16);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transition: height 0.28s cubic-bezier(0.2, 0.8, 0.3, 1);
+  width: 100%;
+  margin: 10px 0 20px;
 }
-.hero-carousel.expanded { height: 82%; }
-.hero-carousel.collapsed { height: 52px; }
 .hero-bar {
-  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px 8px;
+  padding: 4px 4px 10px;
 }
 .hero-title {
   font-weight: 800;
-  font-size: 15px;
+  font-size: 16px;
   color: var(--text);
 }
 .hero-bar-right {
@@ -2267,8 +2270,7 @@ h3 {
   color: var(--text-soft);
   font-variant-numeric: tabular-nums;
 }
-.hero-pause,
-.hero-collapse {
+.hero-pause {
   border: none;
   background: rgba(130, 130, 130, 0.14);
   color: var(--text-soft);
@@ -2281,37 +2283,35 @@ h3 {
   align-items: center;
   justify-content: center;
 }
-.hero-collapse { font-size: 16px; }
 .hero-stage {
-  flex: 1;
   position: relative;
-  min-height: 0;
-  padding-bottom: 22px;
+  height: clamp(280px, 42vh, 460px);
+  padding-bottom: 24px;
 }
 .hero-scroller {
   position: relative;
   height: 100%;
   display: flex;
-  gap: 14px;
+  gap: 16px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
-  padding: 0 7%;
+  padding: 0 8%;
   scrollbar-width: none;
 }
 .hero-scroller::-webkit-scrollbar { display: none; }
 .hero-card {
   position: relative;
-  flex: 0 0 86%;
+  flex: 0 0 84%;
   height: 100%;
   scroll-snap-align: center;
   border: none;
-  border-radius: 18px;
+  border-radius: 22px;
   overflow: hidden;
   cursor: pointer;
   padding: 0;
   background: var(--accent);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lg);
 }
 .hero-card-bg {
   position: absolute;
@@ -2327,41 +2327,41 @@ h3 {
 .hero-card-veil {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0.15) 48%, rgba(0, 0, 0, 0) 72%);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.18) 46%, rgba(0, 0, 0, 0) 72%);
 }
 .hero-card-text {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 20px 22px 22px;
+  padding: 22px 26px 24px;
   text-align: left;
   color: #fff;
 }
 .hero-card-title {
   font-family: var(--font-title);
-  font-size: 27px;
-  line-height: 1.2;
-  margin: 0 0 6px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  font-size: 30px;
+  line-height: 1.18;
+  margin: 0 0 7px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
 }
 .hero-card-sub {
-  font-size: 13.5px;
+  font-size: 14px;
   opacity: 0.95;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
 }
 .hero-badge {
   position: absolute;
-  top: 14px;
-  left: 14px;
+  top: 16px;
+  left: 16px;
   z-index: 2;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 800;
-  padding: 7px 14px;
+  padding: 8px 16px;
   border-radius: 999px;
   color: #fff;
   background: var(--accent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 .hero-badge.ongoing { background: #e5484d; }
 .hero-arrow {
@@ -2369,25 +2369,25 @@ h3 {
   top: 50%;
   transform: translateY(-50%);
   z-index: 3;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
   color: #333;
-  font-size: 26px;
+  font-size: 28px;
   line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lg);
 }
-.hero-arrow.prev { left: 8px; }
-.hero-arrow.next { right: 8px; }
+.hero-arrow.prev { left: 12px; }
+.hero-arrow.next { right: 12px; }
 .hero-dots {
   position: absolute;
-  bottom: 4px;
+  bottom: 6px;
   left: 0;
   right: 0;
   z-index: 3;
@@ -2401,7 +2401,7 @@ h3 {
   border-radius: 50%;
   border: none;
   padding: 0;
-  background: rgba(150, 150, 150, 0.45);
+  background: rgba(150, 150, 150, 0.5);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -2410,13 +2410,30 @@ h3 {
   width: 18px;
   border-radius: 5px;
 }
+
+/* ═══════════ 지도 (풀와이드 · 시원한 높이) ═══════════ */
+.map-section {
+  width: 100%;
+  margin: 6px 0 20px;
+  scroll-margin-top: 70px;
+}
+.map-section .map {
+  height: 66vh;
+  min-height: 380px;
+  max-height: 680px;
+}
+
 @media (min-width: 760px) {
-  .hero-card { flex-basis: 66%; max-width: 820px; }
-  .hero-scroller { padding: 0 15%; }
-  .hero-card-title { font-size: 32px; }
+  .hero-card { flex-basis: 62%; max-width: 900px; }
+  .hero-scroller { padding: 0 18%; }
+  .hero-card-title { font-size: 36px; }
 }
 @media (max-width: 600px) {
   .hero-arrow { display: none; }
-  .hero-card { flex-basis: 88%; }
-  .hero-scroller { padding: 0 6%; }
+  .hero-card { flex-basis: 88%; border-radius: 18px; }
+  .hero-scroller { padding: 0 6%; gap: 12px; }
+  .hero-card-title { font-size: 24px; }
+  .home-main { padding-left: 12px; padding-right: 12px; }
+  .container-wide { padding-left: 12px; padding-right: 12px; }
+  .map-section .map { height: 56vh; }
 }

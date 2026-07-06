@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
-import { SEASONS, SEASON_ORDER, REGIONS, REGION_ORDER } from "@/lib/seasons";
+import { SEASONS, SEASON_ORDER } from "@/lib/seasons";
 import { getStatusInfo, STATUS_ORDER } from "@/lib/format";
+import { SIDO_ORDER, matchSido } from "@/lib/regionsKr";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
-import { useCardNews } from "./CardNewsProvider";
+import { getSidoLabel } from "@/lib/i18n";
 import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
 import AccountMenu from "./AccountMenu";
@@ -62,25 +63,40 @@ function overlaps(startDate, endDate, rangeStart, rangeEnd) {
 
 export default function HomeClient({ festivals, usingSample, popScoreById = {} }) {
   const [season, setSeason] = useState(currentSeason());
-  const [region, setRegion] = useState("all");
+  const [sido, setSido] = useState(null); // null = 전체(전국)
+  const [sigungu, setSigungu] = useState(null); // null = 시도 전체
   const [statusFilter, setStatusFilter] = useState(null); // null=전체
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState(null); // null | "weekend" | "month"
   const [showFavorites, setShowFavorites] = useState(false);
-  const [mapFocus, setMapFocus] = useState(null); // 인기 시트에서 고른 축제 위치
+  const [mapFocus, setMapFocus] = useState(null); // 히어로 카드에서 고른 축제 위치
   const theme = SEASONS[season];
+  const mapRef = useRef(null); // 히어로 카드 클릭 시 스크롤할 지도 영역
 
   const { favorites, ready: favReady } = useFavorites();
   const ratings = useReviewStats();
-  const { t } = useI18n();
-  const { open: openCardNews } = useCardNews();
+  const { t, locale } = useI18n();
 
-  // 인기 시트 카드 탭 → 지도 이동 + 카드뉴스 뷰어 열기
-  const handlePick = (f) => {
+  // 축제마다 시도 key(_sido)를 한 번만 계산해 필터를 가볍게 유지
+  const withSido = useMemo(
+    () => festivals.map((f) => ({ ...f, _sido: matchSido(f.sido || "") })),
+    [festivals]
+  );
+
+  // 히어로 카드 클릭 → 아래 지도로 스크롤 + 해당 축제 위치로 확대
+  const handleHeroPick = (f) => {
     if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) {
       setMapFocus({ lat: f.lat, lng: f.lng, ts: Date.now() });
     }
-    openCardNews(f);
+    if (mapRef.current) {
+      mapRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
+  // 시도를 바꾸면 시군구 선택 초기화
+  const pickSido = (key) => {
+    setSido((prev) => (prev === key ? null : key));
+    setSigungu(null);
   };
   const periodLabel = period === "weekend" ? t.filters.weekend : t.filters.month;
 
@@ -91,7 +107,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   // 앞의 모드들에서는 계절/지역을 무시하고 전국에서 찾습니다.
   const base = useMemo(() => {
     if (searching) {
-      return festivals.filter(
+      return withSido.filter(
         (f) =>
           f.name.toLowerCase().includes(q) ||
           (f.displayName || "").toLowerCase().includes(q) ||
@@ -101,23 +117,35 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     }
     if (period) {
       const [rs, re] = period === "weekend" ? weekendRange() : monthRange();
-      return festivals.filter((f) => overlaps(f.startDate, f.endDate, rs, re));
+      return withSido.filter((f) => overlaps(f.startDate, f.endDate, rs, re));
     }
     if (showFavorites) {
-      return festivals.filter((f) => favorites.includes(f.id));
+      return withSido.filter((f) => favorites.includes(f.id));
     }
-    return festivals
+    return withSido
       .filter((f) => f.season === season)
-      .filter((f) => (region === "all" ? true : f.region === region));
-  }, [festivals, season, region, q, searching, period, showFavorites, favorites]);
+      .filter((f) => (sido ? f._sido === sido : true))
+      .filter((f) => (sigungu ? f.sigungu === sigungu : true));
+  }, [withSido, season, sido, sigungu, q, searching, period, showFavorites, favorites]);
 
-  // 히어로 캐러셀: 현재 계절/지역 필터에 맞는 '다가오는 인기 축제' 상위 10개
+  // 현재 선택한 시도의 시군구 목록(실제 축제가 있는 곳만) — 2단계 칩
+  const sigunguList = useMemo(() => {
+    if (!sido) return [];
+    const set = new Set();
+    withSido.forEach((f) => {
+      if (f._sido === sido && f.sigungu) set.add(f.sigungu);
+    });
+    return [...set].sort((a, b) => a.localeCompare(b, "ko"));
+  }, [withSido, sido]);
+
+  // 히어로 캐러셀: 현재 계절/시도/시군구 필터에 맞는 '다가오는 인기 축제' 상위 10개
   //  (진행중·예정만, 인기점수+임박도 순 — 필터를 바꾸면 즉시 갱신)
   const carousel = useMemo(() => {
     const now = new Date();
-    const scored = festivals
+    const scored = withSido
       .filter((f) => f.season === season)
-      .filter((f) => (region === "all" ? true : f.region === region))
+      .filter((f) => (sido ? f._sido === sido : true))
+      .filter((f) => (sigungu ? f.sigungu === sigungu : true))
       .map((f) => ({ f, st: getStatusInfo(f.startDate, f.endDate, now) }))
       .filter((x) => x.st.key !== "ended")
       .map(({ f, st }) => {
@@ -132,7 +160,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       });
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, 10).map((x) => x.f);
-  }, [festivals, season, region, popScoreById]);
+  }, [withSido, season, sido, sigungu, popScoreById]);
 
   // 기간 바로가기 토글 (다시 누르면 해제). 다른 모드와는 상호배타적.
   const togglePeriod = (key) => {
@@ -181,7 +209,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const [visibleCount, setVisibleCount] = useState(PAGE);
   useEffect(() => {
     setVisibleCount(PAGE);
-  }, [season, region, q, period, showFavorites, statusFilter]);
+  }, [season, sido, sigungu, q, period, showFavorites, statusFilter]);
   const visible = filtered.slice(0, visibleCount);
 
   return (
@@ -190,7 +218,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       style={{ "--accent": theme.color, "--accent-soft": theme.soft }}
     >
       <header className="site-header">
-        <div className="container">
+        <div className="container container-wide">
           <span className="brand">축제로</span>
           <div className="header-right">
             <LangSwitcher />
@@ -199,7 +227,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
         </div>
       </header>
 
-      <main className="container">
+      <main className="home-main">
         <section className="hero">
           <h1>
             {t.hero.titleA}
@@ -301,28 +329,62 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
               </div>
             </div>
 
-            {/* 지역 선택 */}
+            {/* 지역 선택 — 1단계: 시도 */}
             <div className="filter-group">
               <div className="filter-label">{t.filters.region}</div>
               <div className="chip-row">
-                {REGION_ORDER.map((key) => (
+                <button
+                  className={`chip ${sido === null ? "active" : ""}`}
+                  onClick={() => {
+                    setSido(null);
+                    setSigungu(null);
+                  }}
+                >
+                  {t.regions.all}
+                </button>
+                {SIDO_ORDER.map((key) => (
                   <button
                     key={key}
-                    className={`chip ${region === key ? "active" : ""}`}
-                    onClick={() => setRegion(key)}
+                    className={`chip ${sido === key ? "active" : ""}`}
+                    onClick={() => pickSido(key)}
                   >
-                    {t.regions[key]}
+                    {getSidoLabel(key, locale)}
                   </button>
                 ))}
               </div>
             </div>
+
+            {/* 지역 선택 — 2단계: 시군구 (시도 선택 시 펼쳐짐) */}
+            {sido && sigunguList.length > 0 && (
+              <div className="filter-group filter-sigungu">
+                <div className="chip-row">
+                  <button
+                    className={`chip chip-sm ${sigungu === null ? "active" : ""}`}
+                    onClick={() => setSigungu(null)}
+                  >
+                    {t.regions.all}
+                  </button>
+                  {sigunguList.map((sg) => (
+                    <button
+                      key={sg}
+                      className={`chip chip-sm ${sigungu === sg ? "active" : ""}`}
+                      onClick={() => setSigungu((prev) => (prev === sg ? null : sg))}
+                    >
+                      {sg}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
 
-        {/* 지도 + 다가오는 인기 축제 대형 히어로 캐러셀 */}
-        <div className="map-wrap">
+        {/* 다가오는 인기 축제 — 대형 히어로 캐러셀 (지도와 분리된 독립 섹션) */}
+        <HeroCarousel festivals={carousel} onPick={handleHeroPick} />
+
+        {/* 지도 — 풀와이드 (카드 클릭 시 이 영역으로 스크롤+확대) */}
+        <div className="map-section" ref={mapRef}>
           <MapView festivals={filtered} ratings={ratings} focus={mapFocus} />
-          <HeroCarousel festivals={carousel} onPick={handlePick} />
         </div>
 
         {/* 상태별 개수 요약 (누르면 해당 상태만 필터) */}

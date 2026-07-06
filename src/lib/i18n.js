@@ -346,3 +346,36 @@ const UI_EXTRA = {
 export function getUiExtra(locale) {
   return UI_EXTRA[locale] || UI_EXTRA[DEFAULT_LOCALE];
 }
+
+// 17개 시도 이름 (13개 언어). 라틴 문자권(en/es/fr/de/vi/id)은 로마자(roman) 공용.
+// zt = 중국어 번체. 시군구 이름은 고유명사라 한국어 유지.
+const SIDO_LABELS = {
+  seoul: { ko: "서울", roman: "Seoul", ja: "ソウル", zh: "首尔", zt: "首爾", ru: "Сеул", ar: "سول", th: "โซล" },
+  busan: { ko: "부산", roman: "Busan", ja: "釜山", zh: "釜山", zt: "釜山", ru: "Пусан", ar: "بوسان", th: "ปูซาน" },
+  daegu: { ko: "대구", roman: "Daegu", ja: "大邱", zh: "大邱", zt: "大邱", ru: "Тэгу", ar: "دايجو", th: "แทกู" },
+  incheon: { ko: "인천", roman: "Incheon", ja: "仁川", zh: "仁川", zt: "仁川", ru: "Инчхон", ar: "إنتشون", th: "อินชอน" },
+  gwangju: { ko: "광주", roman: "Gwangju", ja: "光州", zh: "光州", zt: "光州", ru: "Кванджу", ar: "غوانغجو", th: "ควังจู" },
+  daejeon: { ko: "대전", roman: "Daejeon", ja: "大田", zh: "大田", zt: "大田", ru: "Тэджон", ar: "دايجون", th: "แทจอน" },
+  ulsan: { ko: "울산", roman: "Ulsan", ja: "蔚山", zh: "蔚山", zt: "蔚山", ru: "Ульсан", ar: "أولسان", th: "อุลซัน" },
+  sejong: { ko: "세종", roman: "Sejong", ja: "世宗", zh: "世宗", zt: "世宗", ru: "Седжон", ar: "سيجونغ", th: "เซจง" },
+  gyeonggi: { ko: "경기", roman: "Gyeonggi", ja: "京畿道", zh: "京畿道", zt: "京畿道", ru: "Кёнгидо", ar: "غيونغي", th: "คยองกี" },
+  gangwon: { ko: "강원", roman: "Gangwon", ja: "江原道", zh: "江原道", zt: "江原道", ru: "Канвондо", ar: "غانغوون", th: "คังวอน" },
+  chungbuk: { ko: "충북", roman: "Chungbuk", ja: "忠清北道", zh: "忠清北道", zt: "忠清北道", ru: "Чхунбук", ar: "تشنغتشونغ الشمالية", th: "ชุงบุก" },
+  chungnam: { ko: "충남", roman: "Chungnam", ja: "忠清南道", zh: "忠清南道", zt: "忠清南道", ru: "Чхуннам", ar: "تشنغتشونغ الجنوبية", th: "ชุงนัม" },
+  jeonbuk: { ko: "전북", roman: "Jeonbuk", ja: "全羅北道", zh: "全罗北道", zt: "全羅北道", ru: "Чонбук", ar: "جولا الشمالية", th: "ชอลลาบุก" },
+  jeonnam: { ko: "전남", roman: "Jeonnam", ja: "全羅南道", zh: "全罗南道", zt: "全羅南道", ru: "Чоннам", ar: "جولا الجنوبية", th: "ชอลลานัม" },
+  gyeongbuk: { ko: "경북", roman: "Gyeongbuk", ja: "慶尚北道", zh: "庆尚北道", zt: "慶尚北道", ru: "Кёнбук", ar: "غيونغسانغ الشمالية", th: "คยองบุก" },
+  gyeongnam: { ko: "경남", roman: "Gyeongnam", ja: "慶尚南道", zh: "庆尚南道", zt: "慶尚南道", ru: "Кённам", ar: "غيونغسانغ الجنوبية", th: "คยองนัม" },
+  jeju: { ko: "제주", roman: "Jeju", ja: "済州", zh: "济州", zt: "濟州", ru: "Чеджу", ar: "جيجو", th: "เชจู" },
+};
+
+const SIDO_SCRIPT = { ja: "ja", zh: "zh", "zh-TW": "zt", ru: "ru", ar: "ar", th: "th" };
+
+// 시도 key + 언어 → 표시 이름
+export function getSidoLabel(key, locale) {
+  const row = SIDO_LABELS[key];
+  if (!row) return key;
+  if (locale === "ko") return row.ko;
+  const field = SIDO_SCRIPT[locale];
+  return field ? row[field] : row.roman; // 라틴 문자권은 로마자 공용
+}

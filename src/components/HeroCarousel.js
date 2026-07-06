@@ -7,11 +7,10 @@ import { useI18n } from "@/lib/I18nProvider";
 import { getUiExtra } from "@/lib/i18n";
 import CoverImage from "./CoverImage";
 
-// 대한민국 구석구석 메인 배너 스타일 — 사진이 꽉 찬 대형 카드 캐러셀.
+// 대한민국 구석구석 메인 배너 스타일 — 사진이 꽉 찬 대형 카드 캐러셀 (독립 섹션).
 export default function HeroCarousel({ festivals = [], onPick }) {
   const { t, locale } = useI18n();
   const ux = getUiExtra(locale);
-  const [expanded, setExpanded] = useState(true);
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
   const scroller = useRef(null);
@@ -50,14 +49,14 @@ export default function HeroCarousel({ festivals = [], onPick }) {
     setActive(best);
   }, []);
 
-  // 5초 자동 넘김 (일시정지·접힘·1장 이하면 멈춤)
+  // 5초 자동 넘김 (일시정지·1장 이하면 멈춤)
   useEffect(() => {
-    if (paused || !expanded || n <= 1) return;
+    if (paused || n <= 1) return;
     const id = setInterval(() => {
       scrollToIndex((activeRef.current + 1) % n);
     }, 5000);
     return () => clearInterval(id);
-  }, [paused, expanded, n, scrollToIndex]);
+  }, [paused, n, scrollToIndex]);
 
   // 필터로 목록이 바뀌면 처음으로 되돌림
   useEffect(() => {
@@ -73,96 +72,85 @@ export default function HeroCarousel({ festivals = [], onPick }) {
   const next = () => scrollToIndex(Math.min(n - 1, active + 1));
 
   return (
-    <div className={`hero-carousel ${expanded ? "expanded" : "collapsed"}`}>
+    <section className="hero-carousel">
       <div className="hero-bar">
         <span className="hero-title">{ux.trending}</span>
-        <div className="hero-bar-right">
-          {expanded && n > 1 && (
-            <>
-              <span className="hero-count">
-                {active + 1} / {n}
-              </span>
-              <button
-                className="hero-pause"
-                onClick={() => setPaused((p) => !p)}
-                aria-label={paused ? "play" : "pause"}
-              >
-                {paused ? "▶" : "⏸"}
-              </button>
-            </>
-          )}
-          <button
-            className="hero-collapse"
-            onClick={() => setExpanded((e) => !e)}
-            aria-label={expanded ? ux.collapse : ux.expand}
-          >
-            {expanded ? "∨" : "∧"}
-          </button>
-        </div>
+        {n > 1 && (
+          <div className="hero-bar-right">
+            <span className="hero-count">
+              {active + 1} / {n}
+            </span>
+            <button
+              className="hero-pause"
+              onClick={() => setPaused((p) => !p)}
+              aria-label={paused ? "play" : "pause"}
+            >
+              {paused ? "▶" : "⏸"}
+            </button>
+          </div>
+        )}
       </div>
 
-      {expanded && (
-        <div className="hero-stage">
-          {n > 1 && (
-            <button className="hero-arrow prev" onClick={prev} aria-label="‹">
-              ‹
-            </button>
-          )}
-          <div className="hero-scroller" ref={scroller} onScroll={onScroll}>
-            {festivals.map((f) => {
-              const season = SEASONS[f.season] || SEASONS.spring;
-              const st = getStatusInfo(f.startDate, f.endDate);
-              const name = f.displayName || f.name;
-              const region = t.regions[f.region] || "";
-              return (
-                <button
-                  key={f.id}
-                  className="hero-card"
-                  style={{ "--accent": season.color }}
-                  onClick={() => onPick && onPick(f)}
-                >
-                  <CoverImage
-                    className="hero-card-bg"
-                    src={f.image}
-                    alt={name}
-                    accent={season.color}
-                    emoji={season.emoji}
-                  />
-                  <span className={`hero-badge ${st.key}`}>
-                    {st.key === "ongoing" ? t.status.ongoingShort : st.label}
-                  </span>
-                  <div className="hero-card-veil" />
-                  <div className="hero-card-text">
-                    <h2 className="hero-card-title">{name}</h2>
-                    <p className="hero-card-sub">
-                      {formatPeriod(f.startDate, f.endDate)} · {season.emoji} {region}
-                      {f.sigungu ? " " + f.sigungu : ""}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          {n > 1 && (
-            <button className="hero-arrow next" onClick={next} aria-label="›">
-              ›
-            </button>
-          )}
-
-          {n > 1 && (
-            <div className="hero-dots">
-              {festivals.map((_, i) => (
-                <button
-                  key={i}
-                  className={`hero-dot ${i === active ? "active" : ""}`}
-                  onClick={() => scrollToIndex(i)}
-                  aria-label={`${i + 1}`}
+      <div className="hero-stage">
+        {n > 1 && (
+          <button className="hero-arrow prev" onClick={prev} aria-label="‹">
+            ‹
+          </button>
+        )}
+        <div className="hero-scroller" ref={scroller} onScroll={onScroll}>
+          {festivals.map((f) => {
+            const season = SEASONS[f.season] || SEASONS.spring;
+            const st = getStatusInfo(f.startDate, f.endDate);
+            const name = f.displayName || f.name;
+            const region = t.regions[f.region] || "";
+            return (
+              <button
+                key={f.id}
+                className="hero-card"
+                style={{ "--accent": season.color }}
+                onClick={() => onPick && onPick(f)}
+              >
+                <CoverImage
+                  className="hero-card-bg"
+                  src={f.image}
+                  alt={name}
+                  accent={season.color}
+                  emoji={season.emoji}
                 />
-              ))}
-            </div>
-          )}
+                <span className={`hero-badge ${st.key}`}>
+                  {st.key === "ongoing" ? t.status.ongoingShort : st.label}
+                </span>
+                <div className="hero-card-veil" />
+                <div className="hero-card-text">
+                  <h2 className="hero-card-title">{name}</h2>
+                  <p className="hero-card-sub">
+                    {formatPeriod(f.startDate, f.endDate)} · {season.emoji} {region}
+                    {f.sigungu ? " " + f.sigungu : ""}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
         </div>
-      )}
-    </div>
+        {n > 1 && (
+          <button className="hero-arrow next" onClick={next} aria-label="›">
+            ›
+          </button>
+        )}
+
+        {n > 1 && (
+          <div className="hero-dots">
+            {festivals.map((_, i) => (
+              <button
+                key={i}
+                className={`hero-dot ${i === active ? "active" : ""}`}
+                onClick={() => scrollToIndex(i)}
+                aria-label={`${i + 1}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
