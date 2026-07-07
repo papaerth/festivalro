@@ -44,14 +44,8 @@ export function NearbyList({ title, icon, items, loc, festivalId }) {
       <h2>{icon} {title}</h2>
       <div className="nearby-grid">
         {items.map((it) => {
-          // 외부로 안 나가고 사이트 안 장소 상세페이지로. from=축제ID(돌아가기용)
-          const q = new URLSearchParams({
-            ...(it.contentTypeId ? { type: it.contentTypeId } : {}),
-            ...(festivalId ? { from: String(festivalId) } : {}),
-          }).toString();
-          const href = localeHref(loc, `/place/${it.id}${q ? `?${q}` : ""}`);
-          return (
-            <Link className="nearby-card" key={it.id} href={href}>
+          const inner = (
+            <>
               <CoverImage
                 className="nearby-thumb"
                 src={it.image}
@@ -63,7 +57,38 @@ export function NearbyList({ title, icon, items, loc, festivalId }) {
               {it.distKm != null && (
                 <p className="nearby-dist">{distText(it.distKm, loc)}</p>
               )}
-            </Link>
+            </>
+          );
+
+          // 데이터 유무로 자동 판단:
+          //  - 사진이 있는(=상세가 채워질) 장소 → 사이트 안 장소 상세페이지(/place)
+          //  - 사진도 없는(=빈약한) 장소 → 빈 페이지 대신 카카오맵 검색 결과를 새 탭으로
+          if (it.image) {
+            const q = new URLSearchParams({
+              ...(it.contentTypeId ? { type: it.contentTypeId } : {}),
+              ...(festivalId ? { from: String(festivalId) } : {}),
+            }).toString();
+            const href = localeHref(loc, `/place/${it.id}${q ? `?${q}` : ""}`);
+            return (
+              <Link className="nearby-card" key={it.id} href={href}>
+                {inner}
+              </Link>
+            );
+          }
+
+          const kakao = `https://map.kakao.com/link/search/${encodeURIComponent(
+            it.name
+          )}`;
+          return (
+            <a
+              className="nearby-card"
+              key={it.id}
+              href={kakao}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {inner}
+            </a>
           );
         })}
       </div>
