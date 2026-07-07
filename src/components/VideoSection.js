@@ -21,6 +21,15 @@ const VL = {
   th: { title: "🎬 ดูเทศกาลผ่านวิดีโอ", loading: "กำลังโหลดวิดีโอ", tiktok: "ค้นหาบน TikTok", instagram: (t) => `ดู #${t} บน Instagram` },
 };
 
+// "유튜브에서 크게 보기" 문구 (13개 언어)
+const WATCH = {
+  ko: "유튜브에서 크게 보기", en: "Watch on YouTube", ja: "YouTubeで見る",
+  zh: "在 YouTube 观看", "zh-TW": "在 YouTube 觀看", es: "Ver en YouTube",
+  fr: "Voir sur YouTube", ru: "Смотреть на YouTube", de: "Auf YouTube ansehen",
+  ar: "المشاهدة على YouTube", vi: "Xem trên YouTube", id: "Tonton di YouTube",
+  th: "ดูบน YouTube",
+};
+
 // 조회수를 짧게 (locale에 맞춰: 12만 / 1.2M ...)
 function compactViews(n, locale) {
   try {
@@ -63,7 +72,7 @@ function loadInstagram() {
 }
 
 // 유튜브 카드: 썸네일만 먼저 보이고, 클릭하면 그 자리에서 공식 플레이어 재생.
-function YouTubeCard({ item, locale }) {
+function YouTubeCard({ item, locale, watchLabel }) {
   const [open, setOpen] = useState(false);
 
   if (open) {
@@ -76,6 +85,14 @@ function YouTubeCard({ item, locale }) {
           allowFullScreen
           loading="lazy"
         />
+        <a
+          className="vid-yt"
+          href={`https://www.youtube.com/watch?v=${item.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          ▶ {watchLabel}
+        </a>
       </div>
     );
   }
@@ -105,7 +122,7 @@ function YouTubeCard({ item, locale }) {
 // 큐레이션 임베드 카드(선택 축제만): 인스타/틱톡/유튜브 공식 플레이어.
 //  - 클릭하는 순간에만 임베드를 불러오는 지연 로딩
 //  - 주소에서 ID를 못 뽑거나 임베드가 실패하면 이 카드만 조용히 숨김
-function CuratedEmbed({ item }) {
+function CuratedEmbed({ item, watchLabel }) {
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -158,6 +175,14 @@ function CuratedEmbed({ item }) {
           allowFullScreen
           loading="lazy"
         />
+        <a
+          className="vid-yt"
+          href={`https://www.youtube.com/watch?v=${ytId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          ▶ {watchLabel}
+        </a>
       </div>
     );
   }
@@ -194,6 +219,7 @@ function CuratedEmbed({ item }) {
 export default function VideoSection({ query, curatedVideos, accent = "#c2578a" }) {
   const { locale } = useI18n();
   const v = VL[locale] || VL.ko;
+  const watch = WATCH[locale] || WATCH.ko;
   const [state, setState] = useState({ status: "loading" });
 
   useEffect(() => {
@@ -239,7 +265,7 @@ export default function VideoSection({ query, curatedVideos, accent = "#c2578a" 
       {curated.length > 0 && (
         <div className="vid-scroll vid-embed-row">
           {curated.map((it, i) => (
-            <CuratedEmbed key={i} item={it} />
+            <CuratedEmbed key={i} item={it} watchLabel={watch} />
           ))}
         </div>
       )}
@@ -255,7 +281,7 @@ export default function VideoSection({ query, curatedVideos, accent = "#c2578a" 
       {hasVideos && (
         <div className="vid-scroll">
           {state.items.map((it) => (
-            <YouTubeCard key={it.id} item={it} locale={locale} />
+            <YouTubeCard key={it.id} item={it} locale={locale} watchLabel={watch} />
           ))}
         </div>
       )}

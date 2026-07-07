@@ -1681,20 +1681,38 @@ h3 {
   white-space: nowrap;
 }
 
-/* 클릭해서 열린 유튜브 플레이어 (세로 비율 유지) */
+/* 클릭해서 열린 유튜브 플레이어 (세로 비율 유지 + 유튜브 크게보기 링크) */
 .vid-card-open {
   flex: 0 0 220px;
   width: 220px;
   scroll-snap-align: start;
   border-radius: 14px;
   overflow: hidden;
-  background: #000;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
 }
 .vid-card-open iframe {
   width: 100%;
   aspect-ratio: 9 / 16;
   border: 0;
   display: block;
+  background: #000;
+}
+/* "유튜브에서 크게 보기" 링크 (재생 카드 하단) */
+.vid-yt {
+  display: block;
+  padding: 9px 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff;
+  background: #ff0000;
+  text-align: center;
+  transition: background 0.15s ease;
+}
+.vid-yt:hover {
+  background: #d40000;
 }
 
 /* 로딩 스켈레톤 */
@@ -1748,6 +1766,8 @@ h3 {
   border-radius: 14px;
   overflow: hidden;
   background: #000;
+  display: flex;
+  flex-direction: column;
 }
 .vid-embed-open iframe {
   width: 100%;
@@ -1891,9 +1911,28 @@ h3 {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.short-links {
+  margin-top: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.short-yt {
+  display: block;
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #fff;
+  background: #ff0000;
+  border-radius: 9px;
+  padding: 7px 8px;
+  transition: background 0.15s ease;
+}
+.short-yt:hover {
+  background: #d40000;
+}
 .short-more {
   display: block;
-  margin-top: 7px;
   font-size: 12.5px;
   font-weight: 700;
   color: var(--accent);

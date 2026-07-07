@@ -163,8 +163,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     return scored.slice(0, 10).map((x) => x.f);
   }, [withSido, season, sido, sigungu, popScoreById]);
 
-  // 지도 위 쇼츠 피드용 '메인 축제 5개' — 필터와 무관하게 전국에서
-  //  진행중·예정 축제를 인기+임박 순으로 뽑습니다. (지금 뜨는 대표 축제)
+  // 지도 위 쇼츠 피드용 '메인 축제 후보' — 필터와 무관하게 전국에서
+  //  진행중·예정 축제를 인기+임박 순으로 넉넉히(10개) 뽑습니다.
+  //  (피드가 이 안에서 자동으로 순환하며 계속 바뀝니다.)
   const mainShorts = useMemo(() => {
     const now = new Date();
     const scored = withSido
@@ -181,7 +182,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
         return { f, score: (popScoreById[f.id] ?? cheap) + recency };
       });
     scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, 5).map((x) => x.f);
+    return scored.slice(0, 10).map((x) => x.f);
   }, [withSido, popScoreById]);
 
   // 기간 바로가기 토글 (다시 누르면 해제). 다른 모드와는 상호배타적.
