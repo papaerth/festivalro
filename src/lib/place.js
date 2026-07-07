@@ -64,6 +64,19 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// TourAPI 다국어 서비스 (지원 언어만). 없는 언어(ko·ar·vi·id·th)는 국문 서비스.
+//  ※ 현재 이 언어 서비스들은 활용신청 미승인(403)이라 자동으로 한국어 폴백됩니다.
+const LANG_SERVICE = {
+  en: "EngService2",
+  ja: "JpnService2",
+  zh: "ChsService2",
+  "zh-TW": "ChtService2",
+  de: "GerService2",
+  fr: "FreService2",
+  es: "SpnService2",
+  ru: "RusService2",
+};
+
 // 유형별(contentTypeId) detailIntro2에서 뽑을 항목 [표시라벨키, API필드]
 const INTRO_FIELDS = {
   32: [
@@ -86,7 +99,7 @@ const INTRO_FIELDS = {
   ],
 };
 
-async function fetchPlaceRaw(id, typeId) {
+async function fetchPlaceRaw(id, typeId, service = "KorService2") {
   const apiKey = process.env.TOUR_API_KEY;
   if (!apiKey) return null;
   const key = svcKey(apiKey);
@@ -94,10 +107,17 @@ async function fetchPlaceRaw(id, typeId) {
   if (!safeId) return null;
   let ctype = String(typeId || "").replace(/[^0-9]/g, "");
 
-  // 기본 정보 (제목·소개·주소·좌표·전화·홈페이지)
-  const common = await jget(
-    `${HOST}/KorService2/detailCommon2?${COMMON(key, { contentId: safeId })}`
-  );
+  // 기본 정보 (제목·소개·주소·좌표·전화·홈페이지). 이 서비스에 데이터가 없으면
+  // (예: 미승인 언어 서비스 403) null을 반환 → 상위(getPlaceById)에서 한국어로 폴백.
+  // null도 캐시되어 같은 언어로는 재호출하지 않음(호출 수 불필요하게 늘리지 않음).
+  let common;
+  try {
+    common = await jget(
+      `${HOST}/${service}/detailCommon2?${COMMON(key, { contentId: safeId })}`
+    );
+  } catch {
+    return null;
+  }
   const c = itemsOf(common)[0];
   if (!c || !c.title) return null;
   if (!ctype) ctype = String(c.contenttypeid || "");
@@ -120,7 +140,7 @@ async function fetchPlaceRaw(id, typeId) {
   // 여러 장 사진
   try {
     const imgData = await jget(
-      `${HOST}/KorService2/detailImage2?${COMMON(key, {
+      `${HOST}/${service}/detailImage2?${COMMON(key, {
         contentId: safeId,
         imageYN: "Y",
       })}`
@@ -139,7 +159,7 @@ async function fetchPlaceRaw(id, typeId) {
   if (fields) {
     try {
       const introData = await jget(
-        `${HOST}/KorService2/detailIntro2?${COMMON(key, {
+        `${HOST}/${service}/detailIntro2?${COMMON(key, {
           contentId: safeId,
           contentTypeId: ctype,
         })}`
@@ -159,17 +179,24 @@ async function fetchPlaceRaw(id, typeId) {
   return place;
 }
 
-// 성공 결과만 24시간 캐시 (id+type별)
-const placeCached = unstable_cache(fetchPlaceRaw, ["place-detail-v1"], {
+// 결과(성공·null 모두) 24시간 캐시 (id+type+서비스별) → 재호출 방지.
+const placeCached = unstable_cache(fetchPlaceRaw, ["place-detail-v2"], {
   revalidate: 60 * 60 * 24,
 });
 
-// [공개] 장소 상세. 키 없거나 실패하면 null → 페이지에서 안내.
-export async function getPlaceById(id, typeId) {
+// [공개] 장소 상세. 다국어 페이지는 해당 언어 서비스로 먼저 시도하고,
+//  없으면(미승인/데이터 없음) 한국어로 폴백. 키 없으면 null.
+export async function getPlaceById(id, typeId, locale) {
   const apiKey = process.env.TOUR_API_KEY;
   if (!apiKey || apiKey === "여기에_키를_붙여넣기") return null;
   try {
-    return await placeCached(id, typeId);
+    const langSvc = LANG_SERVICE[locale];
+    if (langSvc) {
+      const r = await placeCached(id, typeId, langSvc);
+      // 언어 서비스가 실제 내용을 주면 사용, 아니면 한국어로 폴백
+      if (r && r.name && (r.overview || (r.images && r.images.length))) return r;
+    }
+    return await placeCached(id, typeId, "KorService2");
   } catch {
     return null;
   }

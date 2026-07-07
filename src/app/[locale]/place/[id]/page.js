@@ -21,11 +21,13 @@ import RelatedFestivals from "@/components/RelatedFestivals";
 import AccountMenu from "@/components/AccountMenu";
 import LangSwitcher from "@/components/LangSwitcher";
 
-export async function generateMetadata({ params }) {
+export async function generateMetadata({ params, searchParams }) {
   const { id, locale } = await params;
+  const sp = (await searchParams) || {};
   const loc = isLocale(locale) ? locale : DEFAULT_LOCALE;
   const dict = getDictionary(loc);
-  const place = await getPlaceById(id);
+  // 페이지 렌더와 동일한 인자(id·type·loc)로 호출 → 같은 캐시 공유(재호출 방지)
+  const place = await getPlaceById(id, sp.type, loc);
   if (!place) return { title: dict.meta.homeTitle };
   return {
     title: `${place.name}${dict.meta.detailSuffix}`,
@@ -46,7 +48,7 @@ export default async function PlaceDetailPage({ params, searchParams }) {
   const dict = getDictionary(loc);
   const L = getPlaceLabels(loc);
 
-  const place = await getPlaceById(id, sp.type);
+  const place = await getPlaceById(id, sp.type, loc);
   if (!place) notFound();
 
   const allFestivals = await getFestivals();
