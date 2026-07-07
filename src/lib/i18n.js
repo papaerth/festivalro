@@ -41,7 +41,7 @@ export function isRtl(locale) {
 }
 
 // 사이트 절대 주소 (hreflang/canonical용)
-export const SITE_URL = "https://festivalro.vercel.app";
+export const SITE_URL = "https://chukjero.com";
 
 const dictionaries = {
   "zh-TW": { langName: "繁體中文", brandSub: "韓國慶典地圖", meta: { homeTitle: "Chukjero — 韓國慶典地圖", homeDesc: "在同一張地圖上探索韓國各地區的慶典，天氣與路線一鍵即得。", detailSuffix: " · Chukjero" }, nav: { login: "登入", signup: "註冊", logout: "登出", mypage: "我的頁面" }, hero: { titleA: "最精彩的慶典", titleB: "此刻，一目了然", subtitle: "依季節與地區篩選 — 天氣與路線一併呈現。", searchPlaceholder: "搜尋慶典或地區（例如：泥漿、釜山）" }, filters: { season: "季節", region: "地區", weekend: "📅 本週末", month: "🗓️ 本月", favorites: "收藏", clearAll: "顯示全部 ✕" }, seasons: { spring: "春季", summer: "夏季", autumn: "秋季", winter: "冬季" }, regions: { all: "全國各地", seoul: "首爾", gyeonggi: "京畿·仁川", gangwon: "江原", chungcheong: "忠清", jeolla: "全羅", gyeongsang: "慶尚", jeju: "濟州" }, status: { ongoing: "LIVE 進行中", ended: "已結束", ongoingShort: "進行中", upcoming: "即將舉行" }, list: { searchResult: (q, n) => `🔍 全國「${q}」的 ${n} 項搜尋結果`, periodResult: (label, n) => `${label} 有 ${n} 場慶典`, favResult: (n) => `❤️ ${n} 場收藏的慶典`, loadMore: "載入更多", remain: (n) => `（剩餘 ${n} 場）`, emptySearch: "查無結果。請換個名稱或地區試試！", emptyPeriod: "這段期間沒有慶典。", emptyFav: "尚無收藏。點擊慶典卡片上的 🤍 愛心即可收藏！", emptyDefault: "目前沒有符合篩選條件的慶典。" }, detail: { back: "← 返回所有慶典", tabs: { info: "資訊", weather: "天氣", reviews: "評論", blog: "部落格" }, about: "🎪 關於", weather: "🌤️ 三日天氣", directions: "🧭 路線", location: "🗺️ 位置", reviews: "⭐ 評論與評分", blog: "📝 部落格文章", share: "🔗 分享", favorite: "🤍 收藏", favorited: "❤️ 已收藏", visit: "📍 記錄造訪", visited: "✅ 已造訪", sourcePrefix: "來源 · ", directionsBtn: "🧭 透過 KakaoMap 查看路線" }, footer: "Chukjero · 地圖 © OpenStreetMap · 天氣 © Open-Meteo" },
