@@ -17,21 +17,21 @@ import HeroCarousel from "./HeroCarousel";
 import HomeShortsFeed from "./HomeShortsFeed";
 import RecentViewed from "./RecentViewed";
 
-// "오늘 진행중 N개" 배지 문구 (13개 언어)
+// 상단 배지 문구 (13개 언어). today=오늘 진행중 / week=이번 주 진행 축제(작은 숫자 방지용)
 const TODAY = {
-  ko: (n) => `오늘 진행중 ${n}개 · 지금 바로 보기`,
-  en: (n) => `${n} happening today · see now`,
-  ja: (n) => `本日開催中 ${n}件 · 今すぐ見る`,
-  zh: (n) => `今日进行中 ${n}个 · 立即查看`,
-  "zh-TW": (n) => `今日進行中 ${n}個 · 立即查看`,
-  es: (n) => `${n} hoy · ver ahora`,
-  fr: (n) => `${n} aujourd'hui · voir`,
-  ru: (n) => `Сегодня: ${n} · смотреть`,
-  de: (n) => `Heute ${n} live · ansehen`,
-  ar: (n) => `${n} اليوم · شاهد الآن`,
-  vi: (n) => `${n} hôm nay · xem ngay`,
-  id: (n) => `${n} hari ini · lihat`,
-  th: (n) => `วันนี้ ${n} · ดูเลย`,
+  ko: { today: (n) => `오늘 진행중 ${n}개 · 지금 바로 보기`, week: (n) => `이번 주 진행 축제 ${n}개 · 지금 보기` },
+  en: { today: (n) => `${n} happening today · see now`, week: (n) => `${n} festivals this week · see now` },
+  ja: { today: (n) => `本日開催中 ${n}件 · 今すぐ見る`, week: (n) => `今週のお祭り ${n}件 · 見る` },
+  zh: { today: (n) => `今日进行中 ${n}个 · 立即查看`, week: (n) => `本周庆典 ${n}个 · 查看` },
+  "zh-TW": { today: (n) => `今日進行中 ${n}個 · 立即查看`, week: (n) => `本週慶典 ${n}個 · 查看` },
+  es: { today: (n) => `${n} hoy · ver ahora`, week: (n) => `${n} esta semana · ver` },
+  fr: { today: (n) => `${n} aujourd'hui · voir`, week: (n) => `${n} cette semaine · voir` },
+  ru: { today: (n) => `Сегодня: ${n} · смотреть`, week: (n) => `На неделе: ${n} · смотреть` },
+  de: { today: (n) => `Heute ${n} live · ansehen`, week: (n) => `Diese Woche ${n} · ansehen` },
+  ar: { today: (n) => `${n} اليوم · شاهد الآن`, week: (n) => `${n} هذا الأسبوع · شاهد` },
+  vi: { today: (n) => `${n} hôm nay · xem ngay`, week: (n) => `${n} tuần này · xem` },
+  id: { today: (n) => `${n} hari ini · lihat`, week: (n) => `${n} minggu ini · lihat` },
+  th: { today: (n) => `วันนี้ ${n} · ดูเลย`, week: (n) => `สัปดาห์นี้ ${n} · ดู` },
 };
 
 // 지도는 브라우저에서만 그려질 수 있어 ssr:false 로 불러옵니다.
@@ -122,6 +122,12 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     ).length;
   }, [withSido]);
 
+  // 이번 주말에 열리는(겹치는) 축제 수 — 진행중이 적을 때 배지 대체용
+  const weekendCount = useMemo(() => {
+    const [rs, re] = weekendRange();
+    return withSido.filter((f) => overlaps(f.startDate, f.endDate, rs, re)).length;
+  }, [withSido]);
+
   // 배지 클릭 → 진행중만 보기 (현재 계절, 전국). 결과가 있는 지도/목록으로 스크롤.
   const showOngoing = () => {
     setQuery("");
@@ -135,6 +141,31 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       mapRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   };
+
+  // 배지 클릭 → 이번 주말 축제 보기
+  const showThisWeek = () => {
+    setQuery("");
+    setShowFavorites(false);
+    setStatusFilter(null);
+    setSido(null);
+    setSigungu(null);
+    setPeriod("weekend");
+    if (mapRef.current) {
+      mapRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
+  // 상단 배지: 진행중 3개 이상이면 '오늘 진행중', 그 미만이면 '이번 주 진행 축제'
+  //  (숫자가 작아 보이는 걸 방지). 둘 다 없으면 배지 숨김.
+  const badgeT = TODAY[locale] || TODAY.ko;
+  const badge =
+    todayOngoing >= 3
+      ? { text: badgeT.today(todayOngoing), onClick: showOngoing }
+      : weekendCount >= 1
+      ? { text: badgeT.week(weekendCount), onClick: showThisWeek }
+      : todayOngoing >= 1
+      ? { text: badgeT.today(todayOngoing), onClick: showOngoing }
+      : null;
 
   // 시도를 바꾸면 시군구 선택 초기화
   const pickSido = (key) => {
@@ -295,12 +326,10 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       <main className="home-main">
         <section className="hero">
           <h1>
-            {t.hero.titleA}
-            <br />
+            {t.hero.titleA}{" "}
             <span className="accent">{theme.emoji} {t.seasons[season]}</span>{" "}
             {t.hero.titleB}
           </h1>
-          <p>{t.hero.subtitle}</p>
 
           {/* 검색창 (히어로 안에 통합) */}
           <div className="search-box">
@@ -330,15 +359,15 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
             )}
           </div>
 
-          {/* 오늘 진행중 배지 — 접속하자마자 '지금 갈 수 있는 축제'로 안내 */}
-          {todayOngoing > 0 && (
+          {/* 오늘 진행중/이번 주 배지 — 접속하자마자 '지금 갈 수 있는 축제'로 안내 */}
+          {badge && (
             <button
               className="today-badge"
-              onClick={showOngoing}
+              onClick={badge.onClick}
               suppressHydrationWarning
             >
               <span className="today-dot" aria-hidden="true" />
-              {(TODAY[locale] || TODAY.ko)(todayOngoing)}
+              {badge.text}
               <span className="today-arrow" aria-hidden="true">
                 {" "}
                 →
@@ -370,9 +399,6 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
             {favReady && favorites.length > 0 ? ` ${favorites.length}` : ""}
           </button>
         </div>
-
-        {/* 즐겨찾기한 축제 중 곧 시작/진행중 알림 */}
-        <FavoriteAlerts festivals={festivals} />
 
         {searching ? (
           /* 검색 중: 계절/지역 선택 대신 검색 결과 안내 */
@@ -459,6 +485,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
             )}
           </>
         )}
+
+        {/* 즐겨찾기 알림 — 최상단에서 필터 아래로 이동, 얇은 배너 (즐겨찾기 있을 때만) */}
+        <FavoriteAlerts festivals={festivals} />
 
         {/* 다가오는 인기 축제 — 대형 히어로 캐러셀 (지도와 분리된 독립 섹션) */}
         <HeroCarousel festivals={carousel} onPick={handleHeroPick} />
