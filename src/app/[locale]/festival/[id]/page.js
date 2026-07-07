@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getFestivalById } from "@/lib/festivals";
+import { getFestivalById, getFestivals } from "@/lib/festivals";
 import { getFestivalExtras } from "@/lib/festivalExtra";
 import { getCurated } from "@/lib/curated";
+import { getRelatedFestivals } from "@/lib/related";
+import RelatedFestivals from "@/components/RelatedFestivals";
+import RecordView from "@/components/RecordView";
 import { SEASONS } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import {
@@ -98,11 +101,14 @@ export default async function FestivalDetailPage({ params }) {
     notFound();
   }
 
-  // 자동 수집(API) + 큐레이션(직접 입력) 정보 — 각각 실패/없으면 빈 값 → 섹션 숨김
-  const [extras, curated] = await Promise.all([
+  // 자동 수집(API) + 큐레이션(직접 입력) + 추천용 전체 목록 — 각각 실패/없으면 빈 값
+  const [extras, curated, allFestivals] = await Promise.all([
     getFestivalExtras(festival),
     getCurated(festival.id),
+    getFestivals(),
   ]);
+  // "이 축제가 좋았다면" 추천 (같은 시군구→같은 계절 인기→비슷한 유형, 종료·현재 축제 제외)
+  const related = getRelatedFestivals(festival, allFestivals, 6);
   const S = getSections(loc);
   const fYear = festival.startDate ? festival.startDate.slice(0, 4) : null;
 
@@ -283,7 +289,26 @@ export default async function FestivalDetailPage({ params }) {
             </section>
           }
         />
+
+        {/* 페이지 맨 아래 추천 — 다음 축제로 자연스럽게 이어지는 동선 */}
+        <RelatedFestivals items={related} />
       </main>
+
+      {/* 최근 본 축제에 조용히 기록(회원가입 없이, 브라우저 저장) */}
+      <RecordView
+        festival={{
+          id: festival.id,
+          name: festival.name,
+          image: festival.image,
+          startDate: festival.startDate,
+          endDate: festival.endDate,
+          sido: festival.sido,
+          sigungu: festival.sigungu,
+          season: festival.season,
+          region: festival.region,
+          source: festival.source,
+        }}
+      />
 
       <footer className="site-footer">
         <div className="container">{dict.footer}</div>

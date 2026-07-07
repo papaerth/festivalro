@@ -74,6 +74,7 @@ function mapTourItem(item) {
     description: item.addr1 || "",
     image: item.firstimage || null,
     source: "tour", // 출처: 한국관광공사 TourAPI
+    cat3: item.cat3 || null, // TourAPI 소분류코드(비슷한 유형 추천용)
     addr: item.addr1 || "",
     homepage: null,
     tel: null,

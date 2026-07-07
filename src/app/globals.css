@@ -2571,6 +2571,66 @@ h3 {
   }
 }
 
+/* ═══════════ 추천 루프 (오늘 배지 · 최근 본 축제) ═══════════ */
+
+/* 오늘 진행중 배지 (히어로 상단) */
+.today-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 18px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform var(--t-fast), background var(--t-fast),
+    color var(--t-fast);
+}
+.today-badge:hover {
+  transform: translateY(-2px);
+  background: var(--accent);
+  color: #fff;
+}
+.today-badge:hover .today-dot {
+  background: #fff;
+}
+.today-badge:active {
+  transform: translateY(0) scale(0.99);
+}
+.today-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: #e5484d;
+  flex: 0 0 auto;
+}
+
+/* 최근 본 축제 — 가로 스크롤 줄 */
+.recent-row {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.recent-item {
+  flex: 0 0 240px;
+  max-width: 240px;
+  scroll-snap-align: start;
+}
+@media (max-width: 520px) {
+  .recent-item {
+    flex-basis: 78vw;
+    max-width: 78vw;
+  }
+}
+
 /* ─── 아랍어 등 오른쪽→왼쪽(RTL) 언어 보정 ─── */
 [dir="rtl"] .lang-menu {
   right: auto;

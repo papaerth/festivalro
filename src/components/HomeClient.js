@@ -15,6 +15,24 @@ import AccountMenu from "./AccountMenu";
 import LangSwitcher from "./LangSwitcher";
 import HeroCarousel from "./HeroCarousel";
 import HomeShortsFeed from "./HomeShortsFeed";
+import RecentViewed from "./RecentViewed";
+
+// "오늘 진행중 N개" 배지 문구 (13개 언어)
+const TODAY = {
+  ko: (n) => `오늘 진행중 ${n}개 · 지금 바로 보기`,
+  en: (n) => `${n} happening today · see now`,
+  ja: (n) => `本日開催中 ${n}件 · 今すぐ見る`,
+  zh: (n) => `今日进行中 ${n}个 · 立即查看`,
+  "zh-TW": (n) => `今日進行中 ${n}個 · 立即查看`,
+  es: (n) => `${n} hoy · ver ahora`,
+  fr: (n) => `${n} aujourd'hui · voir`,
+  ru: (n) => `Сегодня: ${n} · смотреть`,
+  de: (n) => `Heute ${n} live · ansehen`,
+  ar: (n) => `${n} اليوم · شاهد الآن`,
+  vi: (n) => `${n} hôm nay · xem ngay`,
+  id: (n) => `${n} hari ini · lihat`,
+  th: (n) => `วันนี้ ${n} · ดูเลย`,
+};
 
 // 지도는 브라우저에서만 그려질 수 있어 ssr:false 로 불러옵니다.
 const MapView = dynamic(() => import("./MapView"), {
@@ -89,6 +107,30 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) {
       setMapFocus({ id: f.id, lat: f.lat, lng: f.lng, ts: Date.now() });
     }
+    if (mapRef.current) {
+      mapRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
+  // 오늘(현재 계절) 진행중인 축제 수 — 상단 배지용
+  const todayOngoing = useMemo(() => {
+    const now = new Date();
+    const cs = currentSeason();
+    return withSido.filter(
+      (f) =>
+        f.season === cs && getStatusInfo(f.startDate, f.endDate, now).key === "ongoing"
+    ).length;
+  }, [withSido]);
+
+  // 배지 클릭 → 진행중만 보기 (현재 계절, 전국). 결과가 있는 지도/목록으로 스크롤.
+  const showOngoing = () => {
+    setQuery("");
+    setPeriod(null);
+    setShowFavorites(false);
+    setSido(null);
+    setSigungu(null);
+    setSeason(currentSeason());
+    setStatusFilter("ongoing");
     if (mapRef.current) {
       mapRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     }
@@ -287,6 +329,22 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
               </button>
             )}
           </div>
+
+          {/* 오늘 진행중 배지 — 접속하자마자 '지금 갈 수 있는 축제'로 안내 */}
+          {todayOngoing > 0 && (
+            <button
+              className="today-badge"
+              onClick={showOngoing}
+              suppressHydrationWarning
+            >
+              <span className="today-dot" aria-hidden="true" />
+              {(TODAY[locale] || TODAY.ko)(todayOngoing)}
+              <span className="today-arrow" aria-hidden="true">
+                {" "}
+                →
+              </span>
+            </button>
+          )}
         </section>
 
         {/* 기간 바로가기 */}
@@ -475,6 +533,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
             <span>{t.list.remain(filtered.length - visibleCount)}</span>
           </button>
         )}
+
+        {/* 최근 본 축제 — 이어보기 동선 (브라우저 기록, 회원가입 X) */}
+        <RecentViewed />
       </main>
 
       <footer className="site-footer">
