@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -40,6 +41,13 @@ export async function generateMetadata({ params, searchParams }) {
   };
 }
 
+// "이 장소에서 가까운 축제" — 무거운 전체 축제목록을 기다렸다가 스트리밍으로 채움.
+async function NearbyFestivals({ festivalsPromise, lat, lng, title }) {
+  const all = await festivalsPromise;
+  const nearby = getNearbyFestivals(lat, lng, all, 3);
+  return <RelatedFestivals items={nearby} title={title} />;
+}
+
 // 장소 상세 화면 — 축제 상세의 축소판(같은 디자인 시스템). 사이트 안에서 해결.
 export default async function PlaceDetailPage({ params, searchParams }) {
   const { id, locale } = await params;
@@ -48,13 +56,11 @@ export default async function PlaceDetailPage({ params, searchParams }) {
   const dict = getDictionary(loc);
   const L = getPlaceLabels(loc);
 
-  // 장소 상세 + 전체 축제목록(가까운 축제용)을 동시에 조회 → 대기시간 단축
-  const [place, allFestivals] = await Promise.all([
-    getPlaceById(id, sp.type, loc),
-    getFestivals(),
-  ]);
+  // 가까운 축제용 전체 목록은 미리(병렬) 시작하되, 아래에서 스트리밍으로 분리해
+  // 본문(장소 정보)이 이 무거운 조회를 기다리지 않도록 함.
+  const festivalsPromise = getFestivals();
+  const place = await getPlaceById(id, sp.type, loc);
   if (!place) notFound();
-  const nearby = getNearbyFestivals(place.lat, place.lng, allFestivals, 3);
 
   const homeHref = localeHref(loc, "/");
   const backHref = sp.from
@@ -154,8 +160,15 @@ export default async function PlaceDetailPage({ params, searchParams }) {
           </section>
         )}
 
-        {/* 이 장소에서 가까운 축제 (다시 축제로 돌아오는 동선) */}
-        <RelatedFestivals items={nearby} title={L.nearby} />
+        {/* 이 장소에서 가까운 축제 (다시 축제로 돌아오는 동선) — 본문을 막지 않게 스트리밍 */}
+        <Suspense fallback={null}>
+          <NearbyFestivals
+            festivalsPromise={festivalsPromise}
+            lat={place.lat}
+            lng={place.lng}
+            title={L.nearby}
+          />
+        </Suspense>
       </main>
 
       <footer className="site-footer">
