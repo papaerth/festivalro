@@ -248,9 +248,9 @@ export default async function FestivalDetailPage({ params }) {
               <CuratedSections curated={curated} only="food" festivalYear={fYear} />
 
               {/* 주변 숙소 · 맛집 · 관광지 (API) */}
-              <NearbyList title={S.titles.stay} icon="🏨" items={extras.stay} loc={loc} />
-              <NearbyList title={S.titles.restaurants} icon="🍽️" items={extras.restaurants} loc={loc} />
-              <NearbyList title={S.titles.tourSpots} icon="🏞️" items={extras.tourSpots} loc={loc} />
+              <NearbyList title={S.titles.stay} icon="🏨" items={extras.stay} loc={loc} festivalId={festival.id} />
+              <NearbyList title={S.titles.restaurants} icon="🍽️" items={extras.restaurants} loc={loc} festivalId={festival.id} />
+              <NearbyList title={S.titles.tourSpots} icon="🏞️" items={extras.tourSpots} loc={loc} festivalId={festival.id} />
 
               {/* 주변 캠핑장 (API) */}
               <CampingList items={extras.camping} loc={loc} />

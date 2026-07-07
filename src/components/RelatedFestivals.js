@@ -23,14 +23,14 @@ const RL = {
 
 // 상세페이지 맨 아래 추천 섹션 — 다음 축제로 자연스럽게 이어지도록.
 //  items는 서버에서 계산해 넘겨줍니다(같은 시군구→같은 계절 인기→비슷한 유형).
-export default function RelatedFestivals({ items = [] }) {
+export default function RelatedFestivals({ items = [], title }) {
   const { locale } = useI18n();
   const ratings = useReviewStats();
   if (!items.length) return null;
 
   return (
     <section className="section related-section">
-      <h2>{RL[locale] || RL.ko}</h2>
+      <h2>{title || RL[locale] || RL.ko}</h2>
       <div className="card-grid">
         {items.map((f) => (
           <FestivalCard key={f.id} festival={f} rating={ratings[f.id]} />

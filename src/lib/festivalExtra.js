@@ -140,6 +140,7 @@ async function getNearby(lat, lng, key, contentTypeId, limit) {
       .slice(0, limit)
       .map((it) => ({
         id: String(it.contentid),
+        contentTypeId: String(contentTypeId), // 12=관광지 32=숙박 39=음식점
         name: it.title,
         image: it.firstimage || it.firstimage2 || null,
         distKm: it.dist ? Number(it.dist) / 1000 : null,

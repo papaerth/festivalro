@@ -1,6 +1,7 @@
 // 상세페이지 '자동 수집' 섹션들의 표시 컴포넌트 (서버 렌더).
 //  - 값이 없으면 각 컴포넌트가 null 반환 → 섹션 숨김
-import { getSections } from "@/lib/i18n";
+import Link from "next/link";
+import { getSections, localeHref } from "@/lib/i18n";
 import CoverImage from "./CoverImage";
 
 function KoTag({ loc }) {
@@ -36,27 +37,35 @@ export function SummaryBar({ festival, extras, loc }) {
 }
 
 // 주변 목록 (관광지·숙소·맛집 공용)
-export function NearbyList({ title, icon, items, loc }) {
+export function NearbyList({ title, icon, items, loc, festivalId }) {
   if (!items || items.length === 0) return null;
   return (
     <section className="section">
       <h2>{icon} {title}</h2>
       <div className="nearby-grid">
-        {items.map((it) => (
-          <div className="nearby-card" key={it.id}>
-            <CoverImage
-              className="nearby-thumb"
-              src={it.image}
-              alt={it.name}
-              accent="#c2578a"
-              emoji="📍"
-            />
-            <p className="nearby-name">{it.name}</p>
-            {it.distKm != null && (
-              <p className="nearby-dist">{distText(it.distKm, loc)}</p>
-            )}
-          </div>
-        ))}
+        {items.map((it) => {
+          // 외부로 안 나가고 사이트 안 장소 상세페이지로. from=축제ID(돌아가기용)
+          const q = new URLSearchParams({
+            ...(it.contentTypeId ? { type: it.contentTypeId } : {}),
+            ...(festivalId ? { from: String(festivalId) } : {}),
+          }).toString();
+          const href = localeHref(loc, `/place/${it.id}${q ? `?${q}` : ""}`);
+          return (
+            <Link className="nearby-card" key={it.id} href={href}>
+              <CoverImage
+                className="nearby-thumb"
+                src={it.image}
+                alt={it.name}
+                accent="#c2578a"
+                emoji="📍"
+              />
+              <p className="nearby-name">{it.name}</p>
+              {it.distKm != null && (
+                <p className="nearby-dist">{distText(it.distKm, loc)}</p>
+              )}
+            </Link>
+          );
+        })}
       </div>
     </section>
   );
