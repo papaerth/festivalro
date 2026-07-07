@@ -161,9 +161,6 @@ export default async function PlaceDetailPage({ params, searchParams }) {
   );
 }
 
-// 장소 상세도 방문 시 만들고 하루 캐시(ISR).
-export const revalidate = 86400;
-
-export async function generateStaticParams() {
-  return [];
-}
+// searchParams(type·from)를 사용하므로 동적 렌더링.
+//  실제 장소 데이터는 unstable_cache로 24시간 캐시되어 매번 API를 부르지 않습니다.
+export const dynamic = "force-dynamic";
