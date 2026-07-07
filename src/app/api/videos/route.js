@@ -31,6 +31,15 @@ function pickThumb(thumbs) {
   return t ? t.url : null;
 }
 
+// ISO8601 재생시간("PT1M5S") → 초. 파싱 실패 시 0.
+function isoToSeconds(iso) {
+  const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(iso || "");
+  if (!m) return 0;
+  return Number(m[1] || 0) * 3600 + Number(m[2] || 0) * 60 + Number(m[3] || 0);
+}
+// 쇼츠로 볼 수 있는 최대 길이(초) — 유튜브 쇼츠 상한(3분)에 맞춤
+const SHORTS_MAX_SEC = 180;
+
 async function fetchWithTimeout(url, ms = 6000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -78,17 +87,17 @@ export async function GET(request) {
   }
 
   try {
-    // 여러 각도로 검색해 뉴스 편중을 줄입니다:
-    //  - 쇼츠(짧은 영상): "축제명 축제"
-    //  - 브이로그(중간 길이): "축제명 브이로그" — 쇼츠 필터는 브이로그를 걸러내므로 별도 확보
-    //  - 영어 페이지: korea festival / korea vlog 병행(외국인 브이로그)
+    // 여러 각도로 검색하되 전부 '짧은 영상(쇼츠)'만 — 롱폼(장편)은 가져오지 않음.
+    //  - videoDuration=short(4분 미만)로 검색 단계에서 롱폼 제외
+    //  - "축제명 축제" + "축제명 브이로그"로 방문 쇼츠 확보(뉴스 편중 완화)
+    //  - 영어 페이지는 korea festival / korea vlog 병행
     const searches = [
       searchIds(key, `${query} 축제`, 10, "short"),
-      searchIds(key, `${query} 브이로그`, 8, "medium"),
+      searchIds(key, `${query} 브이로그`, 8, "short"),
     ];
     if (en) {
       searches.push(searchIds(key, `${query} korea festival`, 8, "short"));
-      searches.push(searchIds(key, `${query} korea vlog`, 6, "medium"));
+      searches.push(searchIds(key, `${query} korea vlog`, 6, "short"));
     }
     const lists = await Promise.all(searches.map((p) => p.catch(() => [])));
 
@@ -104,19 +113,23 @@ export async function GET(request) {
       return NextResponse.json({ configured: true, items: [] });
     }
 
-    // 조회수·채널명·썸네일을 한 번에 조회 (videos.list = 1유닛)
-    const vurl = `${YT_VIDEOS}?key=${key}&part=snippet,statistics&id=${ids.join(",")}`;
+    // 조회수·채널명·썸네일·재생시간을 한 번에 조회 (videos.list = 1유닛)
+    const vurl = `${YT_VIDEOS}?key=${key}&part=snippet,statistics,contentDetails&id=${ids.join(",")}`;
     const vres = await fetchWithTimeout(vurl);
     if (!vres.ok) throw new Error(`yt videos ${vres.status}`);
     const vdata = await vres.json();
 
-    const cand = (vdata.items || []).map((v) => ({
-      id: v.id,
-      title: (v.snippet && v.snippet.title) || "",
-      channel: (v.snippet && v.snippet.channelTitle) || "",
-      views: Number((v.statistics && v.statistics.viewCount) || 0),
-      thumb: pickThumb(v.snippet && v.snippet.thumbnails),
-    }));
+    const cand = (vdata.items || [])
+      .map((v) => ({
+        id: v.id,
+        title: (v.snippet && v.snippet.title) || "",
+        channel: (v.snippet && v.snippet.channelTitle) || "",
+        views: Number((v.statistics && v.statistics.viewCount) || 0),
+        thumb: pickThumb(v.snippet && v.snippet.thumbnails),
+        sec: isoToSeconds(v.contentDetails && v.contentDetails.duration),
+      }))
+      // 롱폼 제외 — 재생시간 3분 초과는 버리고 쇼츠/짧은 영상만 남김
+      .filter((c) => c.sec > 0 && c.sec <= SHORTS_MAX_SEC);
 
     // 뉴스/방송 채널은 감점, 브이로그·공식/지자체 채널은 가점, 관련도도 반영해 정렬.
     //  (뉴스는 완전히 빼지 않고 뒤로만 밀어, 영상이 뉴스뿐인 축제도 빈 섹션이 안 되게)
