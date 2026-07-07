@@ -158,7 +158,7 @@ export default function HomeShortsFeed({ festivals = [], accent = "#c2578a" }) {
   return (
     <section className="home-shorts" style={{ "--accent": accent }}>
       <h2 className="home-shorts-title">{h.title}</h2>
-      <div className="vid-scroll" ref={scrollRef}>
+      <div className="vid-scroll fade-in" ref={scrollRef}>
         {state.items.map(({ festival, video }) => (
           <ShortsCard
             key={festival.id}

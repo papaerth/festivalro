@@ -3,6 +3,7 @@ import "../globals.css";
 import { AuthProvider } from "@/lib/AuthProvider";
 import { I18nProvider } from "@/lib/I18nProvider";
 import { CardNewsProvider } from "@/components/CardNewsProvider";
+import ScrollReveal from "@/components/ScrollReveal";
 import {
   LOCALES,
   DEFAULT_LOCALE,
@@ -79,6 +80,7 @@ export default async function RootLayout({ children, params }) {
         <I18nProvider locale={loc}>
           <AuthProvider>
             <CardNewsProvider>{children}</CardNewsProvider>
+            <ScrollReveal />
           </AuthProvider>
         </I18nProvider>
       </body>

@@ -221,7 +221,7 @@ export default function VideoSection({ query, curatedVideos, accent = "#c2578a" 
         </div>
       )}
       {hasVideos && (
-        <div className="vid-scroll">
+        <div className="vid-scroll fade-in">
           {state.items.map((it) => (
             <ShortsCard key={it.id} video={it} locale={locale} watchLabel={watch} />
           ))}

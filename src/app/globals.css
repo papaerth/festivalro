@@ -2508,6 +2508,69 @@ h3 {
   font-size: var(--fs-caption);
 }
 
+/* ═══════════ 마이크로 인터랙션 (은은하게 · 0.2~0.3초 · GPU 친화) ═══════════ */
+
+/* 콘텐츠 페이드인 — 스켈레톤→콘텐츠, 목록 교체 시 부드럽게 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-in {
+  animation: fadeInUp 0.3s var(--ease) both;
+}
+/* 목록 카드가 나타날 때(초기 로드·필터 교체·더보기) 살짝 떠오르며 */
+.card {
+  animation: fadeInUp 0.28s var(--ease) both;
+}
+
+/* 스크롤 등장 — JS가 .reveal-init 부여 → 화면 진입 시 .reveal-in (한 번만) */
+.reveal-init {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.reveal-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity 0.4s var(--ease), transform 0.4s var(--ease);
+}
+
+/* 버튼 눌림(살짝 가라앉는) 느낌 — 자체 active가 없는 주요 버튼 공통 */
+.blog-more-btn:active,
+.load-more:active,
+.auth-submit:active,
+.vid-social-btn:active,
+.sf-watch:active,
+.sf-more:active,
+.visit-btn:active,
+.status-clear:active,
+.homepage-btn:active,
+.directions-btn:active,
+.share-btn:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+/* 접근성 — '동작 줄이기'를 켠 사용자는 애니메이션·전환을 사실상 끔 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal-init {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
 /* ─── 아랍어 등 오른쪽→왼쪽(RTL) 언어 보정 ─── */
 [dir="rtl"] .lang-menu {
   right: auto;

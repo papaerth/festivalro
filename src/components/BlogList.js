@@ -177,7 +177,7 @@ export default function BlogList({ query, accent = "#c2578a" }) {
 
   // 후기 목록 (최대 5개)
   return (
-    <div>
+    <div className="fade-in">
       {state.items.map((post, i) => (
         <a
           key={post.link || i}

@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { SEASONS } from "@/lib/seasons";
 import { formatPeriod } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
@@ -45,13 +45,32 @@ function FitBounds({ points }) {
   return null;
 }
 
-// 인기 시트에서 축제를 고르면 그 위치로 부드럽게 이동합니다.
-function FocusFly({ focus }) {
+// 카드에서 축제를 고르면 그 위치로 부드럽게 이동(flyTo)하고,
+// 이동이 끝나는 타이밍에 해당 마커 팝업을 엽니다.
+//  - '동작 줄이기' 설정이면 비행 없이 즉시 이동 + 즉시 팝업
+function FocusFly({ focus, markerRefs }) {
   const map = useMap();
   useEffect(() => {
     if (!focus || !Number.isFinite(focus.lat) || !Number.isFinite(focus.lng)) return;
-    map.flyTo([focus.lat, focus.lng], 12, { duration: 0.6 });
-  }, [focus, map]);
+    const openPopup = () => {
+      const m =
+        markerRefs && markerRefs.current && focus.id
+          ? markerRefs.current[focus.id]
+          : null;
+      if (m && m.openPopup) m.openPopup();
+    };
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      map.setView([focus.lat, focus.lng], 12);
+      openPopup();
+    } else {
+      map.flyTo([focus.lat, focus.lng], 12, { duration: 0.6 });
+      map.once("moveend", openPopup);
+    }
+  }, [focus, map, markerRefs]);
   return null;
 }
 
@@ -67,6 +86,7 @@ export default function MapView({ festivals, ratings = {}, focus = null }) {
   );
   const shown = withCoords.slice(0, MARKER_CAP);
   const points = shown.map((f) => [f.lat, f.lng]);
+  const markerRefs = useRef({}); // 축제 id → 마커 인스턴스(팝업 열기용)
 
   return (
     <MapContainer
@@ -83,7 +103,14 @@ export default function MapView({ festivals, ratings = {}, focus = null }) {
         const color = (SEASONS[f.season] || SEASONS.spring).color;
         const r = ratings[f.id];
         return (
-          <Marker key={f.id} position={[f.lat, f.lng]} icon={makePin(color)}>
+          <Marker
+            key={f.id}
+            position={[f.lat, f.lng]}
+            icon={makePin(color)}
+            ref={(m) => {
+              if (m) markerRefs.current[f.id] = m;
+            }}
+          >
             <Popup>
               <strong>{f.displayName || f.name}</strong>
               <br />
@@ -105,7 +132,7 @@ export default function MapView({ festivals, ratings = {}, focus = null }) {
         );
       })}
       <FitBounds points={points} />
-      <FocusFly focus={focus} />
+      <FocusFly focus={focus} markerRefs={markerRefs} />
     </MapContainer>
   );
 }

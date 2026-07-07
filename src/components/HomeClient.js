@@ -87,7 +87,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   // 히어로 카드 클릭 → 아래 지도로 스크롤 + 해당 축제 위치로 확대
   const handleHeroPick = (f) => {
     if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) {
-      setMapFocus({ lat: f.lat, lng: f.lng, ts: Date.now() });
+      setMapFocus({ id: f.id, lat: f.lat, lng: f.lng, ts: Date.now() });
     }
     if (mapRef.current) {
       mapRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
