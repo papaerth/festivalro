@@ -48,10 +48,12 @@ export default async function PlaceDetailPage({ params, searchParams }) {
   const dict = getDictionary(loc);
   const L = getPlaceLabels(loc);
 
-  const place = await getPlaceById(id, sp.type, loc);
+  // 장소 상세 + 전체 축제목록(가까운 축제용)을 동시에 조회 → 대기시간 단축
+  const [place, allFestivals] = await Promise.all([
+    getPlaceById(id, sp.type, loc),
+    getFestivals(),
+  ]);
   if (!place) notFound();
-
-  const allFestivals = await getFestivals();
   const nearby = getNearbyFestivals(place.lat, place.lng, allFestivals, 3);
 
   const homeHref = localeHref(loc, "/");

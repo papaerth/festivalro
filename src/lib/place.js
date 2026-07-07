@@ -19,10 +19,16 @@ function itemsOf(data) {
   const raw = data?.response?.body?.items?.item;
   return Array.isArray(raw) ? raw : raw ? [raw] : [];
 }
-async function jget(url) {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+async function jget(url, ms = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(url, { cache: "no-store", signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 function cleanHtml(s = "") {
   return String(s)
@@ -107,14 +113,29 @@ async function fetchPlaceRaw(id, typeId, service = "KorService2") {
   if (!safeId) return null;
   let ctype = String(typeId || "").replace(/[^0-9]/g, "");
 
-  // 기본 정보 (제목·소개·주소·좌표·전화·홈페이지). 이 서비스에 데이터가 없으면
-  // (예: 미승인 언어 서비스 403) null을 반환 → 상위(getPlaceById)에서 한국어로 폴백.
-  // null도 캐시되어 같은 언어로는 재호출하지 않음(호출 수 불필요하게 늘리지 않음).
+  // 속도 개선: 공통정보·사진·(유형 알면)유형별 상세를 '동시에' 조회(병렬).
+  //  공통정보에 데이터가 없으면(예: 미승인 언어 서비스 403) null 반환 → 상위에서
+  //  한국어 폴백. null도 캐시되어 같은 언어로는 재호출 안 함(호출 수 안 늘림).
+  const commonP = jget(
+    `${HOST}/${service}/detailCommon2?${COMMON(key, { contentId: safeId })}`
+  );
+  const imageP = jget(
+    `${HOST}/${service}/detailImage2?${COMMON(key, { contentId: safeId, imageYN: "Y" })}`
+  ).catch(() => null);
+  // 유형(contentTypeId)을 카드에서 이미 넘겨받았으면 유형별 상세도 동시에 시작
+  let introP =
+    ctype && INTRO_FIELDS[Number(ctype)]
+      ? jget(
+          `${HOST}/${service}/detailIntro2?${COMMON(key, {
+            contentId: safeId,
+            contentTypeId: ctype,
+          })}`
+        ).catch(() => null)
+      : null;
+
   let common;
   try {
-    common = await jget(
-      `${HOST}/${service}/detailCommon2?${COMMON(key, { contentId: safeId })}`
-    );
+    common = await commonP;
   } catch {
     return null;
   }
@@ -137,33 +158,29 @@ async function fetchPlaceRaw(id, typeId, service = "KorService2") {
     intro: [],
   };
 
-  // 여러 장 사진
-  try {
-    const imgData = await jget(
-      `${HOST}/${service}/detailImage2?${COMMON(key, {
-        contentId: safeId,
-        imageYN: "Y",
-      })}`
-    );
+  // 사진 (병렬 결과 수확)
+  const imgData = await imageP;
+  if (imgData) {
     place.images = itemsOf(imgData)
       .map((i) => i.originimgurl || i.smallimageurl)
       .filter(Boolean);
-  } catch {
-    /* 사진 없으면 빈 배열 */
   }
   if (c.firstimage) place.images.unshift(c.firstimage);
   place.images = [...new Set(place.images)].slice(0, 8);
 
-  // 유형별 상세(체크인/영업시간 등) — 값 있는 것만
+  // 유형별 상세 — 유형이 공통정보로 늦게 확정된 경우에만 지금 조회
   const fields = INTRO_FIELDS[Number(ctype)];
   if (fields) {
-    try {
-      const introData = await jget(
+    if (!introP) {
+      introP = jget(
         `${HOST}/${service}/detailIntro2?${COMMON(key, {
           contentId: safeId,
           contentTypeId: ctype,
         })}`
-      );
+      ).catch(() => null);
+    }
+    const introData = await introP;
+    if (introData) {
       const it = itemsOf(introData)[0];
       if (it) {
         for (const [labelKey, field] of fields) {
@@ -171,8 +188,6 @@ async function fetchPlaceRaw(id, typeId, service = "KorService2") {
           if (v) place.intro.push({ key: labelKey, value: v });
         }
       }
-    } catch {
-      /* 유형별 상세 없으면 생략 */
     }
   }
 
