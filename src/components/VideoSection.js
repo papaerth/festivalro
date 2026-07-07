@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/I18nProvider";
+import ShortsCard from "@/components/ShortsCard";
 
 // 섹션 제목·버튼 문구 (13개 언어). 블로그 후기(BlogList)와 같은 방식으로
 // 컴포넌트 안에 표를 두어 관리합니다.
@@ -29,18 +30,6 @@ const WATCH = {
   ar: "المشاهدة على YouTube", vi: "Xem trên YouTube", id: "Tonton di YouTube",
   th: "ดูบน YouTube",
 };
-
-// 조회수를 짧게 (locale에 맞춰: 12만 / 1.2M ...)
-function compactViews(n, locale) {
-  try {
-    return new Intl.NumberFormat(locale, {
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }).format(n);
-  } catch {
-    return String(n);
-  }
-}
 
 // ── 게시물 주소에서 영상 ID 뽑기 (큐레이션 임베드용) ──
 function youtubeId(url) {
@@ -71,53 +60,6 @@ function loadInstagram() {
   return igPromise;
 }
 
-// 유튜브 카드: 썸네일만 먼저 보이고, 클릭하면 그 자리에서 공식 플레이어 재생.
-function YouTubeCard({ item, locale, watchLabel }) {
-  const [open, setOpen] = useState(false);
-
-  if (open) {
-    return (
-      <div className="vid-card vid-card-open">
-        <iframe
-          src={`https://www.youtube.com/embed/${item.id}?autoplay=1&playsinline=1`}
-          title={item.title}
-          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-          allowFullScreen
-          loading="lazy"
-        />
-        <a
-          className="vid-yt"
-          href={`https://www.youtube.com/watch?v=${item.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          ▶ {watchLabel}
-        </a>
-      </div>
-    );
-  }
-
-  return (
-    <button className="vid-card" onClick={() => setOpen(true)} title={item.title}>
-      <span className="vid-thumb">
-        {item.thumb ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.thumb} alt="" loading="lazy" />
-        ) : (
-          <span className="vid-thumb-empty">🎬</span>
-        )}
-        <span className="vid-play-btn">▶</span>
-      </span>
-      <span className="vid-card-body">
-        <span className="vid-card-title">{item.title}</span>
-        <span className="vid-card-meta">
-          {item.channel}
-          {item.views ? ` · 👁 ${compactViews(item.views, locale)}` : ""}
-        </span>
-      </span>
-    </button>
-  );
-}
 
 // 큐레이션 임베드 카드(선택 축제만): 인스타/틱톡/유튜브 공식 플레이어.
 //  - 클릭하는 순간에만 임베드를 불러오는 지연 로딩
@@ -273,15 +215,15 @@ export default function VideoSection({ query, curatedVideos, accent = "#c2578a" 
       {/* 유튜브 쇼츠: 로딩 중엔 스켈레톤, 결과 있으면 가로 스크롤 카드 */}
       {state.status === "loading" && (
         <div className="vid-scroll" aria-label={v.loading}>
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="vid-card-skel skeleton" />
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="sf-skel skeleton" />
           ))}
         </div>
       )}
       {hasVideos && (
         <div className="vid-scroll">
           {state.items.map((it) => (
-            <YouTubeCard key={it.id} item={it} locale={locale} watchLabel={watch} />
+            <ShortsCard key={it.id} video={it} locale={locale} watchLabel={watch} />
           ))}
         </div>
       )}

@@ -37,8 +37,9 @@ function isoToSeconds(iso) {
   if (!m) return 0;
   return Number(m[1] || 0) * 3600 + Number(m[2] || 0) * 60 + Number(m[3] || 0);
 }
-// 쇼츠로 볼 수 있는 최대 길이(초) — 유튜브 쇼츠 상한(3분)에 맞춤
-const SHORTS_MAX_SEC = 180;
+// 쇼츠만 남기기 위한 최대 길이(초). 실측 결과 진짜 쇼츠는 대개 60초 이하이고
+// 60초를 넘는 짧은 영상은 대부분 가로형 롱폼이라, 60초로 끊어 롱폼을 확실히 제외.
+const SHORTS_MAX_SEC = 60;
 
 async function fetchWithTimeout(url, ms = 6000) {
   const controller = new AbortController();
@@ -87,17 +88,17 @@ export async function GET(request) {
   }
 
   try {
-    // 여러 각도로 검색하되 전부 '짧은 영상(쇼츠)'만 — 롱폼(장편)은 가져오지 않음.
-    //  - videoDuration=short(4분 미만)로 검색 단계에서 롱폼 제외
-    //  - "축제명 축제" + "축제명 브이로그"로 방문 쇼츠 확보(뉴스 편중 완화)
-    //  - 영어 페이지는 korea festival / korea vlog 병행
+    // 검색은 전부 videoDuration=short로 하고, 아래에서 60초 이하만 남겨 롱폼 제외.
+    //  - maxResults를 넉넉히(30) 받아 60초 이하 쇼츠 후보를 충분히 확보.
+    //    (유튜브 search는 maxResults를 늘려도 호출 비용이 동일 — 추가 호출 아님)
+    //  - "축제명 축제" + "축제명 브이로그"가 쇼츠 커버리지가 가장 좋음(호출 2회 유지)
     const searches = [
-      searchIds(key, `${query} 축제`, 10, "short"),
-      searchIds(key, `${query} 브이로그`, 8, "short"),
+      searchIds(key, `${query} 축제`, 30, "short"),
+      searchIds(key, `${query} 브이로그`, 20, "short"),
     ];
     if (en) {
-      searches.push(searchIds(key, `${query} korea festival`, 8, "short"));
-      searches.push(searchIds(key, `${query} korea vlog`, 6, "short"));
+      searches.push(searchIds(key, `${query} korea festival`, 25, "short"));
+      searches.push(searchIds(key, `${query} korea vlog`, 20, "short"));
     }
     const lists = await Promise.all(searches.map((p) => p.catch(() => [])));
 
@@ -108,7 +109,8 @@ export async function GET(request) {
         if (!rank.has(id) || i < rank.get(id)) rank.set(id, i);
       });
     });
-    const ids = [...rank.keys()].slice(0, 16);
+    // videos.list는 한 번에 최대 50개(1유닛)까지 조회 가능 → 후보를 넉넉히
+    const ids = [...rank.keys()].slice(0, 50);
     if (ids.length === 0) {
       return NextResponse.json({ configured: true, items: [] });
     }
@@ -125,6 +127,7 @@ export async function GET(request) {
         title: (v.snippet && v.snippet.title) || "",
         channel: (v.snippet && v.snippet.channelTitle) || "",
         views: Number((v.statistics && v.statistics.viewCount) || 0),
+        publishedAt: (v.snippet && v.snippet.publishedAt) || null,
         thumb: pickThumb(v.snippet && v.snippet.thumbnails),
         sec: isoToSeconds(v.contentDetails && v.contentDetails.duration),
       }))

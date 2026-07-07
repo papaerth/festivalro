@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/I18nProvider";
+import { getStatusInfo } from "@/lib/format";
+import ShortsCard from "@/components/ShortsCard";
 
 // 홈 화면 "메인 축제 쇼츠" 피드 문구 (13개 언어)
 const HL = {
@@ -30,61 +32,17 @@ function shuffle(arr) {
   return a;
 }
 
-// 카드 한 장: 썸네일만 먼저, 클릭하면 그 자리에서 재생.
-//  - 재생 중엔 "유튜브에서 크게 보기" 링크(새 탭)로 큰 화면 이동 가능
-function ShortItem({ festival, video, moreLabel, watchLabel, hrefFn, onPlay }) {
-  const [open, setOpen] = useState(false);
-  const name = festival.displayName || festival.name;
-  const ytUrl = `https://www.youtube.com/watch?v=${video.id}`;
-
+// 썸네일 좌상단에 얹을 축제명 + D-day 배지 (우리 사이트 고유 정보)
+function FestivalBadge({ festival, ongoingLabel }) {
+  const st = getStatusInfo(festival.startDate, festival.endDate);
+  const dday = st.key === "ongoing" ? ongoingLabel : st.label;
   return (
-    <div className="short-card">
-      {open ? (
-        <div className="short-thumb">
-          <iframe
-            src={`https://www.youtube.com/embed/${video.id}?autoplay=1&playsinline=1`}
-            title={video.title}
-            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-            allowFullScreen
-            loading="lazy"
-          />
-        </div>
-      ) : (
-        <button
-          className="short-thumb short-thumb-btn"
-          onClick={() => {
-            setOpen(true);
-            if (onPlay) onPlay();
-          }}
-          title={video.title}
-        >
-          {video.thumb ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={video.thumb} alt="" loading="lazy" />
-          ) : (
-            <span className="short-thumb-empty">🎬</span>
-          )}
-          <span className="short-play">▶</span>
-          <span className="short-fest-name">{name}</span>
-        </button>
-      )}
-
-      <div className="short-links">
-        {open && (
-          <a
-            className="short-yt"
-            href={ytUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            ▶ {watchLabel}
-          </a>
-        )}
-        <a className="short-more" href={hrefFn(`/festival/${festival.id}`)}>
-          {moreLabel} ›
-        </a>
-      </div>
-    </div>
+    <span className="sf-badge">
+      <span className={`sf-badge-dday ${st.key}`}>{dday}</span>
+      <span className="sf-badge-name">
+        {festival.displayName || festival.name}
+      </span>
+    </span>
   );
 }
 
@@ -95,7 +53,7 @@ function ShortItem({ festival, video, moreLabel, watchLabel, hrefFn, onPlay }) {
 //  - 영상 없는 축제 카드는 숨기고, 하나도 없으면 피드 전체를 숨깁니다.
 //  - 유튜브 키가 없거나 실패해도 홈 화면(지도·필터)은 정상 동작합니다.
 export default function HomeShortsFeed({ festivals = [], accent = "#c2578a" }) {
-  const { locale, href } = useI18n();
+  const { locale, href, t } = useI18n();
   const h = HL[locale] || HL.ko;
   // 메인 축제가 없으면 처음부터 조용히(스켈레톤 깜빡임 없이) 숨김
   const [state, setState] = useState(() =>
@@ -164,7 +122,7 @@ export default function HomeShortsFeed({ festivals = [], accent = "#c2578a" }) {
 
     const id = setInterval(() => {
       if (hover) return;
-      const card = el.querySelector(".short-card");
+      const card = el.querySelector(".sf-card");
       const step = (card ? card.offsetWidth : 150) + 12; // 카드폭 + gap
       if (el.scrollLeft + el.clientWidth >= el.scrollWidth - 8) {
         el.scrollTo({ left: 0, behavior: "smooth" }); // 끝에 닿으면 처음으로
@@ -186,8 +144,8 @@ export default function HomeShortsFeed({ festivals = [], accent = "#c2578a" }) {
       <section className="home-shorts" style={{ "--accent": accent }}>
         <h2 className="home-shorts-title">{h.title}</h2>
         <div className="vid-scroll" aria-label={h.loading}>
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="short-card short-skel skeleton" />
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="sf-skel skeleton" />
           ))}
         </div>
       </section>
@@ -202,13 +160,19 @@ export default function HomeShortsFeed({ festivals = [], accent = "#c2578a" }) {
       <h2 className="home-shorts-title">{h.title}</h2>
       <div className="vid-scroll" ref={scrollRef}>
         {state.items.map(({ festival, video }) => (
-          <ShortItem
+          <ShortsCard
             key={festival.id}
-            festival={festival}
             video={video}
-            moreLabel={h.more}
+            locale={locale}
             watchLabel={h.watch}
-            hrefFn={href}
+            badge={
+              <FestivalBadge
+                festival={festival}
+                ongoingLabel={t.status.ongoingShort}
+              />
+            }
+            moreHref={href(`/festival/${festival.id}`)}
+            moreLabel={h.more}
             onPlay={() => setEngaged(true)}
           />
         ))}
