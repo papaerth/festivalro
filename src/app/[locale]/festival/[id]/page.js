@@ -6,6 +6,7 @@ import { getCurated } from "@/lib/curated";
 import { getRelatedFestivals } from "@/lib/related";
 import RelatedFestivals from "@/components/RelatedFestivals";
 import RecordView from "@/components/RecordView";
+import PrivacyLink from "@/components/PrivacyLink";
 import { SEASONS } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import {
@@ -311,7 +312,9 @@ export default async function FestivalDetailPage({ params }) {
       />
 
       <footer className="site-footer">
-        <div className="container">{dict.footer}</div>
+        <div className="container">
+          {dict.footer} · <PrivacyLink />
+        </div>
       </footer>
     </div>
   );

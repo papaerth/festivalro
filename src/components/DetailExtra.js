@@ -1,8 +1,8 @@
 // 상세페이지 '자동 수집' 섹션들의 표시 컴포넌트 (서버 렌더).
 //  - 값이 없으면 각 컴포넌트가 null 반환 → 섹션 숨김
-import Link from "next/link";
 import { getSections, localeHref } from "@/lib/i18n";
 import CoverImage from "./CoverImage";
+import NearbyCardLink from "./NearbyCardLink";
 
 function KoTag({ loc }) {
   return loc !== "ko" ? <span className="ko-tag">(Korean)</span> : null;
@@ -60,7 +60,16 @@ export function NearbyList({ title, icon, items, loc, festivalId }) {
             </>
           );
 
-          // 데이터 유무로 자동 판단:
+          const cat =
+            it.contentTypeId === "32"
+              ? "stay"
+              : it.contentTypeId === "39"
+              ? "restaurant"
+              : it.contentTypeId === "12"
+              ? "tourspot"
+              : "place";
+
+          // 데이터 유무로 자동 판단(+ 클릭 집계):
           //  - 사진이 있는(=상세가 채워질) 장소 → 사이트 안 장소 상세페이지(/place)
           //  - 사진도 없는(=빈약한) 장소 → 빈 페이지 대신 카카오맵 검색 결과를 새 탭으로
           if (it.image) {
@@ -70,9 +79,15 @@ export function NearbyList({ title, icon, items, loc, festivalId }) {
             }).toString();
             const href = localeHref(loc, `/place/${it.id}${q ? `?${q}` : ""}`);
             return (
-              <Link className="nearby-card" key={it.id} href={href}>
+              <NearbyCardLink
+                key={it.id}
+                href={href}
+                category={cat}
+                placeId={it.id}
+                placeName={it.name}
+              >
                 {inner}
-              </Link>
+              </NearbyCardLink>
             );
           }
 
@@ -80,15 +95,16 @@ export function NearbyList({ title, icon, items, loc, festivalId }) {
             it.name
           )}`;
           return (
-            <a
-              className="nearby-card"
+            <NearbyCardLink
               key={it.id}
               href={kakao}
-              target="_blank"
-              rel="noopener noreferrer"
+              external
+              category={cat}
+              placeId={it.id}
+              placeName={it.name}
             >
               {inner}
-            </a>
+            </NearbyCardLink>
           );
         })}
       </div>

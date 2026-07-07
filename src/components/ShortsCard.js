@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatViews, relativeTime } from "@/lib/videoFormat";
+import { trackEvent } from "@/lib/analytics";
 
 // 쇼츠 썸네일: 세로(9:16) 원본 썸네일(oardefault)이 있으면 그것으로 카드를
 // 꽉 채우고, 없으면(일반 16:9 썸네일) 기존 썸네일로, 그것도 없으면 자리표시로.
@@ -60,6 +61,10 @@ export default function ShortsCard({
         <button
           className="sf-thumb sf-thumb-btn"
           onClick={() => {
+            trackEvent("video_play", {
+              video_id: video.id,
+              video_title: video.title,
+            });
             setOpen(true);
             if (onPlay) onPlay();
           }}

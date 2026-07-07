@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useI18n } from "@/lib/I18nProvider";
+import { trackEvent } from "@/lib/analytics";
 
 const DIR = {
   "zh-TW": { locating: "定位中…", hint: "允許定位，即可從您所在位置開始導航。" },
@@ -36,6 +37,7 @@ export default function DirectionsButton({ name, lat, lng }) {
   };
 
   const handleClick = () => {
+    trackEvent("directions_click", { festival_name: name });
     if (!("geolocation" in navigator)) {
       openKakao(null);
       return;

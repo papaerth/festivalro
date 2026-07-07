@@ -4,6 +4,8 @@ import { AuthProvider } from "@/lib/AuthProvider";
 import { I18nProvider } from "@/lib/I18nProvider";
 import { CardNewsProvider } from "@/components/CardNewsProvider";
 import ScrollReveal from "@/components/ScrollReveal";
+import GoogleAnalytics from "@/components/GoogleAnalytics";
+import { Analytics } from "@vercel/analytics/react";
 import {
   LOCALES,
   DEFAULT_LOCALE,
@@ -77,12 +79,14 @@ export default async function RootLayout({ children, params }) {
   return (
     <html lang={HTML_LANG[loc]} dir={isRtl(loc) ? "rtl" : "ltr"}>
       <body className={`${blackHanSans.variable} ${notoSansKr.variable}`}>
+        <GoogleAnalytics />
         <I18nProvider locale={loc}>
           <AuthProvider>
             <CardNewsProvider>{children}</CardNewsProvider>
             <ScrollReveal />
           </AuthProvider>
         </I18nProvider>
+        <Analytics />
       </body>
     </html>
   );

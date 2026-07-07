@@ -19,6 +19,10 @@ const PRIV = {
     p5: "이용자는 자신의 개인정보에 대한 열람·수정·삭제를 요청할 수 있으며, 프로필 화면에서 닉네임을 직접 수정하거나 계정 삭제를 요청할 수 있습니다.",
     h6: "6. 문의",
     p6: "개인정보 관련 문의: 서비스 운영자 이메일로 연락 주시기 바랍니다.",
+    analytics: {
+      h: "🔎 방문 분석 및 쿠키",
+      p: "서비스는 방문자 통계와 이용 현황 파악을 위해 Vercel Analytics와 Google Analytics(GA4)를 사용하며, 이 과정에서 쿠키가 사용될 수 있습니다. 이 도구들은 페이지 조회·클릭 등 익명 통계를 수집하고, GA4는 IP 주소를 익명화하여 개인을 식별하지 않습니다. 수집된 정보는 서비스 개선 및 제휴 검토 목적으로만 사용됩니다. 브라우저 설정에서 쿠키를 차단하거나 Google 분석 옵트아웃으로 수집을 거부할 수 있습니다.",
+    },
     back: "← 홈으로",
   },
   en: {
@@ -38,6 +42,10 @@ const PRIV = {
     p5: "You may request to view, edit, or delete your personal data. You can edit your nickname directly on the profile page or request account deletion.",
     h6: "6. Contact",
     p6: "For privacy inquiries, please contact the Service operator by email.",
+    analytics: {
+      h: "🔎 Analytics & cookies",
+      p: "The Service uses Vercel Analytics and Google Analytics (GA4) to understand visitor traffic and usage, which may involve cookies. These tools collect anonymous statistics such as page views and clicks, and GA4 anonymizes IP addresses so individuals are not identified. The data is used only to improve the Service and evaluate partnerships. You can block cookies in your browser settings or opt out of Google Analytics.",
+    },
     back: "← Home",
   },
   ja: {
@@ -57,6 +65,10 @@ const PRIV = {
     p5: "利用者は自身の個人情報の閲覧・修正・削除を請求でき、プロフィール画面でニックネームを直接修正、またはアカウント削除を請求できます。",
     h6: "6. お問い合わせ",
     p6: "個人情報に関するお問い合わせは、サービス運営者のメールまでご連絡ください。",
+    analytics: {
+      h: "🔎 アクセス解析とCookie",
+      p: "本サービスは訪問者数や利用状況を把握するため、Vercel AnalyticsおよびGoogle Analytics（GA4）を使用し、その際にCookieが利用されることがあります。これらはページ閲覧・クリックなどの匿名統計を収集し、GA4はIPアドレスを匿名化して個人を特定しません。収集した情報はサービス改善および提携検討の目的にのみ使用します。ブラウザ設定でCookieをブロックするか、Googleのオプトアウトで収集を拒否できます。",
+    },
     back: "← ホームへ",
   },
   zh: {
@@ -76,6 +88,10 @@ const PRIV = {
     p5: "用户可申请查阅·修改·删除本人的个人信息，并可在资料页面直接修改昵称或申请删除账号。",
     h6: "6. 咨询",
     p6: "个人信息相关咨询，请通过服务运营者邮箱联系。",
+    analytics: {
+      h: "🔎 访问分析与 Cookie",
+      p: "本服务使用 Vercel Analytics 和 Google Analytics（GA4）来了解访问量和使用情况，这可能会用到 Cookie。这些工具收集页面浏览、点击等匿名统计，GA4 会将 IP 地址匿名化，不识别个人。所收集的信息仅用于改进服务和评估合作。您可以在浏览器设置中阻止 Cookie，或通过 Google 的选择退出来拒绝收集。",
+    },
     back: "← 首页",
   },
 };
@@ -131,6 +147,13 @@ export default async function PrivacyPage({ params }) {
             <li key={i}>{x}</li>
           ))}
         </ul>
+
+        {p.analytics && (
+          <>
+            <h2>{p.analytics.h}</h2>
+            <p>{p.analytics.p}</p>
+          </>
+        )}
 
         <h2>{p.h5}</h2>
         <p>{p.p5}</p>

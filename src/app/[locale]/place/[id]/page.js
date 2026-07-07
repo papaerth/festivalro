@@ -21,6 +21,7 @@ import PlaceGallery from "@/components/PlaceGallery";
 import RelatedFestivals from "@/components/RelatedFestivals";
 import AccountMenu from "@/components/AccountMenu";
 import LangSwitcher from "@/components/LangSwitcher";
+import PrivacyLink from "@/components/PrivacyLink";
 
 export async function generateMetadata({ params, searchParams }) {
   const { id, locale } = await params;
@@ -172,7 +173,9 @@ export default async function PlaceDetailPage({ params, searchParams }) {
       </main>
 
       <footer className="site-footer">
-        <div className="container">{dict.footer}</div>
+        <div className="container">
+          {dict.footer} · <PrivacyLink />
+        </div>
       </footer>
     </div>
   );

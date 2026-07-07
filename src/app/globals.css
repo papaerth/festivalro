@@ -2766,6 +2766,16 @@ h3 {
   display: none;
 }
 
+/* 푸터 개인정보처리방침 링크 */
+.footer-link {
+  color: var(--text-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.footer-link:hover {
+  color: var(--accent);
+}
+
 /* ─── 아랍어 등 오른쪽→왼쪽(RTL) 언어 보정 ─── */
 [dir="rtl"] .lang-menu {
   right: auto;

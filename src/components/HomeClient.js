@@ -16,6 +16,7 @@ import LangSwitcher from "./LangSwitcher";
 import HeroCarousel from "./HeroCarousel";
 import HomeShortsFeed from "./HomeShortsFeed";
 import RecentViewed from "./RecentViewed";
+import PrivacyLink from "./PrivacyLink";
 
 // 상단 배지 문구 (13개 언어). today=오늘 진행중 / week=이번 주 진행 축제(작은 숫자 방지용)
 const TODAY = {
@@ -568,7 +569,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       </main>
 
       <footer className="site-footer">
-        <div className="container">{t.footer}</div>
+        <div className="container">
+          {t.footer} · <PrivacyLink />
+        </div>
       </footer>
     </div>
   );
