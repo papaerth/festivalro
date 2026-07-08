@@ -108,8 +108,14 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) {
       setMapFocus({ id: f.id, lat: f.lat, lng: f.lng, ts: Date.now() });
     }
-    if (mapRef.current) {
-      mapRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    // 지도가 이미 화면에 보이면(PC 좌우 배치) 스크롤하지 않음 — 옆에서 바로 반응.
+    // 안 보이면(모바일 스택) 지도로 부드럽게 스크롤.
+    const el = mapRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      const visible =
+        r.top < window.innerHeight * 0.85 && r.bottom > window.innerHeight * 0.15;
+      if (!visible) el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   };
 
@@ -490,17 +496,19 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
         {/* 즐겨찾기 알림 — 최상단에서 필터 아래로 이동, 얇은 배너 (즐겨찾기 있을 때만) */}
         <FavoriteAlerts festivals={festivals} />
 
-        {/* 다가오는 인기 축제 — 대형 히어로 캐러셀 (지도와 분리된 독립 섹션) */}
-        <HeroCarousel festivals={carousel} onPick={handleHeroPick} />
-
-        {/* 지도 위 쇼츠 피드 — 진행중·예정 메인 축제 5개의 유튜브 쇼츠.
-            영상이 없거나 키/호출 실패면 이 피드만 조용히 숨고 지도·필터는 정상. */}
-        <HomeShortsFeed festivals={mainShorts} accent={theme.color} />
-
-        {/* 지도 — 풀와이드 (카드 클릭 시 이 영역으로 스크롤+확대) */}
-        <div className="map-section" ref={mapRef}>
-          <MapView festivals={filtered} ratings={ratings} focus={mapFocus} />
+        {/* 카드뉴스 + 세로 지도 좌우 배치 (PC). 모바일은 카드뉴스→지도 세로 스택.
+            카드/검색으로 축제 선택 시 옆 지도가 바로 줌인+팝업(스크롤 없이 한눈에). */}
+        <div className="carousel-map-row">
+          <div className="cmr-carousel">
+            <HeroCarousel festivals={carousel} onPick={handleHeroPick} />
+          </div>
+          <div className="cmr-map" ref={mapRef}>
+            <MapView festivals={filtered} ratings={ratings} focus={mapFocus} />
+          </div>
         </div>
+
+        {/* 메인 축제 쇼츠 피드 */}
+        <HomeShortsFeed festivals={mainShorts} accent={theme.color} />
 
         {/* 상태별 개수 요약 (누르면 해당 상태만 필터) */}
         <div className="status-summary" suppressHydrationWarning>
