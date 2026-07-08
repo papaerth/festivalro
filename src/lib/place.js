@@ -1,3 +1,4 @@
+import "server-only"; // 이 파일은 서버에서만 — 실수로 클라이언트에 import하면 빌드 실패(키 보호)
 // ────────────────────────────────────────────────────────────────
 //  장소 상세페이지 데이터 (TourAPI detailCommon2/detailImage2/detailIntro2)
 //   - 축제 상세와 동일한 TOUR_API_KEY 하나로 조회, 성공 결과만 24h 캐싱
