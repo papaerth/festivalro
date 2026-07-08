@@ -1,7 +1,11 @@
 // 카드뉴스 '소개 요약' 슬라이드용 — 축제 소개문(+지원 언어 번역)을 가볍게 반환
 import { getFestivalById } from "@/lib/festivals";
+import { rateLimit, rateLimitResponse } from "@/lib/rateLimit";
 
 export async function GET(request) {
+  const rl = rateLimit("overview", request);
+  if (!rl.ok) return rateLimitResponse(rl.retryAfter);
+
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   const locale = searchParams.get("locale") || "ko";

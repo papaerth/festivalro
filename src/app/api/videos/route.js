@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rateLimit, rateLimitResponse } from "@/lib/rateLimit";
 
 // ────────────────────────────────────────────────────────────────
 //  축제 영상 검색 중계소 (YouTube Data API v3)
@@ -74,6 +75,9 @@ async function searchIds(key, q, max, duration) {
 }
 
 export async function GET(request) {
+  const rl = rateLimit("videos", request);
+  if (!rl.ok) return rateLimitResponse(rl.retryAfter);
+
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("query");
   const en = searchParams.get("en") === "1"; // 영어 페이지: 외국인 브이로그 병행 검색

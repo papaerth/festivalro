@@ -8,6 +8,8 @@
 //  보안: 아무 주소나 대신 받아오면 위험하므로 네이버/pstatic 호스트만 허용.
 // ────────────────────────────────────────────────────────────────
 
+import { rateLimit, rateLimitResponse } from "@/lib/rateLimit";
+
 // 허용 호스트인지 검사 (pstatic.net, naver.com, naver.net 계열만)
 function isAllowedHost(hostname) {
   const h = hostname.toLowerCase();
@@ -20,6 +22,9 @@ function isAllowedHost(hostname) {
 }
 
 export async function GET(request) {
+  const rl = rateLimit("img", request);
+  if (!rl.ok) return rateLimitResponse(rl.retryAfter);
+
   const { searchParams } = new URL(request.url);
   const target = searchParams.get("url");
   if (!target) {

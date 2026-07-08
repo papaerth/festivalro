@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rateLimit, rateLimitResponse } from "@/lib/rateLimit";
 
 // ────────────────────────────────────────────────────────────────
 //  블로그 검색 중계소 (네이버 검색 API)
@@ -79,6 +80,9 @@ async function fetchOgImage(link) {
 }
 
 export async function GET(request) {
+  const rl = rateLimit("blog", request);
+  if (!rl.ok) return rateLimitResponse(rl.retryAfter);
+
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("query");
   if (!query) {

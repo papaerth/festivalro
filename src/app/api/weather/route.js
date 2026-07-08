@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { describeWeather } from "@/lib/weatherCodes";
 import { describeMetSymbol } from "@/lib/metSymbols";
+import { rateLimit, rateLimitResponse } from "@/lib/rateLimit";
 
 // ────────────────────────────────────────────────────────────────
 //  날씨 중계소 (서버가 대신 날씨를 불러와 화면에 전달)
@@ -266,6 +267,9 @@ function sumPrecip(pd) {
 }
 
 export async function GET(request) {
+  const rl = rateLimit("weather", request);
+  if (!rl.ok) return rateLimitResponse(rl.retryAfter);
+
   const { searchParams } = new URL(request.url);
   const lat = searchParams.get("lat");
   const lng = searchParams.get("lng");
