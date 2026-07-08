@@ -2939,7 +2939,9 @@ h3 {
   color: var(--text);
 }
 .cn-dday {
-  font-family: var(--font-title);
+  font-family: var(--font-sans);
+  font-weight: 700;
+  letter-spacing: -0.02em;
   font-size: var(--fs-title);
   color: var(--accent);
   margin-top: 6px;
@@ -2948,7 +2950,9 @@ h3 {
   font-size: var(--fs-title);
 }
 .cn-h {
-  font-family: var(--font-title);
+  font-family: var(--font-sans);
+  font-weight: 700;
+  letter-spacing: -0.02em;
   font-size: var(--fs-heading);
   color: var(--accent);
   margin-bottom: 4px;
@@ -3169,7 +3173,9 @@ h3 {
   color: #fff;
 }
 .hero-card-title {
-  font-family: var(--font-title);
+  font-family: var(--font-sans); /* Pretendard 700 (카드뉴스 제목 서체 통일) */
+  font-weight: 700;
+  letter-spacing: -0.02em;
   font-size: var(--fs-title);
   line-height: 1.18;
   margin: 0 0 7px;
