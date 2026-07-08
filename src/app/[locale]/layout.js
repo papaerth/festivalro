@@ -59,6 +59,10 @@ export async function generateMetadata({ params }) {
     metadataBase: new URL(SITE_URL),
     title: dict.meta.homeTitle,
     description: dict.meta.homeDesc,
+    // 구글 서치콘솔 소유권 확인 (모든 페이지 <head>에 자동 삽입)
+    verification: {
+      google: "X2lMlAl8Jnk1K-WzSlT70dzBXQG-27cRjTyMTuJPhV8",
+    },
     alternates: {
       canonical: `${SITE_URL}${localeHref(loc, "/")}`,
       languages,
