@@ -42,6 +42,28 @@ function isoToSeconds(iso) {
 // 60초를 넘는 짧은 영상은 대부분 가로형 롱폼이라, 60초로 끊어 롱폼을 확실히 제외.
 const SHORTS_MAX_SEC = 60;
 
+// 공백 제거 + 소문자화(제목/축제명 비교용 정규화)
+function normText(s) {
+  return (s || "").toLowerCase().replace(/\s+/g, "");
+}
+
+// 축제명에서 '영상 제목에 들어있어야 하는' 핵심 키워드를 뽑습니다.
+//  - 원래 이름 + '축제/페스티벌/문화제' 같은 흔한 꼬리말을 뗀 이름
+//  - 너무 짧은(1글자) 키워드는 아무 데나 매칭되므로 제외
+function nameKeywords(q) {
+  const base = (q || "").trim();
+  const stripped = base
+    .replace(/축제|페스티벌|페스타|문화제|대축제|festival/gi, "")
+    .trim();
+  const kws = new Set();
+  if (normText(base).length >= 2) kws.add(normText(base));
+  if (normText(stripped).length >= 2) kws.add(normText(stripped));
+  base.split(/\s+/).forEach((t) => {
+    if (normText(t).length >= 2) kws.add(normText(t));
+  });
+  return [...kws].filter(Boolean);
+}
+
 async function fetchWithTimeout(url, ms = 6000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -138,18 +160,30 @@ export async function GET(request) {
       // 롱폼 제외 — 재생시간 3분 초과는 버리고 쇼츠/짧은 영상만 남김
       .filter((c) => c.sec > 0 && c.sec <= SHORTS_MAX_SEC);
 
+    // 축제명이 제목/채널에 실제로 들어간 영상만 '관련 영상'으로 봅니다.
+    //  (유튜브가 결과를 채우려 넣는 무관한 여행·일상 브이로그를 걸러내는 핵심 장치)
+    const keywords = nameKeywords(query);
+
     // 뉴스/방송 채널은 감점, 브이로그·공식/지자체 채널은 가점, 관련도도 반영해 정렬.
     //  (뉴스는 완전히 빼지 않고 뒤로만 밀어, 영상이 뉴스뿐인 축제도 빈 섹션이 안 되게)
     const scored = cand.map((v) => {
       const text = `${v.channel} ${v.title}`;
+      const nt = normText(text);
+      const related = keywords.some((k) => nt.includes(k)); // 축제명 포함 여부
       let s = Math.max(0, 16 - (rank.get(v.id) ?? 16));
+      if (related) s += 100; // 축제명이 들어간 영상을 가장 크게 우대
       if (NEWS_RE.test(v.channel)) s -= 100;
       if (VLOG_RE.test(text)) s += 40;
       if (OFFICIAL_RE.test(v.channel)) s += 30;
-      return { v, s };
+      return { v, s, related };
     });
     scored.sort((a, b) => b.s - a.s);
-    const items = scored.slice(0, 6).map((x) => x.v);
+
+    // 축제명이 들어간 '관련 영상'이 하나라도 있으면 그것만 노출(무관한 영상 제거).
+    //  전혀 없을 때만(아주 드묾) 기존 방식으로 폴백해 섹션이 비지 않게 함.
+    const relatedItems = scored.filter((x) => x.related);
+    const pool = relatedItems.length > 0 ? relatedItems : scored;
+    const items = pool.slice(0, 6).map((x) => x.v);
 
     return NextResponse.json(
       { configured: true, items },
