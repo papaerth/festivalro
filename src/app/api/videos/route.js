@@ -17,13 +17,11 @@ import { rateLimit, rateLimitResponse } from "@/lib/rateLimit";
 
 const YT_SEARCH = "https://www.googleapis.com/youtube/v3/search";
 const YT_VIDEOS = "https://www.googleapis.com/youtube/v3/videos";
+const YT_CHANNELS = "https://www.googleapis.com/youtube/v3/channels";
 const DAY = 60 * 60 * 24;
 
-// 검색 결과에서 뉴스/방송 클립은 뒤로, 브이로그·공식/지자체 채널은 앞으로
-// 정렬하기 위한 판별용 패턴 (채널명/제목 기준).
+// 뉴스/방송 클립은 목록 뒤로 밀기(우선순위 제외) 위한 채널 판별용 패턴.
 const NEWS_RE = /news|뉴스|kbs|mbc|sbs|ytn|jtbc|mbn|연합뉴스|채널a|tv조선|tvchosun|tbc|obs|보도|앵커|뉴스데스크/i;
-const VLOG_RE = /브이로그|vlog|다녀|후기|여행|먹방|일상|가족|커플|데이트|당일치기|힐링|투어|즐기기/i;
-const OFFICIAL_RE = /공식|official|시청|군청|도청|관광재단|문화재단|관광공사|축제위원회|조직위|관광|시ㅣ/i;
 
 // 썸네일 중 큰 것 우선으로 URL 하나 고르기
 function pickThumb(thumbs) {
@@ -50,20 +48,42 @@ function normText(s) {
 }
 
 // 축제명에서 '영상 제목에 들어있어야 하는' 핵심 키워드를 뽑습니다.
-//  - 원래 이름 + '축제/페스티벌/문화제' 같은 흔한 꼬리말을 뗀 이름
-//  - 너무 짧은(1글자) 키워드는 아무 데나 매칭되므로 제외
+//  - 정식 이름(공백제거) + 꼬리말(축제/페스티벌…)을 뗀 이름(3자 이상)만 사용.
+//  - 흔한 조각(예: '축제', '서울')이 아무 영상에나 걸리지 않도록 조각 분해는 하지 않음.
 function nameKeywords(q) {
-  const base = (q || "").trim();
-  const stripped = base
-    .replace(/축제|페스티벌|페스타|문화제|대축제|festival/gi, "")
-    .trim();
+  const base = normText(q);
+  const stripped = normText(
+    (q || "").replace(/축제|페스티벌|페스타|문화제|대축제|festival/gi, "")
+  );
   const kws = new Set();
-  if (normText(base).length >= 2) kws.add(normText(base));
-  if (normText(stripped).length >= 2) kws.add(normText(stripped));
-  base.split(/\s+/).forEach((t) => {
-    if (normText(t).length >= 2) kws.add(normText(t));
-  });
+  if (base.length >= 2) kws.add(base);
+  if (stripped.length >= 3) kws.add(stripped);
   return [...kws].filter(Boolean);
+}
+
+// 제목이 축제명을 '비유/과장'으로만 쓴 경우 제외 (예: "…축제급 꾸덕함", "…축제 같은").
+const METAPHOR_RE = /^(급|같|만큼|처럼|수준|뺨|보다|이상|버금)/;
+// 매칭된 키워드 뒤에 붙은 꼬리말(축제 등)은 건너뛰고 비유 여부를 판단하기 위한 패턴.
+const SUFFIX_RE = /^(축제|페스티벌|페스타|문화제)/;
+
+// 영상이 실제로 이 축제와 관련 있는지 판정.
+//  - 채널명에 축제명이 있으면 관련(공식·지자체 채널 등)
+//  - 제목에 축제명이 있고, (꼬리말을 건너뛴) 바로 뒤가 '급/같은/처럼' 비유가 아니면 관련
+function isRelatedVideo(title, channel, keywords) {
+  const nc = normText(channel);
+  const nt = normText(title);
+  for (const k of keywords) {
+    if (nc.includes(k)) return true;
+    let idx = nt.indexOf(k);
+    while (idx !== -1) {
+      let after = nt.slice(idx + k.length);
+      const m = after.match(SUFFIX_RE);
+      if (m) after = after.slice(m[0].length); // '축제' 등 꼬리말 건너뛰기
+      if (!METAPHOR_RE.test(after)) return true;
+      idx = nt.indexOf(k, idx + 1);
+    }
+  }
+  return false;
 }
 
 async function fetchWithTimeout(url, ms = 6000) {
@@ -96,6 +116,26 @@ async function searchIds(key, q, max, duration) {
   return (data.items || [])
     .map((it) => it.id && it.id.videoId)
     .filter(Boolean);
+}
+
+// 채널별 구독자수 조회 (channels.list = 1유닛, 한 번에 최대 50채널). 숨김/실패는 0.
+async function fetchSubscribers(key, channelIds) {
+  const map = {};
+  const ids = channelIds.filter(Boolean).slice(0, 50);
+  if (ids.length === 0) return map;
+  try {
+    const url = `${YT_CHANNELS}?key=${key}&part=statistics&id=${ids.join(",")}`;
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) return map;
+    const data = await res.json();
+    (data.items || []).forEach((ch) => {
+      const st = ch.statistics || {};
+      map[ch.id] = st.hiddenSubscriberCount ? 0 : Number(st.subscriberCount || 0);
+    });
+  } catch {
+    /* 실패해도 구독자수 0으로 정렬 진행 */
+  }
+  return map;
 }
 
 export async function GET(request) {
@@ -153,6 +193,7 @@ export async function GET(request) {
         id: v.id,
         title: (v.snippet && v.snippet.title) || "",
         channel: (v.snippet && v.snippet.channelTitle) || "",
+        channelId: (v.snippet && v.snippet.channelId) || null,
         views: Number((v.statistics && v.statistics.viewCount) || 0),
         publishedAt: (v.snippet && v.snippet.publishedAt) || null,
         thumb: pickThumb(v.snippet && v.snippet.thumbnails),
@@ -161,29 +202,38 @@ export async function GET(request) {
       // 쇼츠 제외 — 60초 이하(쇼츠)와 너무 긴 라이브(1시간 초과)를 버리고 롱폼만 남김
       .filter((c) => c.sec > MIN_LONGFORM_SEC && c.sec <= MAX_LONGFORM_SEC);
 
-    // 축제명이 제목/채널에 실제로 들어간 영상만 '관련 영상'으로 봅니다.
-    //  (유튜브가 결과를 채우려 넣는 무관한 여행·일상 브이로그를 걸러내는 핵심 장치)
+    // 구독자수 정렬을 위해 후보 영상들의 채널 구독자수를 한 번 더 조회.
+    const channelIds = [...new Set(cand.map((c) => c.channelId).filter(Boolean))];
+    const subsByChannel = await fetchSubscribers(key, channelIds);
+
+    // 각 영상에 정렬용 값 부여: 관련성·뉴스여부·최신묶음·조회수·구독자수
     const keywords = nameKeywords(query);
-
-    // 뉴스/방송 채널은 감점, 브이로그·공식/지자체 채널은 가점, 관련도도 반영해 정렬.
-    //  (뉴스는 완전히 빼지 않고 뒤로만 밀어, 영상이 뉴스뿐인 축제도 빈 섹션이 안 되게)
-    const scored = cand.map((v) => {
-      const text = `${v.channel} ${v.title}`;
-      const nt = normText(text);
-      const related = keywords.some((k) => nt.includes(k)); // 축제명 포함 여부
-      let s = Math.max(0, 16 - (rank.get(v.id) ?? 16));
-      if (related) s += 100; // 축제명이 들어간 영상을 가장 크게 우대
-      if (NEWS_RE.test(v.channel)) s -= 100;
-      if (VLOG_RE.test(text)) s += 40;
-      if (OFFICIAL_RE.test(v.channel)) s += 30;
-      return { v, s, related };
+    const now = Date.now();
+    const enriched = cand.map((v) => {
+      const related = isRelatedVideo(v.title, v.channel, keywords); // 실제 관련(비유 제외)
+      const isNews = NEWS_RE.test(v.channel);
+      const publishedMs = v.publishedAt ? Date.parse(v.publishedAt) : 0;
+      const daysAgo = publishedMs ? (now - publishedMs) / 86400000 : 1e9;
+      const bucket = Math.floor(daysAgo / 30); // 약 한 달 단위 묶음(작을수록 최근)
+      const subs = subsByChannel[v.channelId] || 0;
+      return { v, related, isNews, bucket, views: v.views, subs };
     });
-    scored.sort((a, b) => b.s - a.s);
 
-    // 축제명이 들어간 '관련 영상'이 하나라도 있으면 그것만 노출(무관한 영상 제거).
-    //  전혀 없을 때만(아주 드묾) 기존 방식으로 폴백해 섹션이 비지 않게 함.
-    const relatedItems = scored.filter((x) => x.related);
-    const pool = relatedItems.length > 0 ? relatedItems : scored;
+    // 노출 대상: 축제명이 들어간 '관련 영상' + 뉴스 아님을 우선.
+    //  없으면 단계적으로 완화(관련만 → 전체)해 섹션이 비지 않게 함.
+    const relatedNonNews = enriched.filter((x) => x.related && !x.isNews);
+    const relatedAny = enriched.filter((x) => x.related);
+    const pool =
+      relatedNonNews.length > 0
+        ? relatedNonNews
+        : relatedAny.length > 0
+        ? relatedAny
+        : enriched;
+
+    // 정렬 우선순위: ① 최신 묶음(최근 먼저) ② 조회수(많은 순) ③ 구독자수(많은 순)
+    pool.sort(
+      (a, b) => a.bucket - b.bucket || b.views - a.views || b.subs - a.subs
+    );
     const items = pool.slice(0, 6).map((x) => x.v);
 
     return NextResponse.json(
