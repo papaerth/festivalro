@@ -7,19 +7,19 @@ import ShortsCard from "@/components/ShortsCard";
 
 // 홈 화면 "메인 축제 쇼츠" 피드 문구 (13개 언어)
 const HL = {
-  ko: { title: "🎬 지금 뜨는 축제 쇼츠", loading: "쇼츠 불러오는 중", more: "자세히 보기", watch: "유튜브에서 크게 보기" },
-  en: { title: "🎬 Festivals in Shorts", loading: "Loading shorts", more: "View details", watch: "Watch on YouTube" },
-  ja: { title: "🎬 話題のお祭りショート", loading: "ショートを読み込み中", more: "詳しく見る", watch: "YouTubeで見る" },
-  zh: { title: "🎬 热门庆典短视频", loading: "正在加载短视频", more: "查看详情", watch: "在 YouTube 观看" },
-  "zh-TW": { title: "🎬 熱門慶典短影音", loading: "正在載入短影音", more: "查看詳情", watch: "在 YouTube 觀看" },
-  es: { title: "🎬 Festivales en Shorts", loading: "Cargando shorts", more: "Ver detalles", watch: "Ver en YouTube" },
-  fr: { title: "🎬 Festivals en Shorts", loading: "Chargement des shorts", more: "Voir les détails", watch: "Voir sur YouTube" },
-  ru: { title: "🎬 Фестивали в Shorts", loading: "Загрузка роликов", more: "Подробнее", watch: "Смотреть на YouTube" },
-  de: { title: "🎬 Feste in Shorts", loading: "Shorts werden geladen", more: "Details ansehen", watch: "Auf YouTube ansehen" },
-  ar: { title: "🎬 المهرجانات في Shorts", loading: "جارٍ تحميل المقاطع", more: "عرض التفاصيل", watch: "المشاهدة على YouTube" },
-  vi: { title: "🎬 Lễ hội qua Shorts", loading: "Đang tải shorts", more: "Xem chi tiết", watch: "Xem trên YouTube" },
-  id: { title: "🎬 Festival dalam Shorts", loading: "Memuat shorts", more: "Lihat detail", watch: "Tonton di YouTube" },
-  th: { title: "🎬 เทศกาลใน Shorts", loading: "กำลังโหลด Shorts", more: "ดูรายละเอียด", watch: "ดูบน YouTube" },
+  ko: { title: "🎬 영상으로 만나는 축제", loading: "영상 불러오는 중", more: "자세히 보기", watch: "유튜브에서 크게 보기" },
+  en: { title: "🎬 Festivals in Video", loading: "Loading videos", more: "View details", watch: "Watch on YouTube" },
+  ja: { title: "🎬 動画で出会うお祭り", loading: "動画を読み込み中", more: "詳しく見る", watch: "YouTubeで見る" },
+  zh: { title: "🎬 视频里的热门庆典", loading: "正在加载视频", more: "查看详情", watch: "在 YouTube 观看" },
+  "zh-TW": { title: "🎬 影片裡的熱門慶典", loading: "正在載入影片", more: "查看詳情", watch: "在 YouTube 觀看" },
+  es: { title: "🎬 Festivales en vídeo", loading: "Cargando vídeos", more: "Ver detalles", watch: "Ver en YouTube" },
+  fr: { title: "🎬 Festivals en vidéo", loading: "Chargement des vidéos", more: "Voir les détails", watch: "Voir sur YouTube" },
+  ru: { title: "🎬 Фестивали в видео", loading: "Загрузка видео", more: "Подробнее", watch: "Смотреть на YouTube" },
+  de: { title: "🎬 Feste im Video", loading: "Videos werden geladen", more: "Details ansehen", watch: "Auf YouTube ansehen" },
+  ar: { title: "🎬 المهرجانات بالفيديو", loading: "جارٍ تحميل الفيديو", more: "عرض التفاصيل", watch: "المشاهدة على YouTube" },
+  vi: { title: "🎬 Lễ hội qua video", loading: "Đang tải video", more: "Xem chi tiết", watch: "Xem trên YouTube" },
+  id: { title: "🎬 Festival dalam video", loading: "Memuat video", more: "Lihat detail", watch: "Tonton di YouTube" },
+  th: { title: "🎬 เทศกาลผ่านวิดีโอ", loading: "กำลังโหลดวิดีโอ", more: "ดูรายละเอียด", watch: "ดูบน YouTube" },
 };
 
 // 배열을 무작위로 섞어 매번 다른 순서로 보여줍니다.

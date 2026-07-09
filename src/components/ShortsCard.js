@@ -4,32 +4,31 @@ import { useState } from "react";
 import { formatViews, relativeTime } from "@/lib/videoFormat";
 import { trackEvent } from "@/lib/analytics";
 
-// 쇼츠 썸네일: 세로(9:16) 원본 썸네일(oardefault)이 있으면 그것으로 카드를
-// 꽉 채우고, 없으면(일반 16:9 썸네일) 기존 썸네일로, 그것도 없으면 자리표시로.
+// 롱폼(가로 16:9) 썸네일: 고화질 maxres → sd → 기존(hq) 순으로 시도해
+// 카드에 크고 선명하게 채웁니다(object-fit:cover). 모두 실패하면 자리표시.
 function Thumb({ id, thumb }) {
-  const [src, setSrc] = useState(
-    id ? `https://i.ytimg.com/vi/${id}/oardefault.jpg` : thumb || null
-  );
-  const [dead, setDead] = useState(false);
-  if (dead || !src) return <span className="sf-thumb-empty">🎬</span>;
+  const candidates = [
+    id ? `https://i.ytimg.com/vi/${id}/maxresdefault.jpg` : null, // 1280x720 고화질(있을 때)
+    id ? `https://i.ytimg.com/vi/${id}/sddefault.jpg` : null, // 640x480
+    thumb || (id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null), // 항상 존재
+  ].filter(Boolean);
+  const [idx, setIdx] = useState(0);
+  if (idx >= candidates.length) return <span className="sf-thumb-empty">🎬</span>;
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
+      src={candidates[idx]}
       alt=""
       loading="lazy"
-      onError={() => {
-        if (src.indexOf("oardefault") !== -1 && thumb) setSrc(thumb);
-        else setDead(true);
-      }}
+      onError={() => setIdx((i) => i + 1)}
     />
   );
 }
 
-// 유튜브 쇼츠 피드와 같은 정보 구조의 카드.
-//  - 세로형(9:16) 썸네일이 카드 상단을 채움(모서리=디자인 토큰)
+// 유튜브 롱폼 영상 카드(가로 16:9).
+//  - 가로(16:9) 썸네일이 카드 상단을 채움(모서리=디자인 토큰)
 //  - 썸네일 아래 영역에: 영상 제목(최대 2줄·말줄임) + 조회수·업로드시점(회색 작은 글씨)
-//  - 채널명은 표시하지 않음(공간 절약, 유튜브 쇼츠 피드와 동일)
+//  - 채널명은 표시하지 않음(공간 절약)
 //  - 썸네일만 먼저 보이고, 클릭하는 순간에만 공식 플레이어 지연 로딩(기존 동작 유지)
 //  - badge: 홈에서 좌상단에 얹을 축제명·D-day (우리 사이트 고유 정보)
 //  - moreHref/moreLabel: 홈에서 축제 상세로 가는 링크

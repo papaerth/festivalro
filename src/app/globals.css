@@ -1998,18 +1998,27 @@ h3 {
 /* ── 유튜브 쇼츠 피드 스타일 카드 (.sf-*) — 상세·홈 공용 ── */
 /* 카드 폭: 모바일 40vw(≈2.5장), PC는 최대 158px(≈5~6장) */
 .sf-card {
-  flex: 0 0 40vw;
-  max-width: 158px;
-  min-width: 128px;
+  flex: 0 0 calc((100% - 24px) / 3); /* PC: 한 줄에 약 3개(가로 스크롤) */
+  min-width: 240px;
+  max-width: 460px;
   scroll-snap-align: start;
   display: flex;
   flex-direction: column;
+}
+/* 모바일: 한 화면에 약 1.2개 보이는 가로 스크롤 */
+@media (max-width: 700px) {
+  .sf-card,
+  .sf-skel {
+    flex-basis: 80%;
+    min-width: 0;
+    max-width: 360px;
+  }
 }
 .sf-thumb {
   position: relative;
   display: block;
   width: 100%;
-  aspect-ratio: 9 / 16;
+  aspect-ratio: 16 / 9;
   border-radius: var(--radius-card);
   overflow: hidden;
   background: #000;
@@ -2143,10 +2152,10 @@ h3 {
   white-space: nowrap;
 }
 .sf-skel {
-  flex: 0 0 40vw;
-  max-width: 158px;
-  min-width: 128px;
-  aspect-ratio: 9 / 16;
+  flex: 0 0 calc((100% - 24px) / 3);
+  min-width: 240px;
+  max-width: 460px;
+  aspect-ratio: 16 / 9;
   border-radius: var(--radius-card);
   scroll-snap-align: start;
 }

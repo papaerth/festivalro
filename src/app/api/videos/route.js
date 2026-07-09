@@ -5,7 +5,7 @@ import { rateLimit, rateLimitResponse } from "@/lib/rateLimit";
 //  축제 영상 검색 중계소 (YouTube Data API v3)
 //
 //  .env.local 에 YOUTUBE_API_KEY 가 있으면 축제 이름으로 유튜브에서
-//  '세로형 쇼츠(짧은 영상)'를 관련성순으로 찾아 6개를 돌려줍니다.
+//  '관련 롱폼(가로) 영상'을 관련성순으로 찾아 6개를 돌려줍니다. (쇼츠는 제외)
 //  각 영상의 채널명·조회수·썸네일도 함께.
 //
 //  ⚠️ 유튜브 무료 한도(하루 10,000유닛, 검색 1회 = 100유닛)를 아끼려고
@@ -38,9 +38,11 @@ function isoToSeconds(iso) {
   if (!m) return 0;
   return Number(m[1] || 0) * 3600 + Number(m[2] || 0) * 60 + Number(m[3] || 0);
 }
-// 쇼츠만 남기기 위한 최대 길이(초). 실측 결과 진짜 쇼츠는 대개 60초 이하이고
-// 60초를 넘는 짧은 영상은 대부분 가로형 롱폼이라, 60초로 끊어 롱폼을 확실히 제외.
-const SHORTS_MAX_SEC = 60;
+// 롱폼 중심 — 이 길이(초) 이하인 '쇼츠(짧은 세로영상)'는 제외하고 일반 롱폼만 남깁니다.
+//  (검색에서 videoDuration=short 조건을 없앴고, 혹시 섞여 들어온 쇼츠는 길이로 걸러냄)
+const MIN_LONGFORM_SEC = 60; // 60초 이하면 쇼츠로 보고 제외
+// 너무 긴 라이브 다시보기(몇 시간짜리 실황)는 제외 — 상한(초)
+const MAX_LONGFORM_SEC = 3600;
 
 // 공백 제거 + 소문자화(제목/축제명 비교용 정규화)
 function normText(s) {
@@ -114,17 +116,16 @@ export async function GET(request) {
   }
 
   try {
-    // 검색은 전부 videoDuration=short로 하고, 아래에서 60초 이하만 남겨 롱폼 제외.
-    //  - maxResults를 넉넉히(30) 받아 60초 이하 쇼츠 후보를 충분히 확보.
-    //    (유튜브 search는 maxResults를 늘려도 호출 비용이 동일 — 추가 호출 아님)
-    //  - "축제명 축제" + "축제명 브이로그"가 쇼츠 커버리지가 가장 좋음(호출 2회 유지)
+    // videoDuration 제한 없이(전체 길이) 검색 → 일반 롱폼이 나오게 하고,
+    // 쇼츠는 아래에서 길이로 제외. maxResults를 넉넉히 받아 롱폼 후보를 충분히 확보.
+    //  (유튜브 search는 maxResults를 늘려도 호출 비용 동일 — 추가 호출 아님)
     const searches = [
-      searchIds(key, `${query} 축제`, 30, "short"),
-      searchIds(key, `${query} 브이로그`, 20, "short"),
+      searchIds(key, `${query} 축제`, 40),
+      searchIds(key, `${query} 브이로그`, 30),
     ];
     if (en) {
-      searches.push(searchIds(key, `${query} korea festival`, 25, "short"));
-      searches.push(searchIds(key, `${query} korea vlog`, 20, "short"));
+      searches.push(searchIds(key, `${query} korea festival`, 30));
+      searches.push(searchIds(key, `${query} korea vlog`, 25));
     }
     const lists = await Promise.all(searches.map((p) => p.catch(() => [])));
 
@@ -157,8 +158,8 @@ export async function GET(request) {
         thumb: pickThumb(v.snippet && v.snippet.thumbnails),
         sec: isoToSeconds(v.contentDetails && v.contentDetails.duration),
       }))
-      // 롱폼 제외 — 재생시간 3분 초과는 버리고 쇼츠/짧은 영상만 남김
-      .filter((c) => c.sec > 0 && c.sec <= SHORTS_MAX_SEC);
+      // 쇼츠 제외 — 60초 이하(쇼츠)와 너무 긴 라이브(1시간 초과)를 버리고 롱폼만 남김
+      .filter((c) => c.sec > MIN_LONGFORM_SEC && c.sec <= MAX_LONGFORM_SEC);
 
     // 축제명이 제목/채널에 실제로 들어간 영상만 '관련 영상'으로 봅니다.
     //  (유튜브가 결과를 채우려 넣는 무관한 여행·일상 브이로그를 걸러내는 핵심 장치)
