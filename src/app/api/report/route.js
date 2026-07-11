@@ -84,7 +84,7 @@ export async function POST(request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "축제로 제보 <onboarding@resend.dev>",
+        from: "축제로 제보 <no-reply@chukjero.com>",
         to: [to],
         subject: `[축제로 제보] ${category}`,
         ...(validEmail ? { reply_to: contact } : {}),
