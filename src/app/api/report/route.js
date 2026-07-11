@@ -34,8 +34,11 @@ export async function POST(request) {
   const rl = rateLimit("report", request);
   if (!rl.ok) return rateLimitResponse(rl.retryAfter);
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const to = process.env.REPORT_TO_EMAIL;
+  // 환경변수에 실수로 앞뒤 공백·BOM(﻿, 보이지 않는 문자)이 섞여도
+  // 안전하도록 정리. (일부 도구가 값 저장 시 BOM을 앞에 붙이는 경우가 있어,
+  // 그대로 HTTP 헤더에 넣으면 ByteString 변환 오류가 납니다.)
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const to = process.env.REPORT_TO_EMAIL?.trim();
 
   // 키/받는주소가 없으면 화면이 '설정 전' 안내로 대체되도록 알려줌
   if (!apiKey || apiKey.startsWith("여기에") || !to || to.startsWith("여기에")) {
