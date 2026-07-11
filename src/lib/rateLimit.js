@@ -27,6 +27,7 @@ export const RATE_LIMITS = {
   overview: 120, // 축제 개요(카드뉴스)
   weather: 120, // 날씨
   img: 240, // 이미지 프록시 (블로그 썸네일 여러 장)
+  report: 8, // 제보 접수 — 정상 사용자는 넉넉, 스팸성 대량전송 방지
   default: 120,
 };
 // ▲▲▲ 여기까지 ▲▲▲
