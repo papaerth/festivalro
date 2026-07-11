@@ -512,7 +512,9 @@ export async function getFestivalById(id, locale = "ko") {
       name = gName || festival.name;
       description = gDesc || koOverview;
     }
-    return { ...festival, name, description };
+    // nameKo: 한국어 원래 이름 — 유튜브/네이버 '검색'은 이걸 써야 올바른
+    //  한국 콘텐츠를 찾음(표시 이름은 번역된 name, 검색은 nameKo).
+    return { ...festival, name, description, nameKo: festival.name };
   }
 
   // 한국어: 한국어 소개문 보강

@@ -76,7 +76,7 @@ export default function HomeShortsFeed({ festivals = [], accent = "#c2578a" }) {
         const c = new AbortController();
         controllers.push(c);
         const timer = setTimeout(() => c.abort(), 12000);
-        return fetch(`/api/videos?query=${encodeURIComponent(f.name)}${en}`, {
+        return fetch(`/api/videos?query=${encodeURIComponent(f.name)}${en}&locale=${locale}`, {
           signal: c.signal,
         })
           .then((r) => (r.ok ? r.json() : null))

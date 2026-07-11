@@ -200,7 +200,7 @@ export default async function FestivalDetailPage({ params }) {
                   유튜브 실패·한도초과·키없음이면 영상 목록만 조용히 숨고 페이지는 정상.
                   제목·버튼 문구는 컴포넌트 내부에서 다국어 처리됨. */}
               <VideoSection
-                query={festival.name}
+                query={festival.nameKo || festival.name}
                 curatedVideos={curated && curated.videos}
                 accent={theme.color}
               />
@@ -209,7 +209,7 @@ export default async function FestivalDetailPage({ params }) {
                   스켈레톤 → 로드되므로 정보 탭 표시를 늦추지 않음. 실패 시 안내 문구. */}
               <section className="section">
                 <h2>{dict.detail.blog}</h2>
-                <BlogList query={festival.name} accent={theme.color} />
+                <BlogList query={festival.nameKo || festival.name} accent={theme.color} />
               </section>
 
               {/* 핵심 요약 바 */}
