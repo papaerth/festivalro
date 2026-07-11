@@ -104,7 +104,7 @@ export default async function FestivalDetailPage({ params }) {
 
   // 자동 수집(API) + 큐레이션(직접 입력) + 추천용 전체 목록 — 각각 실패/없으면 빈 값
   const [extras, curated, allFestivals] = await Promise.all([
-    getFestivalExtras(festival),
+    getFestivalExtras(festival, loc),
     getCurated(festival.id),
     getFestivals(),
   ]);

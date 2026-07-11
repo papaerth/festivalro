@@ -170,7 +170,7 @@ export default function VideoSection({ query, curatedVideos, accent = "#c2578a" 
     const timer = setTimeout(() => controller.abort(), 12000);
     const en = locale === "en" ? "&en=1" : "";
 
-    fetch(`/api/videos?query=${encodeURIComponent(query)}${en}`, {
+    fetch(`/api/videos?query=${encodeURIComponent(query)}${en}&locale=${locale}`, {
       signal: controller.signal,
     })
       .then((res) => {

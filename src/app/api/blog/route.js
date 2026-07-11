@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { rateLimit, rateLimitResponse } from "@/lib/rateLimit";
+import { translateMany } from "@/lib/translate";
 
 // ────────────────────────────────────────────────────────────────
 //  블로그 검색 중계소 (네이버 검색 API)
@@ -135,6 +136,15 @@ export async function GET(request) {
         it.image = await fetchOgImage(it.link);
       })
     );
+
+    // 블로그 후기 제목은 한국어라, 한국어 외 언어에선 Google 번역으로 대체
+    const locale = searchParams.get("locale") || "ko";
+    if (locale !== "ko" && items.length > 0) {
+      const titles = await translateMany(items.map((it) => it.title), locale);
+      items.forEach((it, i) => {
+        if (titles[i]) it.title = titles[i];
+      });
+    }
 
     return NextResponse.json(
       { configured: true, items },

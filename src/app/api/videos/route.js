@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { rateLimit, rateLimitResponse } from "@/lib/rateLimit";
+import { translateMany } from "@/lib/translate";
 
 // ────────────────────────────────────────────────────────────────
 //  축제 영상 검색 중계소 (YouTube Data API v3)
@@ -235,6 +236,15 @@ export async function GET(request) {
       (a, b) => a.bucket - b.bucket || b.views - a.views || b.subs - a.subs
     );
     const items = pool.slice(0, 6).map((x) => x.v);
+
+    // 영상 제목은 한국어라, 한국어 외 언어에선 Google 번역으로 대체(실패 시 원문)
+    const locale = searchParams.get("locale") || "ko";
+    if (locale !== "ko" && items.length > 0) {
+      const titles = await translateMany(items.map((it) => it.title), locale);
+      items.forEach((it, i) => {
+        if (titles[i]) it.title = titles[i];
+      });
+    }
 
     return NextResponse.json(
       { configured: true, items },

@@ -97,7 +97,7 @@ export default function BlogList({ query, accent = "#c2578a" }) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12000);
 
-    fetch(`/api/blog?query=${encodeURIComponent(query)}`, {
+    fetch(`/api/blog?query=${encodeURIComponent(query)}&locale=${locale}`, {
       signal: controller.signal,
     })
       .then((res) => {
@@ -122,7 +122,7 @@ export default function BlogList({ query, accent = "#c2578a" }) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [query, locale]);
 
   // 맨 아래 "네이버 블로그에서 더 보기" 버튼
   const moreButton = (
