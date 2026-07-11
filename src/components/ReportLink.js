@@ -23,7 +23,7 @@ const LABEL = {
 export default function ReportLink() {
   const { locale, href } = useI18n();
   return (
-    <Link href={href("/report")} className="footer-link">
+    <Link href={href("/submit")} className="footer-link">
       {LABEL[locale] || LABEL.en}
     </Link>
   );
