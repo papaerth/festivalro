@@ -95,8 +95,10 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const [mapFocus, setMapFocus] = useState(null); // 카드/마커에서 고른 축제 위치
   const [selected, setSelected] = useState(null); // 블로그·영상 섹션 연동 대상(축제) — null=인기축제 종합
   const [flashSignal, setFlashSignal] = useState(0); // 선택 시마다 +1 → 섹션 하이라이트
+  const [resetSignal, setResetSignal] = useState(0); // 선택 해제 시 +1 → 지도 줌아웃 + 마커 팝업 닫기
   const theme = SEASONS[season];
-  const mapRef = useRef(null); // 카드/필터 조작 시 스크롤할 지도 영역
+  const mapRef = useRef(null); // 카드뉴스 클릭 시 스크롤할 지도 영역
+  const listRef = useRef(null); // 배지 CTA에서 스크롤할 축제 목록 영역
 
   const { favorites, ready: favReady } = useFavorites();
   const ratings = useReviewStats();
@@ -108,10 +110,11 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     [festivals]
   );
 
-  // 지도 영역으로 부드럽게 스크롤 (필터가 아래로 내려가서, 조작 시 변화가 보이게)
-  const scrollToMap = () => {
-    if (mapRef.current) {
-      mapRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  // 축제 목록으로 부드럽게 스크롤 (배지 CTA에서만 — 필터가 목록 바로 위라
+  //  일반 필터 조작은 스크롤 없이 아래 목록이 갱신됩니다)
+  const scrollToList = () => {
+    if (listRef.current) {
+      listRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
 
@@ -120,9 +123,14 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setSelected(f);
     setFlashSignal((n) => n + 1);
   };
+  // 통합 복귀: '축제 선택'으로 생긴 변화만 한꺼번에 원위치.
+  //  ① 블로그·영상 섹션 기본 복귀(selected 해제) ② 지도 줌아웃 + 열린 팝업 닫기.
+  //  ※ 사용자가 필터(계절/지역)로 설정한 상태는 건드리지 않음.
   const resetSelection = () => {
     setSelected(null);
     setFlashSignal((n) => n + 1);
+    setMapFocus(null);
+    setResetSignal((n) => n + 1);
   };
 
   // 카드뉴스 클릭 → 지도 줌인 + 아래 섹션 전환 + (모바일이면) 지도로 스크롤
@@ -174,7 +182,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setSigungu(null);
     setSeason(currentSeason());
     setStatusFilter("ongoing");
-    scrollToMap();
+    scrollToList();
   };
 
   // 배지 클릭 → 이번 주말 축제 보기
@@ -185,7 +193,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setSido(null);
     setSigungu(null);
     setPeriod("weekend");
-    scrollToMap();
+    scrollToList();
   };
 
   // 상단 배지: 진행중 3개 이상이면 '오늘 진행중', 그 미만이면 '이번 주 진행 축제'
@@ -203,7 +211,6 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const pickSido = (key) => {
     setSido((prev) => (prev === key ? null : key));
     setSigungu(null);
-    scrollToMap();
   };
   const periodLabel = period === "weekend" ? t.filters.weekend : t.filters.month;
 
@@ -292,7 +299,6 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setPeriod((prev) => (prev === key ? null : key));
     setQuery("");
     setShowFavorites(false);
-    scrollToMap();
   };
 
   // 즐겨찾기만 보기 토글
@@ -300,7 +306,6 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setShowFavorites((prev) => !prev);
     setQuery("");
     setPeriod(null);
-    scrollToMap();
   };
 
   // 상태별 개수 요약 (진행중 / 예정 / 종료)
@@ -362,7 +367,11 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
         {/* ① 다가오는 인기 축제 카드뉴스 + 세로 지도 (최상단) */}
         <div className="carousel-map-row">
           <div className="cmr-carousel">
-            <HeroCarousel festivals={carousel} onPick={handleHeroPick} />
+            <HeroCarousel
+              festivals={carousel}
+              onPick={handleHeroPick}
+              onReset={resetSelection}
+            />
           </div>
           <div className="cmr-map" ref={mapRef}>
             <MapView
@@ -370,75 +379,34 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
               ratings={ratings}
               focus={mapFocus}
               onSelect={handleMapSelect}
+              resetSignal={resetSignal}
             />
           </div>
         </div>
 
-        {/* 즐겨찾기 알림 — 얇은 배너 (즐겨찾기 있을 때만) */}
-        <FavoriteAlerts festivals={festivals} />
+        {/* ② 지금 뜨는 축제 블로그 (신규 · 상세검색+자동완성) */}
+        <HomeBlogSection
+          festivals={feedSource}
+          allFestivals={festivals}
+          selectedName={selName}
+          selectedKoName={selected ? selected.name : null}
+          onReset={resetSelection}
+          flashSignal={flashSignal}
+          accent={theme.color}
+        />
 
-        {/* ② 축제 목록 — 상태 요약(=필터) + 카드 그리드 */}
-        <div className="status-summary" suppressHydrationWarning>
-          <button
-            className={`status-pill ongoing ${statusFilter === "ongoing" ? "active" : ""}`}
-            onClick={() => toggleStatus("ongoing")}
-            disabled={counts.ongoing === 0}
-          >
-            <span className="live-dot" />
-            {t.status.ongoingShort} {counts.ongoing}
-          </button>
-          <span className="status-sep">·</span>
-          <button
-            className={`status-pill upcoming ${statusFilter === "upcoming" ? "active" : ""}`}
-            onClick={() => toggleStatus("upcoming")}
-            disabled={counts.upcoming === 0}
-          >
-            {t.status.upcoming} {counts.upcoming}
-          </button>
-          <span className="status-sep">·</span>
-          <button
-            className={`status-pill ended ${statusFilter === "ended" ? "active" : ""}`}
-            onClick={() => toggleStatus("ended")}
-            disabled={counts.ended === 0}
-          >
-            {t.status.ended} {counts.ended}
-          </button>
-          {statusFilter && (
-            <button className="status-clear" onClick={() => setStatusFilter(null)}>
-              {t.filters.clearAll}
-            </button>
-          )}
-        </div>
+        {/* ③ 영상으로 만나는 축제 (유튜브 롱폼 · 상세검색+자동완성) */}
+        <HomeVideoSection
+          festivals={feedSource}
+          allFestivals={festivals}
+          selectedName={selName}
+          selectedKoName={selected ? selected.name : null}
+          onReset={resetSelection}
+          flashSignal={flashSignal}
+          accent={theme.color}
+        />
 
-        <div className="card-grid">
-          {filtered.length === 0 ? (
-            <div className="empty">
-              {searching
-                ? t.list.emptySearch
-                : period
-                ? t.list.emptyPeriod
-                : showFavorites
-                ? t.list.emptyFav
-                : t.list.emptyDefault}
-            </div>
-          ) : (
-            visible.map((f) => (
-              <FestivalCard key={f.id} festival={f} rating={ratings[f.id]} />
-            ))
-          )}
-        </div>
-
-        {filtered.length > visibleCount && (
-          <button
-            className="load-more"
-            onClick={() => setVisibleCount((c) => c + PAGE)}
-          >
-            {t.list.loadMore}{" "}
-            <span>{t.list.remain(filtered.length - visibleCount)}</span>
-          </button>
-        )}
-
-        {/* ③ 검색 · 필터 묶음 (한 구역) */}
+        {/* ④ 검색 · 필터 묶음 (한 구역 · 축제 목록 바로 위) */}
         <section className="filters-block">
           <div className="hero">
             <h1>
@@ -535,10 +503,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
                       <button
                         key={key}
                         className={`chip ${season === key ? "active" : ""}`}
-                        onClick={() => {
-                          setSeason(key);
-                          scrollToMap();
-                        }}
+                        onClick={() => setSeason(key)}
                       >
                         {s.emoji} {t.seasons[key]}
                       </button>
@@ -556,7 +521,6 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
                     onClick={() => {
                       setSido(null);
                       setSigungu(null);
-                      scrollToMap();
                     }}
                   >
                     {t.regions.all}
@@ -587,10 +551,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
                       <button
                         key={sg}
                         className={`chip chip-sm ${sigungu === sg ? "active" : ""}`}
-                        onClick={() => {
-                          setSigungu((prev) => (prev === sg ? null : sg));
-                          scrollToMap();
-                        }}
+                        onClick={() =>
+                          setSigungu((prev) => (prev === sg ? null : sg))
+                        }
                       >
                         {sg}
                       </button>
@@ -602,27 +565,69 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
           )}
         </section>
 
-        {/* ④ 지금 뜨는 축제 블로그 (신규 · 상세검색+자동완성) */}
-        <HomeBlogSection
-          festivals={feedSource}
-          allFestivals={festivals}
-          selectedName={selName}
-          selectedKoName={selected ? selected.name : null}
-          onReset={resetSelection}
-          flashSignal={flashSignal}
-          accent={theme.color}
-        />
+        {/* 즐겨찾기 알림 — 얇은 배너 (즐겨찾기 있을 때만) */}
+        <FavoriteAlerts festivals={festivals} />
 
-        {/* ⑤ 영상으로 만나는 축제 (유튜브 롱폼 · 상세검색+자동완성) */}
-        <HomeVideoSection
-          festivals={feedSource}
-          allFestivals={festivals}
-          selectedName={selName}
-          selectedKoName={selected ? selected.name : null}
-          onReset={resetSelection}
-          flashSignal={flashSignal}
-          accent={theme.color}
-        />
+        {/* ⑤ 축제 목록 — 상태 요약(=필터) + 카드 그리드 (검색·블로그·영상 아래로 이동) */}
+        <div className="status-summary" suppressHydrationWarning ref={listRef}>
+          <button
+            className={`status-pill ongoing ${statusFilter === "ongoing" ? "active" : ""}`}
+            onClick={() => toggleStatus("ongoing")}
+            disabled={counts.ongoing === 0}
+          >
+            <span className="live-dot" />
+            {t.status.ongoingShort} {counts.ongoing}
+          </button>
+          <span className="status-sep">·</span>
+          <button
+            className={`status-pill upcoming ${statusFilter === "upcoming" ? "active" : ""}`}
+            onClick={() => toggleStatus("upcoming")}
+            disabled={counts.upcoming === 0}
+          >
+            {t.status.upcoming} {counts.upcoming}
+          </button>
+          <span className="status-sep">·</span>
+          <button
+            className={`status-pill ended ${statusFilter === "ended" ? "active" : ""}`}
+            onClick={() => toggleStatus("ended")}
+            disabled={counts.ended === 0}
+          >
+            {t.status.ended} {counts.ended}
+          </button>
+          {statusFilter && (
+            <button className="status-clear" onClick={() => setStatusFilter(null)}>
+              {t.filters.clearAll}
+            </button>
+          )}
+        </div>
+
+        <div className="card-grid">
+          {filtered.length === 0 ? (
+            <div className="empty">
+              {searching
+                ? t.list.emptySearch
+                : period
+                ? t.list.emptyPeriod
+                : showFavorites
+                ? t.list.emptyFav
+                : t.list.emptyDefault}
+            </div>
+          ) : (
+            visible.map((f) => (
+              <FestivalCard key={f.id} festival={f} rating={ratings[f.id]} />
+            ))
+          )}
+        </div>
+
+        {filtered.length > visibleCount && (
+          <button
+            className="load-more"
+            onClick={() => setVisibleCount((c) => c + PAGE)}
+          >
+            {t.list.loadMore}{" "}
+            <span>{t.list.remain(filtered.length - visibleCount)}</span>
+          </button>
+        )}
 
         {/* 최근 본 축제 — 이어보기 동선 (브라우저 기록, 회원가입 X) */}
         <RecentViewed />

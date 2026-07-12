@@ -16,7 +16,7 @@ const DETAIL = {
 };
 
 // 대한민국 구석구석 메인 배너 스타일 — 사진이 꽉 찬 대형 카드 캐러셀 (독립 섹션).
-export default function HeroCarousel({ festivals = [], onPick }) {
+export default function HeroCarousel({ festivals = [], onPick, onReset }) {
   const { t, locale, href } = useI18n();
   const ux = getUiExtra(locale);
   const detailLabel = DETAIL[locale] || DETAIL.en;
@@ -206,7 +206,10 @@ export default function HeroCarousel({ festivals = [], onPick }) {
           </div>
           <button
             className="hero-expand-close"
-            onClick={() => setExpanded(null)}
+            onClick={() => {
+              setExpanded(null);
+              onReset && onReset(); // 팝업 닫기 + 지도·블로그·영상 통합 복귀
+            }}
             aria-label="✕"
           >
             ✕

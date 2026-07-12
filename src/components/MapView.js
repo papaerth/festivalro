@@ -104,10 +104,37 @@ function FocusFly({ focus, markerRefs }) {
   return null;
 }
 
+// 선택 해제(리셋) 시: 열린 마커 팝업을 닫고, 전체 축제가 보이도록 부드럽게 줌아웃(0.3초).
+//  ※ 첫 렌더(signal=0)는 무시하고, signal이 바뀔 때만 동작. '동작 줄이기' 설정이면 즉시 이동.
+function ResetView({ signal, points }) {
+  const map = useMap();
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    map.closePopup();
+    if (!points.length) return;
+    if (points.length === 1) {
+      map.setView(points[0], 11);
+      return;
+    }
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) map.fitBounds(points, { padding: [40, 40], maxZoom: 12 });
+    else map.flyToBounds(points, { padding: [40, 40], maxZoom: 12, duration: 0.3 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signal]);
+  return null;
+}
+
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
-export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null }) {
+export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, resetSignal = 0 }) {
   const { locale, href } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 좌표가 있는 축제만 마커로 (좌표 없는 축제는 목록에만 표시)
@@ -169,6 +196,7 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
       })}
       <FitBounds points={points} />
       <FocusFly focus={focus} markerRefs={markerRefs} />
+      <ResetView signal={resetSignal} points={points} />
     </MapContainer>
   );
 }
