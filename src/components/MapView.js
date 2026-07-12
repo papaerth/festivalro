@@ -107,7 +107,7 @@ function FocusFly({ focus, markerRefs }) {
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
-export default function MapView({ festivals, ratings = {}, focus = null }) {
+export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null }) {
   const { locale, href } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 좌표가 있는 축제만 마커로 (좌표 없는 축제는 목록에만 표시)
@@ -140,6 +140,9 @@ export default function MapView({ festivals, ratings = {}, focus = null }) {
             key={f.id}
             position={[f.lat, f.lng]}
             icon={makePin(color)}
+            eventHandlers={{
+              click: () => onSelect && onSelect(f),
+            }}
             ref={(m) => {
               if (m) markerRefs.current[f.id] = m;
             }}

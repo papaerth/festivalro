@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import { notFound } from "next/navigation";
 import { getFestivalById, getFestivals } from "@/lib/festivals";
 import { getFestivalExtras } from "@/lib/festivalExtra";
@@ -126,9 +127,7 @@ export default async function FestivalDetailPage({ params }) {
     <div style={{ "--accent": theme.color, "--accent-soft": theme.soft }}>
       <header className="site-header">
         <div className="container">
-          <Link href={homeHref} className="brand">
-            축제로
-          </Link>
+          <BrandLogo />
           <div className="header-right">
             <LangSwitcher />
             <AccountMenu />

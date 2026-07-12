@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import { getDictionary, localeHref, isLocale, DEFAULT_LOCALE } from "@/lib/i18n";
 
 const PRIV = {
@@ -112,9 +113,7 @@ export default async function PrivacyPage({ params }) {
     <div>
       <header className="site-header">
         <div className="container">
-          <Link href={home} className="brand">
-            축제로
-          </Link>
+          <BrandLogo />
         </div>
       </header>
 

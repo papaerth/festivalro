@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import { localeHref, isLocale, DEFAULT_LOCALE } from "@/lib/i18n";
 import ReportForm from "@/components/ReportForm";
 
@@ -37,9 +38,7 @@ export default async function SubmitPage({ params }) {
     <div>
       <header className="site-header">
         <div className="container">
-          <Link href={home} className="brand">
-            축제로
-          </Link>
+          <BrandLogo />
         </div>
       </header>
 

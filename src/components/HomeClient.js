@@ -14,10 +14,12 @@ import FavoriteAlerts from "./FavoriteAlerts";
 import AccountMenu from "./AccountMenu";
 import LangSwitcher from "./LangSwitcher";
 import HeroCarousel from "./HeroCarousel";
-import HomeShortsFeed from "./HomeShortsFeed";
+import HomeBlogSection from "./HomeBlogSection";
+import HomeVideoSection from "./HomeVideoSection";
 import RecentViewed from "./RecentViewed";
 import PrivacyLink from "./PrivacyLink";
 import ReportLink from "./ReportLink";
+import BrandLogo from "./BrandLogo";
 
 // 상단 배지 문구 (13개 언어). today=오늘 진행중 / week=이번 주 진행 축제(작은 숫자 방지용)
 const TODAY = {
@@ -90,9 +92,11 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState(null); // null | "weekend" | "month"
   const [showFavorites, setShowFavorites] = useState(false);
-  const [mapFocus, setMapFocus] = useState(null); // 히어로 카드에서 고른 축제 위치
+  const [mapFocus, setMapFocus] = useState(null); // 카드/마커에서 고른 축제 위치
+  const [selected, setSelected] = useState(null); // 블로그·영상 섹션 연동 대상(축제) — null=인기축제 종합
+  const [flashSignal, setFlashSignal] = useState(0); // 선택 시마다 +1 → 섹션 하이라이트
   const theme = SEASONS[season];
-  const mapRef = useRef(null); // 히어로 카드 클릭 시 스크롤할 지도 영역
+  const mapRef = useRef(null); // 카드/필터 조작 시 스크롤할 지도 영역
 
   const { favorites, ready: favReady } = useFavorites();
   const ratings = useReviewStats();
@@ -104,13 +108,30 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     [festivals]
   );
 
-  // 히어로 카드 클릭 → 아래 지도로 스크롤 + 해당 축제 위치로 확대
+  // 지도 영역으로 부드럽게 스크롤 (필터가 아래로 내려가서, 조작 시 변화가 보이게)
+  const scrollToMap = () => {
+    if (mapRef.current) {
+      mapRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  // 블로그·영상 섹션 연동 대상 지정 / 해제
+  const selectFestival = (f) => {
+    setSelected(f);
+    setFlashSignal((n) => n + 1);
+  };
+  const resetSelection = () => {
+    setSelected(null);
+    setFlashSignal((n) => n + 1);
+  };
+
+  // 카드뉴스 클릭 → 지도 줌인 + 아래 섹션 전환 + (모바일이면) 지도로 스크롤
   const handleHeroPick = (f) => {
     if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) {
       setMapFocus({ id: f.id, lat: f.lat, lng: f.lng, ts: Date.now() });
     }
-    // 지도가 이미 화면에 보이면(PC 좌우 배치) 스크롤하지 않음 — 옆에서 바로 반응.
-    // 안 보이면(모바일 스택) 지도로 부드럽게 스크롤.
+    selectFestival(f);
+    // 지도가 이미 화면에 보이면(PC 좌우 배치) 스크롤하지 않음.
     const el = mapRef.current;
     if (el) {
       const r = el.getBoundingClientRect();
@@ -118,6 +139,14 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
         r.top < window.innerHeight * 0.85 && r.bottom > window.innerHeight * 0.15;
       if (!visible) el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
+  };
+
+  // 지도 마커 클릭 → 그 축제로 줌인 + 아래 섹션 전환
+  const handleMapSelect = (f) => {
+    if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) {
+      setMapFocus({ id: f.id, lat: f.lat, lng: f.lng, ts: Date.now() });
+    }
+    selectFestival(f);
   };
 
   // 오늘(현재 계절) 진행중인 축제 수 — 상단 배지용
@@ -145,9 +174,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setSigungu(null);
     setSeason(currentSeason());
     setStatusFilter("ongoing");
-    if (mapRef.current) {
-      mapRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+    scrollToMap();
   };
 
   // 배지 클릭 → 이번 주말 축제 보기
@@ -158,13 +185,10 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setSido(null);
     setSigungu(null);
     setPeriod("weekend");
-    if (mapRef.current) {
-      mapRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+    scrollToMap();
   };
 
   // 상단 배지: 진행중 3개 이상이면 '오늘 진행중', 그 미만이면 '이번 주 진행 축제'
-  //  (숫자가 작아 보이는 걸 방지). 둘 다 없으면 배지 숨김.
   const badgeT = TODAY[locale] || TODAY.ko;
   const badge =
     todayOngoing >= 3
@@ -175,10 +199,11 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       ? { text: badgeT.today(todayOngoing), onClick: showOngoing }
       : null;
 
-  // 시도를 바꾸면 시군구 선택 초기화
+  // 시도를 바꾸면 시군구 선택 초기화 + 지도로 스크롤
   const pickSido = (key) => {
     setSido((prev) => (prev === key ? null : key));
     setSigungu(null);
+    scrollToMap();
   };
   const periodLabel = period === "weekend" ? t.filters.weekend : t.filters.month;
 
@@ -186,7 +211,6 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const searching = q.length > 0;
 
   // 우선순위: 검색 > 기간(주말/이번달) > 즐겨찾기 > 계절+지역
-  // 앞의 모드들에서는 계절/지역을 무시하고 전국에서 찾습니다.
   const base = useMemo(() => {
     if (searching) {
       return withSido.filter(
@@ -221,7 +245,6 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   }, [withSido, sido]);
 
   // 히어로 캐러셀: 현재 계절/시도/시군구 필터에 맞는 '다가오는 인기 축제' 상위 10개
-  //  (진행중·예정만, 인기점수+임박도 순 — 필터를 바꾸면 즉시 갱신)
   const carousel = useMemo(() => {
     const now = new Date();
     const scored = withSido
@@ -244,9 +267,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     return scored.slice(0, 10).map((x) => x.f);
   }, [withSido, season, sido, sigungu, popScoreById]);
 
-  // 지도 위 쇼츠 피드용 '메인 축제 후보' — 필터와 무관하게 전국에서
-  //  진행중·예정 축제를 인기+임박 순으로 넉넉히(10개) 뽑습니다.
-  //  (피드가 이 안에서 자동으로 순환하며 계속 바뀝니다.)
+  // 블로그·영상 종합용 '메인 축제 후보' — 필터와 무관하게 전국 인기+임박 순 상위.
   const mainShorts = useMemo(() => {
     const now = new Date();
     const scored = withSido
@@ -271,6 +292,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setPeriod((prev) => (prev === key ? null : key));
     setQuery("");
     setShowFavorites(false);
+    scrollToMap();
   };
 
   // 즐겨찾기만 보기 토글
@@ -278,6 +300,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setShowFavorites((prev) => !prev);
     setQuery("");
     setPeriod(null);
+    scrollToMap();
   };
 
   // 상태별 개수 요약 (진행중 / 예정 / 종료)
@@ -316,6 +339,10 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   }, [season, sido, sigungu, q, period, showFavorites, statusFilter]);
   const visible = filtered.slice(0, visibleCount);
 
+  // 블로그·영상 섹션 소스: 선택 축제가 있으면 그 축제, 없으면 인기축제 종합
+  const feedSource = selected ? [selected] : mainShorts;
+  const selName = selected ? selected.displayName || selected.name : null;
+
   return (
     <div
       className="season-root"
@@ -323,7 +350,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     >
       <header className="site-header">
         <div className="container container-wide">
-          <span className="brand">축제로</span>
+          <BrandLogo />
           <div className="header-right">
             <LangSwitcher />
             <AccountMenu />
@@ -332,186 +359,25 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       </header>
 
       <main className="home-main">
-        <section className="hero">
-          <h1>
-            {t.hero.titleA}{" "}
-            <span className="accent">{theme.emoji} {t.seasons[season]}</span>{" "}
-            {t.hero.titleB}
-          </h1>
-
-          {/* 검색창 (히어로 안에 통합) */}
-          <div className="search-box">
-            <span className="search-icon" aria-hidden="true">🔍</span>
-            <input
-              type="search"
-              className="search-input"
-              placeholder={t.hero.searchPlaceholder}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                if (e.target.value.trim()) {
-                  setPeriod(null);
-                  setShowFavorites(false);
-                }
-              }}
-              aria-label={t.hero.searchPlaceholder}
-            />
-            {searching && (
-              <button
-                className="search-clear"
-                onClick={() => setQuery("")}
-                aria-label="✕"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-
-          {/* 오늘 진행중/이번 주 배지 — 접속하자마자 '지금 갈 수 있는 축제'로 안내 */}
-          {badge && (
-            <button
-              className="today-badge"
-              onClick={badge.onClick}
-              suppressHydrationWarning
-            >
-              <span className="today-dot" aria-hidden="true" />
-              {badge.text}
-              <span className="today-arrow" aria-hidden="true">
-                {" "}
-                →
-              </span>
-            </button>
-          )}
-        </section>
-
-        {/* 기간 바로가기 */}
-        <div className="quick-filters">
-          <button
-            className={`quick-chip ${period === "weekend" ? "active" : ""}`}
-            onClick={() => togglePeriod("weekend")}
-          >
-            {t.filters.weekend}
-          </button>
-          <button
-            className={`quick-chip ${period === "month" ? "active" : ""}`}
-            onClick={() => togglePeriod("month")}
-          >
-            {t.filters.month}
-          </button>
-          <button
-            className={`quick-chip ${showFavorites ? "active" : ""}`}
-            onClick={toggleFavorites}
-            suppressHydrationWarning
-          >
-            ❤️ {t.filters.favorites}
-            {favReady && favorites.length > 0 ? ` ${favorites.length}` : ""}
-          </button>
-        </div>
-
-        {searching ? (
-          /* 검색 중: 계절/지역 선택 대신 검색 결과 안내 */
-          <div className="search-result-head">
-            {t.list.searchResult(query.trim(), base.length)}
-          </div>
-        ) : period ? (
-          /* 기간 바로가기: 계절/지역 대신 기간 결과 안내 */
-          <div className="search-result-head">
-            {t.list.periodResult(periodLabel, base.length)}
-          </div>
-        ) : showFavorites ? (
-          /* 즐겨찾기: 계절/지역 대신 안내 */
-          <div className="search-result-head" suppressHydrationWarning>
-            {t.list.favResult(base.length)}
-          </div>
-        ) : (
-          <>
-            {/* 계절 선택 */}
-            <div className="filter-group">
-              <div className="filter-label">{t.filters.season}</div>
-              <div className="chip-row">
-                {SEASON_ORDER.map((key) => {
-                  const s = SEASONS[key];
-                  return (
-                    <button
-                      key={key}
-                      className={`chip ${season === key ? "active" : ""}`}
-                      onClick={() => setSeason(key)}
-                    >
-                      {s.emoji} {t.seasons[key]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 지역 선택 — 1단계: 시도 */}
-            <div className="filter-group">
-              <div className="filter-label">{t.filters.region}</div>
-              <div className="chip-row">
-                <button
-                  className={`chip ${sido === null ? "active" : ""}`}
-                  onClick={() => {
-                    setSido(null);
-                    setSigungu(null);
-                  }}
-                >
-                  {t.regions.all}
-                </button>
-                {SIDO_ORDER.map((key) => (
-                  <button
-                    key={key}
-                    className={`chip ${sido === key ? "active" : ""}`}
-                    onClick={() => pickSido(key)}
-                  >
-                    {getSidoLabel(key, locale)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 지역 선택 — 2단계: 시군구 (시도 선택 시 펼쳐짐) */}
-            {sido && sigunguList.length > 0 && (
-              <div className="filter-group filter-sigungu">
-                <div className="chip-row">
-                  <button
-                    className={`chip chip-sm ${sigungu === null ? "active" : ""}`}
-                    onClick={() => setSigungu(null)}
-                  >
-                    {t.regions.all}
-                  </button>
-                  {sigunguList.map((sg) => (
-                    <button
-                      key={sg}
-                      className={`chip chip-sm ${sigungu === sg ? "active" : ""}`}
-                      onClick={() => setSigungu((prev) => (prev === sg ? null : sg))}
-                    >
-                      {sg}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* 즐겨찾기 알림 — 최상단에서 필터 아래로 이동, 얇은 배너 (즐겨찾기 있을 때만) */}
-        <FavoriteAlerts festivals={festivals} />
-
-        {/* 카드뉴스 + 세로 지도 좌우 배치 (PC). 모바일은 카드뉴스→지도 세로 스택.
-            카드/검색으로 축제 선택 시 옆 지도가 바로 줌인+팝업(스크롤 없이 한눈에). */}
+        {/* ① 다가오는 인기 축제 카드뉴스 + 세로 지도 (최상단) */}
         <div className="carousel-map-row">
           <div className="cmr-carousel">
             <HeroCarousel festivals={carousel} onPick={handleHeroPick} />
           </div>
           <div className="cmr-map" ref={mapRef}>
-            <MapView festivals={filtered} ratings={ratings} focus={mapFocus} />
+            <MapView
+              festivals={filtered}
+              ratings={ratings}
+              focus={mapFocus}
+              onSelect={handleMapSelect}
+            />
           </div>
         </div>
 
-        {/* 메인 축제 쇼츠 피드 */}
-        <HomeShortsFeed festivals={mainShorts} accent={theme.color} />
+        {/* 즐겨찾기 알림 — 얇은 배너 (즐겨찾기 있을 때만) */}
+        <FavoriteAlerts festivals={festivals} />
 
-        {/* 상태별 개수 요약 (누르면 해당 상태만 필터) */}
+        {/* ② 축제 목록 — 상태 요약(=필터) + 카드 그리드 */}
         <div className="status-summary" suppressHydrationWarning>
           <button
             className={`status-pill ongoing ${statusFilter === "ongoing" ? "active" : ""}`}
@@ -544,7 +410,6 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
           )}
         </div>
 
-        {/* 카드 목록 */}
         <div className="card-grid">
           {filtered.length === 0 ? (
             <div className="empty">
@@ -572,6 +437,188 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
             <span>{t.list.remain(filtered.length - visibleCount)}</span>
           </button>
         )}
+
+        {/* ③ 검색 · 필터 묶음 (한 구역) */}
+        <section className="filters-block">
+          <div className="hero">
+            <h1>
+              {t.hero.titleA}{" "}
+              <span className="accent">{theme.emoji} {t.seasons[season]}</span>{" "}
+              {t.hero.titleB}
+            </h1>
+
+            <div className="search-box">
+              <span className="search-icon" aria-hidden="true">🔍</span>
+              <input
+                type="search"
+                className="search-input"
+                placeholder={t.hero.searchPlaceholder}
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  if (e.target.value.trim()) {
+                    setPeriod(null);
+                    setShowFavorites(false);
+                  }
+                }}
+                aria-label={t.hero.searchPlaceholder}
+              />
+              {searching && (
+                <button
+                  className="search-clear"
+                  onClick={() => setQuery("")}
+                  aria-label="✕"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {badge && (
+              <button
+                className="today-badge"
+                onClick={badge.onClick}
+                suppressHydrationWarning
+              >
+                <span className="today-dot" aria-hidden="true" />
+                {badge.text}
+                <span className="today-arrow" aria-hidden="true"> →</span>
+              </button>
+            )}
+          </div>
+
+          {/* 기간 바로가기 */}
+          <div className="quick-filters">
+            <button
+              className={`quick-chip ${period === "weekend" ? "active" : ""}`}
+              onClick={() => togglePeriod("weekend")}
+            >
+              {t.filters.weekend}
+            </button>
+            <button
+              className={`quick-chip ${period === "month" ? "active" : ""}`}
+              onClick={() => togglePeriod("month")}
+            >
+              {t.filters.month}
+            </button>
+            <button
+              className={`quick-chip ${showFavorites ? "active" : ""}`}
+              onClick={toggleFavorites}
+              suppressHydrationWarning
+            >
+              ❤️ {t.filters.favorites}
+              {favReady && favorites.length > 0 ? ` ${favorites.length}` : ""}
+            </button>
+          </div>
+
+          {searching ? (
+            <div className="search-result-head">
+              {t.list.searchResult(query.trim(), base.length)}
+            </div>
+          ) : period ? (
+            <div className="search-result-head">
+              {t.list.periodResult(periodLabel, base.length)}
+            </div>
+          ) : showFavorites ? (
+            <div className="search-result-head" suppressHydrationWarning>
+              {t.list.favResult(base.length)}
+            </div>
+          ) : (
+            <>
+              {/* 계절 선택 */}
+              <div className="filter-group">
+                <div className="filter-label">{t.filters.season}</div>
+                <div className="chip-row">
+                  {SEASON_ORDER.map((key) => {
+                    const s = SEASONS[key];
+                    return (
+                      <button
+                        key={key}
+                        className={`chip ${season === key ? "active" : ""}`}
+                        onClick={() => {
+                          setSeason(key);
+                          scrollToMap();
+                        }}
+                      >
+                        {s.emoji} {t.seasons[key]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 지역 선택 — 1단계: 시도 */}
+              <div className="filter-group">
+                <div className="filter-label">{t.filters.region}</div>
+                <div className="chip-row">
+                  <button
+                    className={`chip ${sido === null ? "active" : ""}`}
+                    onClick={() => {
+                      setSido(null);
+                      setSigungu(null);
+                      scrollToMap();
+                    }}
+                  >
+                    {t.regions.all}
+                  </button>
+                  {SIDO_ORDER.map((key) => (
+                    <button
+                      key={key}
+                      className={`chip ${sido === key ? "active" : ""}`}
+                      onClick={() => pickSido(key)}
+                    >
+                      {getSidoLabel(key, locale)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 지역 선택 — 2단계: 시군구 (시도 선택 시 펼쳐짐) */}
+              {sido && sigunguList.length > 0 && (
+                <div className="filter-group filter-sigungu">
+                  <div className="chip-row">
+                    <button
+                      className={`chip chip-sm ${sigungu === null ? "active" : ""}`}
+                      onClick={() => setSigungu(null)}
+                    >
+                      {t.regions.all}
+                    </button>
+                    {sigunguList.map((sg) => (
+                      <button
+                        key={sg}
+                        className={`chip chip-sm ${sigungu === sg ? "active" : ""}`}
+                        onClick={() => {
+                          setSigungu((prev) => (prev === sg ? null : sg));
+                          scrollToMap();
+                        }}
+                      >
+                        {sg}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        {/* ④ 지금 뜨는 축제 블로그 (신규) */}
+        <HomeBlogSection
+          festivals={feedSource}
+          selectedName={selName}
+          onReset={resetSelection}
+          flashSignal={flashSignal}
+          accent={theme.color}
+        />
+
+        {/* ⑤ 영상으로 만나는 축제 (유튜브 롱폼) */}
+        <HomeVideoSection
+          festivals={feedSource}
+          selectedName={selName}
+          onReset={resetSelection}
+          flashSignal={flashSignal}
+          accent={theme.color}
+        />
 
         {/* 최근 본 축제 — 이어보기 동선 (브라우저 기록, 회원가입 X) */}
         <RecentViewed />

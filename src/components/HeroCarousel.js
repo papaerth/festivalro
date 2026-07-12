@@ -1,18 +1,28 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { SEASONS } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
 import { getUiExtra } from "@/lib/i18n";
 import CoverImage from "./CoverImage";
 
+// 확장 카드 "상세보기" 버튼 라벨 (13개 언어, 미지정은 영어)
+const DETAIL = {
+  ko: "상세보기", en: "View", ja: "詳細", zh: "查看", "zh-TW": "查看",
+  es: "Ver", fr: "Voir", ru: "Подробнее", de: "Ansehen", ar: "عرض",
+  vi: "Xem", id: "Lihat", th: "ดู",
+};
+
 // 대한민국 구석구석 메인 배너 스타일 — 사진이 꽉 찬 대형 카드 캐러셀 (독립 섹션).
 export default function HeroCarousel({ festivals = [], onPick }) {
-  const { t, locale } = useI18n();
+  const { t, locale, href } = useI18n();
   const ux = getUiExtra(locale);
+  const detailLabel = DETAIL[locale] || DETAIL.en;
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [expanded, setExpanded] = useState(null); // 클릭한 카드의 확장 팝업
   const scroller = useRef(null);
   const activeRef = useRef(0);
   const n = festivals.length;
@@ -58,9 +68,10 @@ export default function HeroCarousel({ festivals = [], onPick }) {
     return () => clearInterval(id);
   }, [paused, n, scrollToIndex]);
 
-  // 필터로 목록이 바뀌면 처음으로 되돌림
+  // 필터로 목록이 바뀌면 처음으로 되돌림 + 확장 팝업 닫기
   useEffect(() => {
     setActive(0);
+    setExpanded(null);
     const el = scroller.current;
     if (el) el.scrollTo({ left: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,7 +119,10 @@ export default function HeroCarousel({ festivals = [], onPick }) {
                 key={f.id}
                 className="hero-card"
                 style={{ "--accent": season.color }}
-                onClick={() => onPick && onPick(f)}
+                onClick={() => {
+                  setExpanded(f);
+                  onPick && onPick(f);
+                }}
               >
                 <CoverImage
                   className="hero-card-bg"
@@ -151,6 +165,54 @@ export default function HeroCarousel({ festivals = [], onPick }) {
           </div>
         )}
       </div>
+
+      {expanded && (
+        <div
+          className="hero-expand"
+          role="dialog"
+          aria-label={expanded.displayName || expanded.name}
+        >
+          <span
+            className="hero-expand-img"
+            style={{
+              backgroundImage: expanded.image ? `url(${expanded.image})` : undefined,
+              "--accent": (SEASONS[expanded.season] || SEASONS.spring).color,
+            }}
+            aria-hidden="true"
+          >
+            {!expanded.image && (
+              <span className="hero-expand-emoji">
+                {(SEASONS[expanded.season] || SEASONS.spring).emoji}
+              </span>
+            )}
+          </span>
+          <div className="hero-expand-info">
+            <h3 className="hero-expand-title">
+              {expanded.displayName || expanded.name}
+            </h3>
+            <p className="hero-expand-sub">
+              {formatPeriod(expanded.startDate, expanded.endDate)}
+              {expanded.sigungu ? ` · ${expanded.sigungu}` : ""}
+            </p>
+            {expanded.description && (
+              <p className="hero-expand-desc">{expanded.description}</p>
+            )}
+            <Link
+              className="hero-expand-btn"
+              href={href(`/festival/${expanded.id}`)}
+            >
+              {detailLabel} →
+            </Link>
+          </div>
+          <button
+            className="hero-expand-close"
+            onClick={() => setExpanded(null)}
+            aria-label="✕"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </section>
   );
 }

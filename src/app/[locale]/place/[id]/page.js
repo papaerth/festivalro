@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import { notFound } from "next/navigation";
 import {
   getPlaceById,
@@ -75,9 +76,7 @@ export default async function PlaceDetailPage({ params, searchParams }) {
     <div>
       <header className="site-header">
         <div className="container">
-          <Link href={homeHref} className="brand">
-            축제로
-          </Link>
+          <BrandLogo />
           <div className="header-right">
             <LangSwitcher />
             <AccountMenu />

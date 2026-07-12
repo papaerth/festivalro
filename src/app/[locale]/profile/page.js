@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
 import { useI18n } from "@/lib/I18nProvider";
@@ -90,9 +91,7 @@ export default function ProfilePage() {
     <div>
       <header className="site-header">
         <div className="container">
-          <Link href={home} className="brand">
-            축제로
-          </Link>
+          <BrandLogo />
           <div className="header-right">
             <AccountMenu />
           </div>

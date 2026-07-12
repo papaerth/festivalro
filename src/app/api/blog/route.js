@@ -123,6 +123,7 @@ export async function GET(request) {
     const items = (data.items || [])
       .map((it) => ({
         title: clean(it.title),
+        description: clean(it.description), // 네이버가 주는 요약(발췌) — 통본문 아님
         link: it.link,
         blogger: it.bloggername,
         postdate: it.postdate, // "YYYYMMDD"
@@ -137,12 +138,19 @@ export async function GET(request) {
       })
     );
 
-    // 블로그 후기 제목은 한국어라, 한국어 외 언어에선 Google 번역으로 대체
+    // 블로그 후기 제목·요약은 한국어라, 한국어 외 언어에선 Google 번역으로 대체
+    //  (제목 n개 + 요약 n개를 한 번에 번역 → 호출 최소화)
     const locale = searchParams.get("locale") || "ko";
     if (locale !== "ko" && items.length > 0) {
-      const titles = await translateMany(items.map((it) => it.title), locale);
+      const n = items.length;
+      const src = [
+        ...items.map((it) => it.title),
+        ...items.map((it) => it.description),
+      ];
+      const tr = await translateMany(src, locale);
       items.forEach((it, i) => {
-        if (titles[i]) it.title = titles[i];
+        if (tr[i]) it.title = tr[i];
+        if (tr[n + i]) it.description = tr[n + i];
       });
     }
 
