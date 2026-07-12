@@ -3297,6 +3297,116 @@ h3 {
   margin-top: auto;
 }
 
+/* ── 블로그 상세검색 + 자동완성 ── */
+.blog-search {
+  margin-bottom: 14px;
+}
+.blog-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: #fff;
+  padding: 6px 6px 6px 14px;
+}
+.blog-search-box:focus-within {
+  border-color: var(--accent);
+}
+.blog-search-icon {
+  color: var(--text-soft);
+  font-size: 14px;
+  flex: none;
+}
+.blog-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: var(--fs-body);
+  color: var(--text);
+  min-width: 0;
+}
+.blog-search-btn {
+  flex: none;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 8px 18px;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+.blog-search-btn:hover {
+  filter: brightness(1.05);
+}
+.blog-auto {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  max-height: 280px;
+  overflow-y: auto;
+}
+.blog-auto-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-btn);
+  font-size: var(--fs-body);
+  color: var(--text);
+  cursor: pointer;
+}
+.blog-auto-item.active {
+  background: var(--accent-soft);
+}
+.blog-auto-item strong {
+  color: var(--accent);
+  font-weight: 800;
+}
+.blog-auto-pin {
+  flex: none;
+  font-size: 13px;
+  opacity: 0.7;
+}
+.blog-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.blog-chip {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text-soft);
+  border-radius: var(--radius-pill);
+  padding: 6px 13px;
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.blog-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.blog-search-note {
+  font-size: var(--fs-caption);
+  color: var(--text-soft);
+  margin: 8px 2px 0;
+}
+
 /* 영상 카드 */
 .vid-card {
   display: flex;

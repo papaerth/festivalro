@@ -602,10 +602,12 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
           )}
         </section>
 
-        {/* ④ 지금 뜨는 축제 블로그 (신규) */}
+        {/* ④ 지금 뜨는 축제 블로그 (신규 · 상세검색+자동완성) */}
         <HomeBlogSection
           festivals={feedSource}
+          allFestivals={festivals}
           selectedName={selName}
+          selectedKoName={selected ? selected.name : null}
           onReset={resetSelection}
           flashSignal={flashSignal}
           accent={theme.color}
