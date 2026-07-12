@@ -613,10 +613,12 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
           accent={theme.color}
         />
 
-        {/* ⑤ 영상으로 만나는 축제 (유튜브 롱폼) */}
+        {/* ⑤ 영상으로 만나는 축제 (유튜브 롱폼 · 상세검색+자동완성) */}
         <HomeVideoSection
           festivals={feedSource}
+          allFestivals={festivals}
           selectedName={selName}
+          selectedKoName={selected ? selected.name : null}
           onReset={resetSelection}
           flashSignal={flashSignal}
           accent={theme.color}
