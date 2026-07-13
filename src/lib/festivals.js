@@ -13,6 +13,7 @@ import { unstable_cache } from "next/cache";
 import { SAMPLE_FESTIVALS } from "./sampleFestivals";
 import { translateText } from "./translate";
 import { translateTextAI } from "./translateAI";
+import { getPublishedNewFestivals } from "./submissions";
 
 // TourAPI searchFestival2 엔드포인트 기본 주소 (필요시 .env로 덮어쓸 수 있음)
 const TOUR_API_BASE =
@@ -303,6 +304,25 @@ export async function getFestivals() {
 
   const merged = mergeFestivals(tourList, stdList);
   if (merged.length === 0) return SAMPLE_FESTIVALS; // 둘 다 실패 → 안전장치
+
+  // 게시된 '새 축제'(기존과 연결 안 된 담당자 등록) 합성 후 병합.
+  //  - 이름+지역이 기존 축제와 겹치면 새로 추가하지 않음(중복 방지).
+  //  - Supabase 미설정/오류면 조용히 건너뜀(사이트 정상).
+  try {
+    const submitted = await getPublishedNewFestivals();
+    if (submitted.length > 0) {
+      const seen = new Set(merged.filter((f) => normName(f.name).length > 1).map(dedupKey));
+      for (const f of submitted) {
+        const k = dedupKey(f);
+        if (normName(f.name).length > 1 && seen.has(k)) continue;
+        seen.add(k);
+        merged.push(f);
+      }
+    }
+  } catch {
+    /* 제출 축제 병합 실패는 무시 */
+  }
+
   return merged;
 }
 

@@ -1,23 +1,26 @@
 import Link from "next/link";
 import BrandLogo from "@/components/BrandLogo";
 import { localeHref, isLocale, DEFAULT_LOCALE } from "@/lib/i18n";
-import ReportForm from "@/components/ReportForm";
+import SubmitForm from "@/components/SubmitForm";
+import { getFestivals, getFestivalNameMap } from "@/lib/festivals";
 
-// 제보/문의 페이지 — 방문자가 운영자에게 의견을 보낼 수 있는 폼.
+// 등록·제보 페이지 — 축제 담당자 등록 / 주민 제보 폼.
 // 공문·홍보물용 대표 주소: /submit (지자체 발송 QR 링크가 여기를 가리킴)
+export const revalidate = 21600; // 축제 목록(자동완성용)은 6시간마다 갱신
+
 const REP = {
   ko: {
-    metaTitle: "제보하기 · 축제로",
-    title: "제보하기",
+    metaTitle: "축제 등록·제보 · 축제로",
+    title: "축제 등록 · 제보",
     intro:
-      "빠진 축제, 잘못된 정보, 개선 아이디어 등 무엇이든 알려 주세요. 보내주신 내용은 운영자에게 바로 전달됩니다.",
+      "축제 담당자는 정보를 등록하고, 주민·방문자는 제보를 남겨 주세요. 검토 후 축제 페이지에 반영됩니다.",
     back: "← 홈으로",
   },
   en: {
-    metaTitle: "Send a report · Chukjero",
-    title: "Send a report",
+    metaTitle: "Register or report a festival · Chukjero",
+    title: "Register · Report a festival",
     intro:
-      "Tell us about a missing festival, wrong info, or any idea to improve. Your message goes straight to the operator.",
+      "Organizers can register their festival; residents and visitors can send reports. Submissions appear after review.",
     back: "← Home",
   },
 };
@@ -34,6 +37,15 @@ export default async function SubmitPage({ params }) {
   const r = REP[loc] || REP.en;
   const home = localeHref(loc, "/");
 
+  // 자동완성용 축제 목록(가벼운 {id, name, displayName}만) — 기존 축제와 연결하는 데 사용
+  const festivals = await getFestivals();
+  const nameMap = await getFestivalNameMap(loc);
+  const list = festivals.map((f) => ({
+    id: f.id,
+    name: f.name,
+    displayName: nameMap[f.id] || f.name,
+  }));
+
   return (
     <div>
       <header className="site-header">
@@ -46,7 +58,7 @@ export default async function SubmitPage({ params }) {
         <h1 className="legal-title">{r.title}</h1>
         <p>{r.intro}</p>
 
-        <ReportForm />
+        <SubmitForm festivals={list} />
 
         <p className="legal-back">
           <Link href={home} className="popup-link">

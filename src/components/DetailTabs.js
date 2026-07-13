@@ -22,16 +22,17 @@ export default function DetailTabs({
     setVisited((v) => ({ ...v, [key]: true }));
   };
 
-  const TABS = [
-    { key: "info", label: t.detail.tabs.info, icon: "🎪" },
-    { key: "weather", label: t.detail.tabs.weather, icon: "🌤️" },
-    { key: "reviews", label: t.detail.tabs.reviews, icon: "⭐" },
-  ];
   const panels = {
     info: infoPanel,
     weather: weatherPanel,
     reviews: reviewsPanel,
   };
+  // 패널이 없는 탭(예: 좌표 없는 제출 축제의 날씨)은 숨김
+  const TABS = [
+    { key: "info", label: t.detail.tabs.info, icon: "🎪" },
+    { key: "weather", label: t.detail.tabs.weather, icon: "🌤️" },
+    { key: "reviews", label: t.detail.tabs.reviews, icon: "⭐" },
+  ].filter((tab) => panels[tab.key]);
 
   return (
     <div>

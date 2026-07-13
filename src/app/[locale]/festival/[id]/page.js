@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { getFestivalById, getFestivals } from "@/lib/festivals";
 import { getFestivalExtras } from "@/lib/festivalExtra";
 import { getCurated } from "@/lib/curated";
+import { getPublishedForFestival } from "@/lib/submissions";
+import SubmittedInfo from "@/components/SubmittedInfo";
 import { getRelatedFestivals } from "@/lib/related";
 import RelatedFestivals from "@/components/RelatedFestivals";
 import RecordView from "@/components/RecordView";
@@ -103,11 +105,15 @@ export default async function FestivalDetailPage({ params }) {
     notFound();
   }
 
+  // 제출로 등록된 새 축제(source="submission")는 좌표·자동수집 정보가 없음 → 지도/날씨/주변 생략
+  const isSubmitted = festival.source === "submission";
+
   // 자동 수집(API) + 큐레이션(직접 입력) + 추천용 전체 목록 — 각각 실패/없으면 빈 값
-  const [extras, curated, allFestivals] = await Promise.all([
-    getFestivalExtras(festival, loc),
+  const [extras, curated, allFestivals, submitted] = await Promise.all([
+    isSubmitted ? Promise.resolve({}) : getFestivalExtras(festival, loc),
     getCurated(festival.id),
     getFestivals(),
+    getPublishedForFestival(festival.id),
   ]);
   // "이 축제가 좋았다면" 추천 (같은 시군구→같은 계절 인기→비슷한 유형, 종료·현재 축제 제외)
   const related = getRelatedFestivals(festival, allFestivals, 6);
@@ -214,6 +220,9 @@ export default async function FestivalDetailPage({ params }) {
               {/* 핵심 요약 바 */}
               <SummaryBar festival={festival} extras={extras} loc={loc} />
 
+              {/* 주최측/방문자 제공 정보 (게시된 등록·제보 자동 반영) */}
+              <SubmittedInfo data={submitted} />
+
               {/* 타임테이블 · 라인업 (큐레이션) */}
               <CuratedSections curated={curated} only="top" festivalYear={fYear} />
 
@@ -223,26 +232,29 @@ export default async function FestivalDetailPage({ params }) {
               {/* 셔틀 · 주차 (큐레이션) */}
               <CuratedSections curated={curated} only="mid" festivalYear={fYear} />
 
-              {/* 오시는 길 */}
-              <section className="section">
-                <h2>{dict.detail.directions}</h2>
-                <DirectionsButton
-                  name={festival.name}
-                  lat={festival.lat}
-                  lng={festival.lng}
-                />
-              </section>
+              {/* 오시는 길 · 위치 (좌표가 있는 축제만) */}
+              {!isSubmitted && (
+                <>
+                  <section className="section">
+                    <h2>{dict.detail.directions}</h2>
+                    <DirectionsButton
+                      name={festival.name}
+                      lat={festival.lat}
+                      lng={festival.lng}
+                    />
+                  </section>
 
-              {/* 위치 */}
-              <section className="section">
-                <h2>{dict.detail.location}</h2>
-                <DetailMap
-                  lat={festival.lat}
-                  lng={festival.lng}
-                  name={festival.name}
-                  color={theme.color}
-                />
-              </section>
+                  <section className="section">
+                    <h2>{dict.detail.location}</h2>
+                    <DetailMap
+                      lat={festival.lat}
+                      lng={festival.lng}
+                      name={festival.name}
+                      color={theme.color}
+                    />
+                  </section>
+                </>
+              )}
 
               {/* 먹거리 (큐레이션) */}
               <CuratedSections curated={curated} only="food" festivalYear={fYear} />
@@ -273,14 +285,16 @@ export default async function FestivalDetailPage({ params }) {
             </>
           }
           weatherPanel={
-            <section className="section">
-              <h2>{dict.detail.weather}</h2>
-              <WeatherPanel
-                lat={festival.lat}
-                lng={festival.lng}
-                place={`${festival.sido} ${festival.sigungu}`}
-              />
-            </section>
+            isSubmitted ? null : (
+              <section className="section">
+                <h2>{dict.detail.weather}</h2>
+                <WeatherPanel
+                  lat={festival.lat}
+                  lng={festival.lng}
+                  place={`${festival.sido} ${festival.sigungu}`}
+                />
+              </section>
+            )
           }
           reviewsPanel={
             <section className="section">

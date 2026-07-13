@@ -3942,3 +3942,67 @@ h3 {
   line-height: 1.55;
   margin: 0;
 }
+
+/* ── 주최측/방문자 제공 정보 (게시된 등록·제보) ── */
+.submitted-src {
+  font-size: var(--fs-caption);
+  color: var(--accent);
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.submitted-src-note { color: var(--text-soft); font-weight: 400; }
+
+/* 사진 갤러리 — 가로 스크롤·스냅(모바일 스와이프) */
+.submitted-gallery {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+.submitted-gallery-item {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+  width: 240px;
+  height: 170px;
+  border-radius: var(--radius-btn);
+  overflow: hidden;
+  background: rgba(130, 130, 130, 0.1);
+  display: block;
+}
+.submitted-gallery-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.submitted-gallery-pdf {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 150px;
+  height: 170px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border, #d1d5db);
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+@media (max-width: 520px) {
+  .submitted-gallery-item { width: 200px; height: 145px; }
+}
+
+/* 방문자 제보 메모 */
+.submitted-notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 10px; }
+.submitted-notes li { line-height: 1.6; }
+.submitted-note-cat {
+  display: inline-block;
+  font-size: var(--fs-caption);
+  color: var(--accent);
+  font-weight: 600;
+  margin-right: 6px;
+}
