@@ -65,13 +65,14 @@ function toCho(str) {
 }
 const isChoQuery = (q) => /^[ㄱ-ㅎ]+$/.test(q);
 
-const CACHE = new Map(); // `${query}|${locale}` → items[]
-async function fetchVideoFor(query, locale, signal) {
-  const key = `${query}|${locale}`;
+const CACHE = new Map(); // `${query}|${region}|${locale}` → items[]
+async function fetchVideoFor(query, region, locale, signal) {
+  const key = `${query}|${region || ""}|${locale}`;
   if (CACHE.has(key)) return CACHE.get(key);
   try {
+    const reg = region ? `&region=${encodeURIComponent(region)}` : "";
     const res = await fetch(
-      `/api/videos?query=${encodeURIComponent(query)}&locale=${locale}`,
+      `/api/videos?query=${encodeURIComponent(query)}${reg}&locale=${locale}`,
       { signal }
     );
     if (!res.ok) throw new Error("videos " + res.status);
@@ -132,7 +133,7 @@ export default function HomeVideoSection({
     setState((s) => ({ status: "loading", items: s.items }));
     Promise.all(
       list.map((f) =>
-        fetchVideoFor(f.name, locale, ctrl.signal).then((its) => (its || []).slice(0, PER))
+        fetchVideoFor(f.name, f.sigungu, locale, ctrl.signal).then((its) => (its || []).slice(0, PER))
       )
     ).then((results) => {
       if (!alive) return;
@@ -189,12 +190,15 @@ export default function HomeVideoSection({
     return out;
   }, [input, allFestivals]);
 
-  const runSearch = (fullQuery) => {
+  // region: 자동완성에서 고른 축제(picked) 또는 선택 연동 축제의 시군구 (있으면 검색 정확도↑)
+  const ctxSigungu = picked?.sigungu || festivals[0]?.sigungu || null;
+
+  const runSearch = (fullQuery, region = null) => {
     const q = fullQuery.trim();
     if (!q) return;
     setShowAuto(false);
     setSearch({ query: q, status: "loading", items: [] });
-    fetchVideoFor(q, locale).then((items) => {
+    fetchVideoFor(q, region, locale).then((items) => {
       setSearch({
         query: q,
         status: items === null ? "error" : "ok",
@@ -208,11 +212,11 @@ export default function HomeVideoSection({
     const base = picked ? "" : selectedKoName ? `${selectedKoName} ` : "";
     const full = `${base}${text}`.trim();
     if (!full) return;
-    runSearch(full);
+    runSearch(full, ctxSigungu);
   };
 
   const ctxKo = picked?.name || selectedKoName || null;
-  const onChip = (kw) => runSearch(`${ctxKo} ${kw}`.trim());
+  const onChip = (kw) => runSearch(`${ctxKo} ${kw}`.trim(), ctxSigungu);
 
   const pickFestival = (f) => {
     setInput(f.name);

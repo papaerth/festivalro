@@ -158,7 +158,7 @@ function CuratedEmbed({ item, watchLabel }) {
 //  - 유튜브 쇼츠는 썸네일만 먼저, 플레이어는 클릭 시 지연 로딩
 //  - 유튜브 실패/한도초과/키없음 → 영상 목록만 조용히 숨김 (섹션·버튼은 정상)
 //  - 인스타/틱톡 바로가기 버튼은 전 축제 공통
-export default function VideoSection({ query, curatedVideos, accent = "#c2578a" }) {
+export default function VideoSection({ query, region = "", curatedVideos, accent = "#c2578a" }) {
   const { locale } = useI18n();
   const v = VL[locale] || VL.ko;
   const watch = WATCH[locale] || WATCH.ko;
@@ -169,8 +169,9 @@ export default function VideoSection({ query, curatedVideos, accent = "#c2578a" 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12000);
     const en = locale === "en" ? "&en=1" : "";
+    const reg = region ? `&region=${encodeURIComponent(region)}` : "";
 
-    fetch(`/api/videos?query=${encodeURIComponent(query)}${en}&locale=${locale}`, {
+    fetch(`/api/videos?query=${encodeURIComponent(query)}${reg}${en}&locale=${locale}`, {
       signal: controller.signal,
     })
       .then((res) => {
@@ -191,7 +192,7 @@ export default function VideoSection({ query, curatedVideos, accent = "#c2578a" 
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, locale]);
+  }, [query, region, locale]);
 
   const tag = String(query).replace(/\s+/g, "");
   const igUrl = `https://www.instagram.com/explore/tags/${encodeURIComponent(tag)}/`;

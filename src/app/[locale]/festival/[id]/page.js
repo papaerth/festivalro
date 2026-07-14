@@ -206,6 +206,7 @@ export default async function FestivalDetailPage({ params }) {
                   제목·버튼 문구는 컴포넌트 내부에서 다국어 처리됨. */}
               <VideoSection
                 query={festival.nameKo || festival.name}
+                region={festival.sigungu}
                 curatedVideos={curated && curated.videos}
                 accent={theme.color}
               />
