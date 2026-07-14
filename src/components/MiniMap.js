@@ -30,7 +30,7 @@ export default function MiniMap({ lat, lng, name, color }) {
       gestureHandling={touch}
       gestureHandlingOptions={
         touch
-          ? { text: { touch: gestureMsg, scroll: gestureMsg, scrollMac: gestureMsg }, duration: 1600 }
+          ? { text: { touch: gestureMsg, scroll: gestureMsg, scrollMac: gestureMsg }, duration: 1000 }
           : undefined
       }
       className="mini-map"
