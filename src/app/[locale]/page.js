@@ -1,5 +1,5 @@
 import HomeClient from "@/components/HomeClient";
-import { getFestivals, getFestivalNameMap, isUsingSampleData } from "@/lib/festivals";
+import { getFestivals, localizeFestivals, isUsingSampleData } from "@/lib/festivals";
 import { getPopularFestivals } from "@/lib/popular";
 import { isLocale, DEFAULT_LOCALE } from "@/lib/i18n";
 
@@ -18,14 +18,9 @@ export default async function HomePage({ params }) {
   const festivals = await getFestivals();
   const usingSample = isUsingSampleData();
 
-  // 지원 언어면 TourAPI 다국어 이름으로 카드 제목을 번역(실패/미지원이면 {} → 한국어 유지)
-  const nameMap = await getFestivalNameMap(loc);
-  const localized =
-    Object.keys(nameMap).length > 0
-      ? festivals.map((f) =>
-          nameMap[f.id] ? { ...f, displayName: nameMap[f.id] } : f
-        )
-      : festivals;
+  // 현재 언어의 표시명(displayName)·시군구(displaySigungu)를 채움
+  //  (TourAPI 공식 번역 → Google 번역[장기캐시] → 한국어+로마자). ko면 원문 그대로.
+  const localized = await localizeFestivals(festivals, loc);
 
   // 다가오는 인기 축제(복합 점수: 블로그 글 수 등) → 카드별 점수 힌트맵
   const popular = await getPopularFestivals(localized);

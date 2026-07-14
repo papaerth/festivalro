@@ -84,6 +84,35 @@ export async function translateMany(texts, locale) {
   }
 }
 
+// 축제명·지역명처럼 '한 번 정하면 안 바뀌는 짧은 명칭' 전용 — 30일 장기 캐시.
+//  (제목은 재번역할 필요가 없으니 유효기간을 길게 잡아 API 호출을 최대한 억제)
+const translateNamesCached = unstable_cache(translateRaw, ["gtranslate-names-v1"], {
+  revalidate: 60 * 60 * 24 * 30,
+});
+
+// Google 번역 v2는 한 요청당 텍스트 세그먼트 수(128개)·총 길이 제한이 있어,
+// 축제 목록처럼 많은 명칭은 청크로 나눠 보냅니다. (각 청크는 개별 30일 캐시)
+const NAME_CHUNK = 80;
+
+// [공개] 명칭 배열 번역(청크 + 30일 캐시). 불가/실패 시 해당 청크는 '원문 그대로'.
+export async function translateNames(texts, locale) {
+  const arr = (texts || []).map((t) => (t == null ? "" : String(t)));
+  if (!canTranslate(locale) || arr.length === 0) return arr;
+  if (arr.every((s) => s.trim() === "")) return arr;
+
+  const out = [];
+  for (let i = 0; i < arr.length; i += NAME_CHUNK) {
+    const chunk = arr.slice(i, i + NAME_CHUNK);
+    try {
+      out.push(...(await translateNamesCached(chunk, locale)));
+    } catch (err) {
+      console.warn("[축제로] 명칭 번역 실패:", locale, err.message);
+      out.push(...chunk); // 폴백: 이 청크만 한국어 원문 유지
+    }
+  }
+  return out;
+}
+
 // [공개] 단일 문자열 번역. 불가/실패 시 원문 그대로.
 export async function translateText(text, locale) {
   if (text == null || text === "") return text;

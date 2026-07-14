@@ -57,7 +57,7 @@ export default function FestivalCard({ festival, rating }) {
         )}
         <p className="card-meta">{formatPeriod(festival.startDate, festival.endDate)}</p>
         <span className="card-region">
-          {season.emoji} {regionName} · {festival.sigungu}
+          {season.emoji} {regionName} · {festival.displaySigungu || festival.sigungu}
         </span>
       </div>
     </Link>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import BrandLogo from "@/components/BrandLogo";
 import { notFound } from "next/navigation";
-import { getFestivalById, getFestivals } from "@/lib/festivals";
+import { getFestivalById, getFestivals, localizeFestivals } from "@/lib/festivals";
 import { getFestivalExtras } from "@/lib/festivalExtra";
 import { getCurated } from "@/lib/curated";
 import { getPublishedForFestival } from "@/lib/submissions";
@@ -116,7 +116,7 @@ export default async function FestivalDetailPage({ params }) {
     getPublishedForFestival(festival.id),
   ]);
   // "이 축제가 좋았다면" 추천 (같은 시군구→같은 계절 인기→비슷한 유형, 종료·현재 축제 제외)
-  const related = getRelatedFestivals(festival, allFestivals, 6);
+  const related = await localizeFestivals(getRelatedFestivals(festival, allFestivals, 6), loc);
   const S = getSections(loc);
   const fYear = festival.startDate ? festival.startDate.slice(0, 4) : null;
 

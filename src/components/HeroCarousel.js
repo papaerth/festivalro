@@ -139,7 +139,7 @@ export default function HeroCarousel({ festivals = [], onPick, onReset }) {
                   <h2 className="hero-card-title">{name}</h2>
                   <p className="hero-card-sub">
                     {formatPeriod(f.startDate, f.endDate)} · {season.emoji} {region}
-                    {f.sigungu ? " " + f.sigungu : ""}
+                    {f.sigungu ? " " + (f.displaySigungu || f.sigungu) : ""}
                   </p>
                 </div>
               </button>
@@ -192,7 +192,7 @@ export default function HeroCarousel({ festivals = [], onPick, onReset }) {
             </h3>
             <p className="hero-expand-sub">
               {formatPeriod(expanded.startDate, expanded.endDate)}
-              {expanded.sigungu ? ` · ${expanded.sigungu}` : ""}
+              {expanded.sigungu ? ` · ${expanded.displaySigungu || expanded.sigungu}` : ""}
             </p>
             {expanded.description && (
               <p className="hero-expand-desc">{expanded.description}</p>

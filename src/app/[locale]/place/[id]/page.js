@@ -8,7 +8,7 @@ import {
   getPlaceLabels,
   categoryLabel,
 } from "@/lib/place";
-import { getFestivals } from "@/lib/festivals";
+import { getFestivals, localizeFestivals } from "@/lib/festivals";
 import {
   DEFAULT_LOCALE,
   isLocale,
@@ -44,9 +44,9 @@ export async function generateMetadata({ params, searchParams }) {
 }
 
 // "이 장소에서 가까운 축제" — 무거운 전체 축제목록을 기다렸다가 스트리밍으로 채움.
-async function NearbyFestivals({ festivalsPromise, lat, lng, title }) {
+async function NearbyFestivals({ festivalsPromise, lat, lng, title, loc }) {
   const all = await festivalsPromise;
-  const nearby = getNearbyFestivals(lat, lng, all, 3);
+  const nearby = await localizeFestivals(getNearbyFestivals(lat, lng, all, 3), loc);
   return <RelatedFestivals items={nearby} title={title} />;
 }
 
@@ -167,6 +167,7 @@ export default async function PlaceDetailPage({ params, searchParams }) {
             lat={place.lat}
             lng={place.lng}
             title={L.nearby}
+            loc={loc}
           />
         </Suspense>
       </main>
