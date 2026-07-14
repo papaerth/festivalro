@@ -42,7 +42,9 @@ export async function POST(request) {
 
   const photos = Array.isArray(b.photos)
     ? b.photos
-        .filter((u) => typeof u === "string" && u.startsWith("http"))
+        .filter((u) => typeof u === "string")
+        .map((u) => u.trim())
+        .filter((u) => u.startsWith("http"))
         .slice(0, 10)
     : [];
 

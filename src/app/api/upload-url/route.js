@@ -54,7 +54,10 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: "업로드 URL 발급 실패" }, { status: 500 });
   }
 
-  const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${SUBMISSIONS_BUCKET}/${path}`;
+  // ⚠️ NEXT_PUBLIC_SUPABASE_URL에 앞뒤 공백/BOM이 섞여 있어도 안전하도록 .trim()
+  //    (공백이 섞이면 publicUrl에 공백이 들어가 startsWith("http") 검사에 걸려 사진이 저장 안 됨)
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "";
+  const publicUrl = `${baseUrl}/storage/v1/object/public/${SUBMISSIONS_BUCKET}/${path}`;
   return NextResponse.json({
     ok: true,
     path,
