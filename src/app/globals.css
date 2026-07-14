@@ -2949,6 +2949,7 @@ h3 {
   flex: 0 0 40%;
   min-width: 0;
   display: flex;
+  position: relative; /* 지도 위 오버레이 필터 기준 */
   scroll-margin-top: 72px;
 }
 .cmr-map .map {
@@ -2957,6 +2958,142 @@ h3 {
   min-height: 0;
   max-height: none;
   margin: 0;
+}
+
+/* ── 지도 위 오버레이 필터 (카카오/네이버맵 스타일 반투명 칩) ── */
+.map-filters {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 1000; /* Leaflet 컨트롤(~1000) 위로 — 상단은 칩, 줌은 우하단으로 이동함 */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none; /* 칩 사이 빈 곳은 지도 드래그가 통과 */
+}
+.map-filters .mf-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 1px;
+  pointer-events: auto; /* 칩 줄은 스크롤·클릭 가능 */
+}
+.map-filters .mf-row::-webkit-scrollbar {
+  display: none;
+}
+.mf-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.82);
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+  backdrop-filter: saturate(180%) blur(8px);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(24, 27, 34, 0.14);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.mf-chip:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+.mf-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(24, 27, 34, 0.22);
+}
+.mf-chip.open {
+  border-color: var(--accent);
+}
+
+/* 지역 선택 패널 (지도 위에 떠서) */
+.mf-region {
+  pointer-events: auto;
+  margin-top: 2px;
+  width: min(320px, calc(100% - 4px));
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.94);
+  -webkit-backdrop-filter: saturate(180%) blur(10px);
+  backdrop-filter: saturate(180%) blur(10px);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(24, 27, 34, 0.2);
+}
+.mf-region-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  color: var(--text-soft);
+  margin-bottom: 8px;
+}
+.mf-region-x {
+  border: none;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px;
+}
+.mf-region-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mf-region-sub {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+.mf-rchip {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mf-rchip.sm {
+  height: 26px;
+  padding: 0 10px;
+  font-weight: 500;
+}
+.mf-rchip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+@media (max-width: 860px) {
+  .map-filters {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+  }
+  .mf-region {
+    width: calc(100% - 4px);
+  }
 }
 /* 모바일: 카드뉴스 → 지도 세로 스택, 지도는 화면 높이 60% */
 @media (max-width: 860px) {

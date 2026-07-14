@@ -1,6 +1,6 @@
 "use client";
 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import Link from "next/link";
@@ -150,10 +150,13 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
       center={[36.5, 127.8]}
       zoom={7}
       scrollWheelZoom={false}
+      zoomControl={false}
       maxBounds={KOREA_BOUNDS}
       maxBoundsViscosity={1.0}
       className="map"
     >
+      {/* 줌 버튼을 우하단으로 — 상단 오버레이 필터 칩과 겹치지 않게 */}
+      <ZoomControl position="bottomright" />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 기여자'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

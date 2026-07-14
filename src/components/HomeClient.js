@@ -2,13 +2,13 @@
 
 import { useMemo, useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
-import { SEASONS, SEASON_ORDER } from "@/lib/seasons";
+import { SEASONS } from "@/lib/seasons";
 import { getStatusInfo, STATUS_ORDER } from "@/lib/format";
-import { SIDO_ORDER, matchSido } from "@/lib/regionsKr";
+import { matchSido } from "@/lib/regionsKr";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
-import { getSidoLabel } from "@/lib/i18n";
+import MapFilters from "./MapFilters";
 import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
 import AccountMenu from "./AccountMenu";
@@ -266,7 +266,26 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setSido((prev) => (prev === key ? null : key));
     setSigungu(null);
   };
+  const pickSigungu = (sg) => setSigungu((prev) => (prev === sg ? null : sg));
+  const clearRegion = () => {
+    setSido(null);
+    setSigungu(null);
+  };
   const periodLabel = period === "weekend" ? t.filters.weekend : t.filters.month;
+
+  // 지도 오버레이 필터 상태 — 부가필터(지역/기간/즐겨찾기)가 하나라도 켜졌는지
+  const filtersActive = !!(sido || sigungu || period || showFavorites);
+  // 지도 위 '전체' 칩 — 선택·지도·부가필터·검색 초기화 (계절 선택은 유지)
+  const resetFilters = () => {
+    setSido(null);
+    setSigungu(null);
+    setPeriod(null);
+    setShowFavorites(false);
+    setStatusFilter(null);
+    setQuery("");
+    setSearchText("");
+    resetSelection();
+  };
 
   const q = query.trim().toLowerCase();
   const searching = q.length > 0;
@@ -454,6 +473,25 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
             />
           </div>
           <div className="cmr-map" ref={mapRef}>
+            {/* 지도 위 오버레이 필터 (계절/기간/즐겨찾기/지역) */}
+            <MapFilters
+              season={season}
+              onSeason={setSeason}
+              period={period}
+              onTogglePeriod={togglePeriod}
+              showFavorites={showFavorites}
+              onToggleFavorites={toggleFavorites}
+              sido={sido}
+              sigungu={sigungu}
+              sigunguList={sigunguList}
+              onPickSido={pickSido}
+              onPickSigungu={pickSigungu}
+              onRegionAll={clearRegion}
+              favorites={favorites}
+              favReady={favReady}
+              filtersActive={filtersActive}
+              onReset={resetFilters}
+            />
             <MapView
               festivals={mapFestivals}
               ratings={ratings}
@@ -486,7 +524,8 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
           accent={theme.color}
         />
 
-        {/* ④ 검색 · 필터 묶음 (한 구역 · 축제 목록 바로 위) */}
+        {/* ④ 목록 헤더 — 캐치프레이즈 + 상태 배지 + (필터 적용 시) 결과 요약.
+             계절/기간/즐겨찾기/지역 필터는 지도 위 오버레이(MapFilters)로 이동됨. */}
         <section className="filters-block">
           <div className="hero">
             <h1>
@@ -508,113 +547,14 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
             )}
           </div>
 
-          {/* 기간 바로가기 */}
-          <div className="quick-filters">
-            <button
-              className={`quick-chip ${period === "weekend" ? "active" : ""}`}
-              onClick={() => togglePeriod("weekend")}
-            >
-              {t.filters.weekend}
-            </button>
-            <button
-              className={`quick-chip ${period === "month" ? "active" : ""}`}
-              onClick={() => togglePeriod("month")}
-            >
-              {t.filters.month}
-            </button>
-            <button
-              className={`quick-chip ${showFavorites ? "active" : ""}`}
-              onClick={toggleFavorites}
-              suppressHydrationWarning
-            >
-              ❤️ {t.filters.favorites}
-              {favReady && favorites.length > 0 ? ` ${favorites.length}` : ""}
-            </button>
-          </div>
-
-          {searching ? (
-            <div className="search-result-head">
-              {t.list.searchResult(query.trim(), base.length)}
-            </div>
-          ) : period ? (
-            <div className="search-result-head">
-              {t.list.periodResult(periodLabel, base.length)}
-            </div>
-          ) : showFavorites ? (
+          {(searching || period || showFavorites) && (
             <div className="search-result-head" suppressHydrationWarning>
-              {t.list.favResult(base.length)}
+              {searching
+                ? t.list.searchResult(query.trim(), base.length)
+                : period
+                ? t.list.periodResult(periodLabel, base.length)
+                : t.list.favResult(base.length)}
             </div>
-          ) : (
-            <>
-              {/* 계절 선택 */}
-              <div className="filter-group">
-                <div className="filter-label">{t.filters.season}</div>
-                <div className="chip-row">
-                  {SEASON_ORDER.map((key) => {
-                    const s = SEASONS[key];
-                    return (
-                      <button
-                        key={key}
-                        className={`chip ${season === key ? "active" : ""}`}
-                        onClick={() => setSeason(key)}
-                      >
-                        {s.emoji} {t.seasons[key]}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 지역 선택 — 1단계: 시도 */}
-              <div className="filter-group">
-                <div className="filter-label">{t.filters.region}</div>
-                <div className="chip-row">
-                  <button
-                    className={`chip ${sido === null ? "active" : ""}`}
-                    onClick={() => {
-                      setSido(null);
-                      setSigungu(null);
-                    }}
-                  >
-                    {t.regions.all}
-                  </button>
-                  {SIDO_ORDER.map((key) => (
-                    <button
-                      key={key}
-                      className={`chip ${sido === key ? "active" : ""}`}
-                      onClick={() => pickSido(key)}
-                    >
-                      {getSidoLabel(key, locale)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 지역 선택 — 2단계: 시군구 (시도 선택 시 펼쳐짐) */}
-              {sido && sigunguList.length > 0 && (
-                <div className="filter-group filter-sigungu">
-                  <div className="chip-row">
-                    <button
-                      className={`chip chip-sm ${sigungu === null ? "active" : ""}`}
-                      onClick={() => setSigungu(null)}
-                    >
-                      {t.regions.all}
-                    </button>
-                    {sigunguList.map((sg) => (
-                      <button
-                        key={sg}
-                        className={`chip chip-sm ${sigungu === sg ? "active" : ""}`}
-                        onClick={() =>
-                          setSigungu((prev) => (prev === sg ? null : sg))
-                        }
-                      >
-                        {sg}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
           )}
         </section>
 
