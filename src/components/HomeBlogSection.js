@@ -13,7 +13,7 @@ import BlogThumb from "./BlogThumb";
 
 const SRC = 3; // 종합에 쓸 축제 수
 const PER = 2; // 축제당 카드 수
-const MAX = 6; // 종합 최종 카드 수
+const MAX = 3; // 종합 최종 카드 수 (피드에 띄우는 개수)
 
 // ▼▼▼ 의도 키워드 칩 — 여기 목록만 바꾸면 됩니다 (q=실제 검색어(한국어), en=외국어 라벨) ▼▼▼
 const INTENT_KEYWORDS = [

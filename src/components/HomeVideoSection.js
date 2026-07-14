@@ -12,7 +12,7 @@ import { useI18n } from "@/lib/I18nProvider";
 
 const SRC = 2; // 종합에 쓸 축제 수 (유튜브 할당량 고려해 적게)
 const PER = 3;
-const MAX = 6;
+const MAX = 3; // 피드에 띄우는 개수
 
 // ▼▼▼ 영상 검색 의도 키워드 칩 — 여기 목록만 바꾸면 됩니다 (q=검색어(한국어), en=외국어 라벨) ▼▼▼
 const INTENT_KEYWORDS = [
