@@ -14,6 +14,7 @@ import FavoriteAlerts from "./FavoriteAlerts";
 import AccountMenu from "./AccountMenu";
 import LangSwitcher from "./LangSwitcher";
 import HeroCarousel from "./HeroCarousel";
+import TopSearch from "./TopSearch";
 import HomeBlogSection from "./HomeBlogSection";
 import HomeVideoSection from "./HomeVideoSection";
 import RecentViewed from "./RecentViewed";
@@ -89,7 +90,8 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const [sido, setSido] = useState(null); // null = 전체(전국)
   const [sigungu, setSigungu] = useState(null); // null = 시도 전체
   const [statusFilter, setStatusFilter] = useState(null); // null=전체
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(""); // 그리드 텍스트필터(상단 검색 Enter 폴백)
+  const [searchText, setSearchText] = useState(""); // 상단 검색바 입력값(자동완성 표시)
   const [period, setPeriod] = useState(null); // null | "weekend" | "month"
   const [showFavorites, setShowFavorites] = useState(false);
   const [mapFocus, setMapFocus] = useState(null); // 카드/마커에서 고른 축제 위치
@@ -133,13 +135,8 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setResetSignal((n) => n + 1);
   };
 
-  // 카드뉴스 클릭 → 지도 줌인 + 아래 섹션 전환 + (모바일이면) 지도로 스크롤
-  const handleHeroPick = (f) => {
-    if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) {
-      setMapFocus({ id: f.id, lat: f.lat, lng: f.lng, ts: Date.now() });
-    }
-    selectFestival(f);
-    // 지도가 이미 화면에 보이면(PC 좌우 배치) 스크롤하지 않음.
+  // 지도가 화면에 안 보이면(모바일 스택) 지도로 부드럽게 스크롤
+  const scrollMapIntoView = () => {
     const el = mapRef.current;
     if (el) {
       const r = el.getBoundingClientRect();
@@ -149,12 +146,69 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     }
   };
 
+  // 카드뉴스 클릭 → 지도 줌인 + 아래 섹션 전환 + (모바일이면) 지도로 스크롤
+  const handleHeroPick = (f) => {
+    if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) {
+      setMapFocus({ id: f.id, lat: f.lat, lng: f.lng, ts: Date.now() });
+    }
+    selectFestival(f);
+    scrollMapIntoView();
+  };
+
   // 지도 마커 클릭 → 그 축제로 줌인 + 아래 섹션 전환
   const handleMapSelect = (f) => {
     if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) {
       setMapFocus({ id: f.id, lat: f.lat, lng: f.lng, ts: Date.now() });
     }
     selectFestival(f);
+  };
+
+  // ── 상단 검색바 동작 ──
+  // ① 자동완성에서 축제 선택 → 마커 클릭과 동일(줌인+팝업+블로그·영상 전환)
+  const handleSearchSelectFestival = (f) => {
+    setSearchText(f.displayName || f.name);
+    setQuery("");
+    handleMapSelect(f);
+    scrollMapIntoView();
+  };
+  // ② 지역 선택 → 해당 지역 필터 적용 + 지도 그 지역으로 이동
+  const handleSearchRegion = ({ sidoKey, sigungu, label }) => {
+    setSearchText(label || "");
+    setQuery("");
+    setPeriod(null);
+    setShowFavorites(false);
+    setStatusFilter(null);
+    setSelected(null);
+    setFlashSignal((n) => n + 1); // 블로그·영상 기본 복귀
+    setMapFocus(null);
+    setSido(sidoKey || null);
+    setSigungu(sigungu || null);
+    setResetSignal((n) => n + 1); // 지도: 팝업 닫고 새 지역으로 부드럽게 맞춤
+    scrollMapIntoView();
+  };
+  // ③ Enter 폴백(후보 없음) → 자유 텍스트로 그리드 검색
+  const handleSearchSubmit = (text) => {
+    const tt = text.trim();
+    if (!tt) return;
+    setQuery(tt);
+    setPeriod(null);
+    setShowFavorites(false);
+    setSelected(null);
+    setMapFocus(null);
+  };
+  // ④ X(지우기) → 전체 복귀 (선택·지도·검색·필터 모두 초기화)
+  const clearSearch = () => {
+    setSearchText("");
+    setQuery("");
+    setPeriod(null);
+    setShowFavorites(false);
+    setStatusFilter(null);
+    setSido(null);
+    setSigungu(null);
+    setSelected(null);
+    setFlashSignal((n) => n + 1);
+    setMapFocus(null);
+    setResetSignal((n) => n + 1);
   };
 
   // 오늘(현재 계절) 진행중인 축제 수 — 상단 배지용
@@ -344,6 +398,20 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   }, [season, sido, sigungu, q, period, showFavorites, statusFilter]);
   const visible = filtered.slice(0, visibleCount);
 
+  // 지도용 목록: 필터 결과 + (검색으로 고른 축제가 필터 밖이면) 그 축제도 포함
+  //  → 검색으로 선택한 축제의 마커/팝업이 항상 뜨도록 보장
+  const mapFestivals = useMemo(() => {
+    if (
+      selected &&
+      Number.isFinite(selected.lat) &&
+      Number.isFinite(selected.lng) &&
+      !filtered.some((f) => f.id === selected.id)
+    ) {
+      return [...filtered, selected];
+    }
+    return filtered;
+  }, [filtered, selected]);
+
   // 블로그·영상 섹션 소스: 선택 축제가 있으면 그 축제, 없으면 인기축제 종합
   const feedSource = selected ? [selected] : mainShorts;
   const selName = selected ? selected.displayName || selected.name : null;
@@ -363,6 +431,18 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
         </div>
       </header>
 
+      {/* ⓪ 상단 통합 검색바 (헤더 아래 · 카드뉴스·지도 위, 가로 전체) */}
+      <TopSearch
+        festivals={withSido}
+        value={searchText}
+        onChange={setSearchText}
+        onSelectFestival={handleSearchSelectFestival}
+        onSelectRegion={handleSearchRegion}
+        onClear={clearSearch}
+        onSubmit={handleSearchSubmit}
+        locale={locale}
+      />
+
       <main className="home-main">
         {/* ① 다가오는 인기 축제 카드뉴스 + 세로 지도 (최상단) */}
         <div className="carousel-map-row">
@@ -375,7 +455,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
           </div>
           <div className="cmr-map" ref={mapRef}>
             <MapView
-              festivals={filtered}
+              festivals={mapFestivals}
               ratings={ratings}
               focus={mapFocus}
               onSelect={handleMapSelect}
@@ -414,33 +494,6 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
               <span className="accent">{theme.emoji} {t.seasons[season]}</span>{" "}
               {t.hero.titleB}
             </h1>
-
-            <div className="search-box">
-              <span className="search-icon" aria-hidden="true">🔍</span>
-              <input
-                type="search"
-                className="search-input"
-                placeholder={t.hero.searchPlaceholder}
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  if (e.target.value.trim()) {
-                    setPeriod(null);
-                    setShowFavorites(false);
-                  }
-                }}
-                aria-label={t.hero.searchPlaceholder}
-              />
-              {searching && (
-                <button
-                  className="search-clear"
-                  onClick={() => setQuery("")}
-                  aria-label="✕"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
 
             {badge && (
               <button
