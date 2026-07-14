@@ -2937,8 +2937,8 @@ h3 {
   display: flex;
   gap: 16px;
   align-items: stretch;
-  margin: 16px auto 8px;
-  max-width: 1040px; /* 너무 넓으면 지도가 가로로 퍼지므로 폭 제한 → 세로형 유지 */
+  margin: 16px 0 8px; /* 좌측 정렬 — 아래 피드·축제 그리드와 좌우선 맞춤 */
+  max-width: 1600px; /* 피드와 동일 폭으로 확대 */
 }
 .cmr-carousel {
   flex: 1 1 58%;
@@ -3724,6 +3724,96 @@ h3 {
 .vid-meta {
   font-size: var(--fs-caption);
   color: var(--text-soft);
+}
+
+/* ── 블로그·영상 피드 확대 (다른 섹션과 좌우 정렬선 맞춤: 가로폭 꽉 채움) ── */
+/* 좌우 여백 최소화 — 피드 섹션의 가로 패딩을 없애 아래 축제 카드그리드와 정렬 */
+.home-blog,
+.home-video {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* 블로그: 가로형 큰 카드 2열 (2열 × 3행 = 6개), 화면 가로폭을 꽉 채움 */
+.home-blog .feed-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 1600px;
+  gap: 18px;
+}
+.home-blog .blog-card {
+  padding: 16px;
+  gap: 16px;
+  align-items: center;
+}
+.home-blog .blog-thumb {
+  flex: 0 0 132px;
+  width: 132px;
+  height: 132px;
+}
+.home-blog .blog-card-title {
+  font-size: 17px;
+  -webkit-line-clamp: 2;
+}
+.home-blog .blog-card-desc {
+  font-size: var(--fs-body);
+  -webkit-line-clamp: 3;
+}
+
+/* 영상: 16:9 가로형 카드, 한 화면에 3개가 가로폭을 꽉 채우고 3개째부터 가로 스크롤 */
+.home-video .feed-row {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  max-width: 1600px;
+  gap: 16px;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+}
+.home-video .vid-card {
+  flex: 0 0 calc((100% - 32px) / 3); /* 3개 = (전체폭 - 2*간격) / 3 */
+  width: auto;
+  scroll-snap-align: start;
+}
+.home-video .vid-thumb {
+  aspect-ratio: 16 / 9; /* 세로 쇼츠형 → 가로 16:9로 */
+  background-size: cover;
+  background-position: center;
+}
+.home-video .vid-title {
+  font-size: 16px;
+}
+.home-video .vid-meta {
+  font-size: var(--fs-body);
+}
+.home-video .skel-card {
+  flex: 0 0 calc((100% - 32px) / 3);
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
+/* 태블릿: 블로그 여전히 2열(카드 축소), 영상 3개 유지 */
+@media (max-width: 760px) {
+  .home-blog .feed-row {
+    gap: 14px;
+  }
+  .home-blog .blog-thumb {
+    flex-basis: 108px;
+    width: 108px;
+    height: 108px;
+  }
+}
+
+/* 모바일: 블로그 1열(가로폭 거의 채움), 영상 카드 1.1개 살짝 보이게 */
+@media (max-width: 560px) {
+  .home-blog .feed-row {
+    grid-template-columns: 1fr;
+  }
+  .home-video .vid-card,
+  .home-video .skel-card {
+    flex-basis: 88%;
+  }
 }
 
 /* ════════════════ 카드뉴스 확장 카드 팝업 ════════════════ */
