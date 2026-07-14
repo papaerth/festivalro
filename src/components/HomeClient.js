@@ -20,7 +20,9 @@ import HomeVideoSection from "./HomeVideoSection";
 import RecentViewed from "./RecentViewed";
 import PrivacyLink from "./PrivacyLink";
 import ReportLink from "./ReportLink";
+import AboutLink from "./AboutLink";
 import BrandLogo from "./BrandLogo";
+import BrandTagline from "./BrandTagline";
 
 // 상단 배지 문구 (13개 언어). today=오늘 진행중 / week=이번 주 진행 축제(작은 숫자 방지용)
 const TODAY = {
@@ -210,6 +212,15 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setMapFocus(null);
     setResetSignal((n) => n + 1);
   };
+
+  // 사이트링크 검색창(SearchAction) 진입: /?q=검색어 → 상단 검색에 자동 반영
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q && q.trim()) {
+      setSearchText(q);
+      setQuery(q.trim());
+    }
+  }, []);
 
   // 오늘(현재 계절) 진행중인 축제 수 — 상단 배지용
   const todayOngoing = useMemo(() => {
@@ -628,7 +639,8 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
 
       <footer className="site-footer">
         <div className="container">
-          {t.footer} · <PrivacyLink /> · <ReportLink />
+          <BrandTagline />
+          {t.footer} · <AboutLink /> · <PrivacyLink /> · <ReportLink />
         </div>
       </footer>
     </div>

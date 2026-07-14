@@ -13,7 +13,7 @@ export function BrandMark({ className = "" }) {
       viewBox="0 0 48 62"
       xmlns="http://www.w3.org/2000/svg"
       role="img"
-      aria-label="축제로"
+      aria-label="축제로 (Chukjero)"
     >
       <path
         d="M24 3C13.5 3 5 11.5 5 22c0 8.9 7.2 16.4 13.4 24.6 1.9 2.5 3.7 5 5.1 7.5.2.4.8.4 1 0 1.4-2.5 3.2-5 5.1-7.5C36.8 38.4 44 30.9 44 22 44 11.5 35.5 3 24 3Z"

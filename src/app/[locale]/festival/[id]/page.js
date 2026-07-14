@@ -10,6 +10,7 @@ import { getRelatedFestivals } from "@/lib/related";
 import RelatedFestivals from "@/components/RelatedFestivals";
 import RecordView from "@/components/RecordView";
 import PrivacyLink from "@/components/PrivacyLink";
+import BrandTagline from "@/components/BrandTagline";
 import { SEASONS } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import {
@@ -21,6 +22,7 @@ import {
   localeHref,
   HTML_LANG,
   SITE_URL,
+  SITE_NAME,
 } from "@/lib/i18n";
 import WeatherPanel from "@/components/WeatherPanel";
 import MapDirections from "@/components/MapDirections";
@@ -86,6 +88,8 @@ export async function generateMetadata({ params }) {
       languages,
     },
     openGraph: {
+      type: "website",
+      siteName: SITE_NAME,
       title: `${festival.name}${dict.meta.detailSuffix}`,
       description: `${festival.name} · ${place}`,
       images: festival.image ? [festival.image] : [],
@@ -327,6 +331,7 @@ export default async function FestivalDetailPage({ params }) {
 
       <footer className="site-footer">
         <div className="container">
+          <BrandTagline />
           {dict.footer} · <PrivacyLink />
         </div>
       </footer>

@@ -42,6 +42,8 @@ export function isRtl(locale) {
 
 // 사이트 절대 주소 (hreflang/canonical용)
 export const SITE_URL = "https://chukjero.com";
+// 브랜드명(og:site_name·구조화데이터용) — 한글 브랜드 + 도메인 병기
+export const SITE_NAME = "축제로 (chukjero.com)";
 
 // 지도 제스처 안내 (터치 기기에서 한 손가락으로 지도를 움직이려 할 때 잠깐 표시)
 export const MAP_GESTURE_TEXT = {
@@ -74,9 +76,9 @@ const dictionaries = {
     langName: "한국어",
     brandSub: "전국 사계절 축제 지도",
     meta: {
-      homeTitle: "축제로 — 전국 축제 지도",
+      homeTitle: "축제로 - 대한민국 축제 지도",
       homeDesc:
-        "대한민국 전국 시군구의 사계절 축제를 지도에서 한눈에. 날씨와 길찾기까지 한 번에 확인하세요.",
+        "축제로(chukjero.com) - 대한민국 전국 시군구의 사계절 축제를 지도에서 한눈에. 날씨와 길찾기까지 한 번에 확인하세요.",
       detailSuffix: " · 축제로",
     },
     nav: { login: "로그인", signup: "회원가입", logout: "로그아웃", mypage: "내 페이지" },

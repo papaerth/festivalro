@@ -13,6 +13,7 @@ import {
   getDictionary,
   HTML_LANG,
   SITE_URL,
+  SITE_NAME,
   localeHref,
   isRtl,
 } from "@/lib/i18n";
@@ -69,11 +70,13 @@ export async function generateMetadata({ params }) {
       languages,
     },
     openGraph: {
+      type: "website",
+      siteName: SITE_NAME,
       title: dict.meta.homeTitle,
       description: dict.meta.homeDesc,
       url: `${SITE_URL}${localeHref(loc, "/")}`,
       locale: HTML_LANG[loc],
-      images: [{ url: "/og.png", width: 1200, height: 630, alt: "축제로" }],
+      images: [{ url: "/og.png", width: 1200, height: 630, alt: "축제로 (Chukjero)" }],
     },
   };
 }

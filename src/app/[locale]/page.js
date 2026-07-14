@@ -1,7 +1,39 @@
 import HomeClient from "@/components/HomeClient";
 import { getFestivals, localizeFestivals, isUsingSampleData } from "@/lib/festivals";
 import { getPopularFestivals } from "@/lib/popular";
-import { isLocale, DEFAULT_LOCALE } from "@/lib/i18n";
+import { isLocale, DEFAULT_LOCALE, SITE_URL } from "@/lib/i18n";
+
+// 구조화 데이터(JSON-LD) — 브랜드("축제로") 검색 노출 강화 + 검색창(SearchAction).
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      name: "축제로",
+      alternateName: ["Chukjero", "chukjero", "축제로 지도"],
+      url: `${SITE_URL}/`,
+      inLanguage: "ko",
+      publisher: { "@id": `${SITE_URL}/#org` },
+      potentialAction: {
+        "@type": "SearchAction",
+        target: {
+          "@type": "EntryPoint",
+          urlTemplate: `${SITE_URL}/?q={search_term_string}`,
+        },
+        "query-input": "required name=search_term_string",
+      },
+    },
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#org`,
+      name: "축제로",
+      alternateName: "Chukjero",
+      url: `${SITE_URL}/`,
+      logo: `${SITE_URL}/icon.svg`,
+    },
+  ],
+};
 
 // 홈 화면을 6시간마다 자동으로 다시 만들어(ISR) 최신 축제 데이터를 반영합니다.
 //  - 이 값이 없으면 홈이 '배포 시점'에 굳어 재배포 전까지 안 바뀝니다.
@@ -29,10 +61,16 @@ export default async function HomePage({ params }) {
   );
 
   return (
-    <HomeClient
-      festivals={localized}
-      usingSample={usingSample}
-      popScoreById={popScoreById}
-    />
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+      />
+      <HomeClient
+        festivals={localized}
+        usingSample={usingSample}
+        popScoreById={popScoreById}
+      />
+    </>
   );
 }

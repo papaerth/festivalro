@@ -2752,6 +2752,11 @@ h3 {
   color: var(--text-soft);
   font-size: var(--fs-caption);
 }
+.brand-tagline {
+  margin: 0 0 8px;
+  font-weight: 600;
+  color: var(--text);
+}
 
 /* ═══════════ 마이크로 인터랙션 (은은하게 · 0.2~0.3초 · GPU 친화) ═══════════ */
 
