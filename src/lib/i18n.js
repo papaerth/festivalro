@@ -345,19 +345,19 @@ export function getDictionary(locale) {
 
 // 카드뉴스 뷰어 · 인기 축제 시트용 추가 문구 (13개 언어)
 const UI_EXTRA = {
-  ko: { detailCta: "자세히 보기", trending: "🔥 다가오는 인기 축제", noWeather: "위치 정보가 없어 날씨를 표시할 수 없어요.", summary: "축제 소개", collapse: "접기", expand: "펼치기", swipeHint: "좌우로 넘겨보세요" },
-  en: { detailCta: "View details", trending: "🔥 Trending soon", noWeather: "No location, so weather isn't available.", summary: "About", collapse: "Collapse", expand: "Expand", swipeHint: "Swipe to browse" },
-  ja: { detailCta: "詳細を見る", trending: "🔥 話題のお祭り", noWeather: "位置情報がないため天気を表示できません。", summary: "お祭り紹介", collapse: "閉じる", expand: "開く", swipeHint: "左右にスワイプ" },
-  zh: { detailCta: "查看详情", trending: "🔥 热门即将举办", noWeather: "无位置信息，无法显示天气。", summary: "庆典介绍", collapse: "收起", expand: "展开", swipeHint: "左右滑动浏览" },
-  "zh-TW": { detailCta: "查看詳情", trending: "🔥 熱門即將登場", noWeather: "無位置資訊，無法顯示天氣。", summary: "慶典介紹", collapse: "收合", expand: "展開", swipeHint: "左右滑動瀏覽" },
-  es: { detailCta: "Ver detalles", trending: "🔥 Tendencia próxima", noWeather: "Sin ubicación, no hay clima disponible.", summary: "Acerca de", collapse: "Contraer", expand: "Expandir", swipeHint: "Desliza para explorar" },
-  fr: { detailCta: "Voir les détails", trending: "🔥 Tendances à venir", noWeather: "Pas de localisation, météo indisponible.", summary: "À propos", collapse: "Réduire", expand: "Développer", swipeHint: "Balayez pour parcourir" },
-  ru: { detailCta: "Подробнее", trending: "🔥 Скоро в тренде", noWeather: "Нет геоданных — погода недоступна.", summary: "О фестивале", collapse: "Свернуть", expand: "Развернуть", swipeHint: "Листайте, чтобы смотреть" },
-  de: { detailCta: "Details ansehen", trending: "🔥 Bald angesagt", noWeather: "Kein Standort, kein Wetter verfügbar.", summary: "Über", collapse: "Einklappen", expand: "Ausklappen", swipeHint: "Zum Blättern wischen" },
-  ar: { detailCta: "عرض التفاصيل", trending: "🔥 رائجة قريبًا", noWeather: "لا يوجد موقع، الطقس غير متاح.", summary: "نبذة", collapse: "طيّ", expand: "توسيع", swipeHint: "اسحب للتصفح" },
-  vi: { detailCta: "Xem chi tiết", trending: "🔥 Sắp thịnh hành", noWeather: "Không có vị trí, không có thời tiết.", summary: "Giới thiệu", collapse: "Thu gọn", expand: "Mở rộng", swipeHint: "Vuốt để xem" },
-  id: { detailCta: "Lihat detail", trending: "🔥 Segera populer", noWeather: "Tanpa lokasi, cuaca tidak tersedia.", summary: "Tentang", collapse: "Tutup", expand: "Buka", swipeHint: "Geser untuk menjelajah" },
-  th: { detailCta: "ดูรายละเอียด", trending: "🔥 กำลังมาแรง", noWeather: "ไม่มีตำแหน่ง จึงไม่มีสภาพอากาศ", summary: "เกี่ยวกับ", collapse: "ย่อ", expand: "ขยาย", swipeHint: "ปัดเพื่อดู" },
+  ko: { detailCta: "자세히 보기", trending: "🔥 다가오는 인기 축제", noWeather: "위치 정보가 없어 날씨를 표시할 수 없어요.", summary: "축제 소개", collapse: "접기", expand: "펼치기", swipeHint: "좌우로 넘겨보세요", directions: "길찾기" },
+  en: { detailCta: "View details", trending: "🔥 Trending soon", noWeather: "No location, so weather isn't available.", summary: "About", collapse: "Collapse", expand: "Expand", swipeHint: "Swipe to browse", directions: "Directions" },
+  ja: { detailCta: "詳細を見る", trending: "🔥 話題のお祭り", noWeather: "位置情報がないため天気を表示できません。", summary: "お祭り紹介", collapse: "閉じる", expand: "開く", swipeHint: "左右にスワイプ", directions: "経路案内" },
+  zh: { detailCta: "查看详情", trending: "🔥 热门即将举办", noWeather: "无位置信息，无法显示天气。", summary: "庆典介绍", collapse: "收起", expand: "展开", swipeHint: "左右滑动浏览", directions: "路线" },
+  "zh-TW": { detailCta: "查看詳情", trending: "🔥 熱門即將登場", noWeather: "無位置資訊，無法顯示天氣。", summary: "慶典介紹", collapse: "收合", expand: "展開", swipeHint: "左右滑動瀏覽", directions: "路線" },
+  es: { detailCta: "Ver detalles", trending: "🔥 Tendencia próxima", noWeather: "Sin ubicación, no hay clima disponible.", summary: "Acerca de", collapse: "Contraer", expand: "Expandir", swipeHint: "Desliza para explorar", directions: "Cómo llegar" },
+  fr: { detailCta: "Voir les détails", trending: "🔥 Tendances à venir", noWeather: "Pas de localisation, météo indisponible.", summary: "À propos", collapse: "Réduire", expand: "Développer", swipeHint: "Balayez pour parcourir", directions: "Itinéraire" },
+  ru: { detailCta: "Подробнее", trending: "🔥 Скоро в тренде", noWeather: "Нет геоданных — погода недоступна.", summary: "О фестивале", collapse: "Свернуть", expand: "Развернуть", swipeHint: "Листайте, чтобы смотреть", directions: "Маршрут" },
+  de: { detailCta: "Details ansehen", trending: "🔥 Bald angesagt", noWeather: "Kein Standort, kein Wetter verfügbar.", summary: "Über", collapse: "Einklappen", expand: "Ausklappen", swipeHint: "Zum Blättern wischen", directions: "Route" },
+  ar: { detailCta: "عرض التفاصيل", trending: "🔥 رائجة قريبًا", noWeather: "لا يوجد موقع، الطقس غير متاح.", summary: "نبذة", collapse: "طيّ", expand: "توسيع", swipeHint: "اسحب للتصفح", directions: "الاتجاهات" },
+  vi: { detailCta: "Xem chi tiết", trending: "🔥 Sắp thịnh hành", noWeather: "Không có vị trí, không có thời tiết.", summary: "Giới thiệu", collapse: "Thu gọn", expand: "Mở rộng", swipeHint: "Vuốt để xem", directions: "Chỉ đường" },
+  id: { detailCta: "Lihat detail", trending: "🔥 Segera populer", noWeather: "Tanpa lokasi, cuaca tidak tersedia.", summary: "Tentang", collapse: "Tutup", expand: "Buka", swipeHint: "Geser untuk menjelajah", directions: "Rute" },
+  th: { detailCta: "ดูรายละเอียด", trending: "🔥 กำลังมาแรง", noWeather: "ไม่มีตำแหน่ง จึงไม่มีสภาพอากาศ", summary: "เกี่ยวกับ", collapse: "ย่อ", expand: "ขยาย", swipeHint: "ปัดเพื่อดู", directions: "เส้นทาง" },
 };
 
 export function getUiExtra(locale) {

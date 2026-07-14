@@ -8,6 +8,7 @@ import { formatPeriod, getStatusInfo } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
 import { getUiExtra } from "@/lib/i18n";
 import CoverImage from "./CoverImage";
+import MapDirections from "./MapDirections";
 
 // 미니 지도는 브라우저 전용(leaflet) — 팝업이 열릴 때만 로드되고, 닫히면(모달 언마운트)
 //  leaflet 인스턴스가 정리됩니다. ssr:false + 조건부 렌더로 메모리·성능 부담 없음.
@@ -127,15 +128,22 @@ export default function CardNewsModal({ festival, onClose }) {
           </div>
         </div>
 
-        {/* 오른쪽(모바일: 아래): 미니 지도 (좌표 있을 때만) */}
+        {/* 오른쪽(모바일: 아래): 미니 지도 + 하단 길찾기 버튼 (좌표 있을 때만) */}
         <div className="lcm-map-pane">
           {hasCoords ? (
-            <MiniMap
-              lat={festival.lat}
-              lng={festival.lng}
-              name={name}
-              color={season.color}
-            />
+            <>
+              <div className="lcm-map-wrap">
+                <MiniMap
+                  lat={festival.lat}
+                  lng={festival.lng}
+                  name={name}
+                  color={season.color}
+                />
+              </div>
+              <div className="lcm-dir">
+                <MapDirections name={name} lat={festival.lat} lng={festival.lng} />
+              </div>
+            </>
           ) : (
             <div className="lcm-nomap">🗺️ {t.detail.location}</div>
           )}

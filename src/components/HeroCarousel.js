@@ -7,6 +7,7 @@ import { formatPeriod, getStatusInfo } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
 import { getUiExtra } from "@/lib/i18n";
 import CoverImage from "./CoverImage";
+import MapDirections from "./MapDirections";
 
 // 확장 카드 "상세보기" 버튼 라벨 (13개 언어, 미지정은 영어)
 const DETAIL = {
@@ -203,6 +204,11 @@ export default function HeroCarousel({ festivals = [], onPick, onReset }) {
             >
               {detailLabel} →
             </Link>
+            <MapDirections
+              name={expanded.displayName || expanded.name}
+              lat={expanded.lat}
+              lng={expanded.lng}
+            />
           </div>
           <button
             className="hero-expand-close"

@@ -23,7 +23,7 @@ import {
   SITE_URL,
 } from "@/lib/i18n";
 import WeatherPanel from "@/components/WeatherPanel";
-import DirectionsButton from "@/components/DirectionsButton";
+import MapDirections from "@/components/MapDirections";
 import DetailMap from "@/components/DetailMap";
 import DetailTabs from "@/components/DetailTabs";
 import BlogList from "@/components/BlogList";
@@ -238,7 +238,7 @@ export default async function FestivalDetailPage({ params }) {
                 <>
                   <section className="section">
                     <h2>{dict.detail.directions}</h2>
-                    <DirectionsButton
+                    <MapDirections
                       name={festival.name}
                       lat={festival.lat}
                       lng={festival.lng}

@@ -10,6 +10,7 @@ import { formatPeriod } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
 import { MAP_GESTURE_TEXT } from "@/lib/i18n";
 import { isTouchDevice } from "@/lib/mapGesture";
+import MapDirections from "./MapDirections";
 
 const VIEW_DETAIL = {
   "zh-TW": "查看 →",
@@ -204,6 +205,7 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
               <Link className="popup-link" href={href(`/festival/${f.id}`)}>
                 {viewDetail}
               </Link>
+              <MapDirections name={f.displayName || f.name} lat={f.lat} lng={f.lng} compact />
             </Popup>
           </Marker>
         );

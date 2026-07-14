@@ -2552,6 +2552,75 @@ h3 {
   border: 1px solid var(--line);
 }
 
+/* ── 길찾기 버튼 2개 (카카오맵 / 네이버지도) — 브랜드 색 ── */
+.mapdir {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.mapdir-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border-radius: var(--radius-btn);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.mapdir-btn.kakao {
+  background: #fee500;
+  color: #391b1b;
+}
+.mapdir-btn.naver {
+  background: #03c75a;
+  color: #fff;
+}
+.mapdir-btn:hover {
+  filter: brightness(0.96);
+}
+.mapdir-mark {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 12px;
+}
+.mapdir-mark.k {
+  background: #391b1b;
+  color: #fee500;
+}
+.mapdir-mark.n {
+  background: #fff;
+  color: #03c75a;
+}
+.mapdir-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 컴팩트(지도 마커 팝업 등 좁은 곳): 브랜드명만, 작게 */
+.mapdir-compact .mapdir-btn {
+  padding: 6px 8px;
+  font-size: 11px;
+  gap: 4px;
+}
+.mapdir-compact .mapdir-mark {
+  width: 15px;
+  height: 15px;
+  font-size: 10px;
+}
+.mapdir-compact .mapdir-dir {
+  display: none; /* 좁은 곳에선 브랜드명만 */
+}
+
 /* ── 법적 고지 페이지 ── */
 .legal {
   max-width: 720px;
@@ -3292,8 +3361,14 @@ h3 {
 .lcm-map-pane {
   flex: 1 1 50%;
   min-width: 0;
-  position: relative;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
+}
+.lcm-map-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
 }
 .lcm-map-pane .mini-map {
   width: 100%;
@@ -3301,6 +3376,12 @@ h3 {
   border-radius: 0;
   border: none;
   box-shadow: none;
+}
+.lcm-dir {
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
 }
 .lcm-map-skel {
   width: 100%;
