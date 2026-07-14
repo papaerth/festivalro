@@ -8,6 +8,8 @@ import { useEffect, useRef } from "react";
 import { SEASONS } from "@/lib/seasons";
 import { formatPeriod } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
+import { MAP_GESTURE_TEXT } from "@/lib/i18n";
+import { isTouchDevice } from "@/lib/mapGesture";
 
 const VIEW_DETAIL = {
   "zh-TW": "查看 →",
@@ -137,6 +139,9 @@ const MARKER_CAP = 500;
 export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, resetSignal = 0 }) {
   const { locale, href } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
+  // 터치 기기에서만 제스처 핸들링 활성화 (한 손가락 스크롤 / 두 손가락 지도 조작 + 안내)
+  const touch = isTouchDevice();
+  const gestureMsg = MAP_GESTURE_TEXT[locale] || MAP_GESTURE_TEXT.en;
   // 좌표가 있는 축제만 마커로 (좌표 없는 축제는 목록에만 표시)
   const withCoords = festivals.filter(
     (f) => Number.isFinite(f.lat) && Number.isFinite(f.lng)
@@ -151,6 +156,12 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
       zoom={7}
       scrollWheelZoom={false}
       zoomControl={false}
+      gestureHandling={touch}
+      gestureHandlingOptions={
+        touch
+          ? { text: { touch: gestureMsg, scroll: gestureMsg, scrollMac: gestureMsg }, duration: 1600 }
+          : undefined
+      }
       maxBounds={KOREA_BOUNDS}
       maxBoundsViscosity={1.0}
       className="map"
