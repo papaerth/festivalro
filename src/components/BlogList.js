@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/I18nProvider";
+import BlogThumb from "./BlogThumb";
 
 const BL = {
   "zh-TW": { more: "在 Naver 部落格查看更多 →", loading: "正在載入部落格", error: "目前無法取得部落格評論。", noKey: "設定 Naver 搜尋金鑰後，部落格評論將顯示於此。", empty: "尚無部落格評論。", blogger: "部落格" },
@@ -43,34 +44,6 @@ const BL = {
 function prettyPostDate(s) {
   if (!s || s.length !== 8) return "";
   return `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6, 8)}`;
-}
-
-// 대표 이미지 썸네일 (이미지 없거나 로딩 실패하면 계절색 자리표시)
-//  - 네이버 이미지는 외부 표시가 차단되므로 우리 서버(/api/img)를 경유해 표시
-function BlogThumb({ src, accent }) {
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) {
-    return (
-      <div
-        className="blog-thumb blog-thumb-empty"
-        style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)` }}
-      >
-        📷
-      </div>
-    );
-  }
-  const proxied = `/api/img?url=${encodeURIComponent(src)}`;
-  return (
-    <div className="blog-thumb">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={proxied}
-        alt=""
-        loading="lazy"
-        onError={() => setFailed(true)}
-      />
-    </div>
-  );
 }
 
 // 축제 이름으로 네이버 블로그(최근 3년, 정확도순) 5개를 보여줍니다.
@@ -186,7 +159,7 @@ export default function BlogList({ query, accent = "#c2578a" }) {
           target="_blank"
           rel="noopener noreferrer"
         >
-          <BlogThumb src={post.image} accent={accent} />
+          <BlogThumb src={post.image} blogger={post.blogger} accent={accent} />
           <div className="blog-card-body">
             <p className="blog-title">{post.title}</p>
             <p className="blog-meta">

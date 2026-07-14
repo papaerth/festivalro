@@ -9,6 +9,13 @@
 // ────────────────────────────────────────────────────────────────
 
 import { rateLimit, rateLimitResponse } from "@/lib/rateLimit";
+import sharp from "sharp";
+
+// 이미지 리사이즈에 sharp(네이티브 모듈)를 쓰므로 Node.js 런타임 고정
+export const runtime = "nodejs";
+
+// 썸네일 최대 변(px). 카드가 84px 정사각형이라 고해상도(3x)까지 넉넉히 커버.
+const THUMB_MAX = 360;
 
 // 허용 호스트인지 검사 (pstatic.net, naver.com, naver.net 계열만)
 function isAllowedHost(hostname) {
@@ -62,10 +69,26 @@ export async function GET(request) {
       return new Response("not an image", { status: 415 });
     }
 
-    const buf = await res.arrayBuffer();
-    return new Response(buf, {
+    const input = Buffer.from(await res.arrayBuffer());
+
+    // 썸네일 크기로 리사이즈 + webp 변환 (네이버 원본이 ~1MB라 대폭 축소).
+    //  실패하면(지원 안 되는 포맷 등) 원본을 그대로 돌려줌 → 이미지가 사라지지 않게.
+    let outBuf = input;
+    let outType = contentType;
+    try {
+      outBuf = await sharp(input)
+        .resize({ width: THUMB_MAX, height: THUMB_MAX, fit: "inside", withoutEnlargement: true })
+        .webp({ quality: 74 })
+        .toBuffer();
+      outType = "image/webp";
+    } catch {
+      outBuf = input;
+      outType = contentType;
+    }
+
+    return new Response(outBuf, {
       headers: {
-        "Content-Type": contentType,
+        "Content-Type": outType,
         "Cache-Control": "public, max-age=86400, s-maxage=604800, immutable",
       },
     });

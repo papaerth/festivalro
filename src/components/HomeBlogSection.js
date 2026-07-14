@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/I18nProvider";
+import BlogThumb from "./BlogThumb";
 
 // "지금 뜨는 축제 블로그" — 홈 신규 섹션 (+ 상세검색 + 자동완성).
 //  · 기본: 다가오는 인기 축제들의 네이버 블로그 최신글 종합
@@ -370,13 +371,7 @@ export default function HomeBlogSection({
               target="_blank"
               rel="noopener noreferrer"
             >
-              {it.image && (
-                <span
-                  className="blog-card-img"
-                  style={{ backgroundImage: `url(${it.image})` }}
-                  aria-hidden="true"
-                />
-              )}
+              <BlogThumb src={it.image} blogger={it.blogger} accent={accent} />
               <span className="blog-card-body">
                 <span className="blog-card-title">{it.title}</span>
                 {it.description && (
