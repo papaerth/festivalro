@@ -3143,6 +3143,208 @@ h3 {
 }
 
 /* ═══════════ 카드뉴스 뷰어 (전체화면 모달) ═══════════ */
+/* ══ 목록 카드 전용 독립 팝업 (좌: 카드뉴스식 요약 / 우: 미니 지도) ══ */
+.lcm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(18, 10, 20, 0.62);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: cn-fade 0.2s ease;
+}
+.lcm-modal {
+  position: relative;
+  display: flex;
+  width: min(880px, 100%);
+  height: min(70vh, 520px);
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  animation: cn-pop 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.lcm-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lcm-card {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lcm-cover {
+  position: relative;
+  height: 56%;
+  min-height: 176px;
+  overflow: hidden;
+}
+.lcm-cover-bg {
+  position: absolute;
+  inset: 0;
+}
+.lcm-cover-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.lcm-cover-bg.cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lcm-cover-veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.74) 0%, rgba(0, 0, 0, 0.12) 55%, transparent 100%);
+}
+.lcm-cover-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 16px;
+  color: #fff;
+}
+.lcm-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.22);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  margin-bottom: 8px;
+}
+.lcm-status.ongoing {
+  background: #e5484d;
+}
+.lcm-title {
+  font-size: clamp(18px, 3vw, 22px);
+  font-weight: 800;
+  line-height: 1.25;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  margin: 0;
+}
+.lcm-sub {
+  margin: 6px 0 0;
+  font-size: var(--fs-caption);
+  opacity: 0.95;
+}
+.lcm-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 16px;
+  gap: 10px;
+  min-height: 0;
+}
+.lcm-period {
+  margin: 0;
+  font-weight: 700;
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+.lcm-intro {
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--text-soft);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lcm-cta {
+  margin-top: auto;
+  align-self: flex-start;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: var(--fs-body);
+  padding: 10px 20px;
+  cursor: pointer;
+}
+.lcm-map-pane {
+  flex: 1 1 50%;
+  min-width: 0;
+  position: relative;
+  background: var(--bg);
+}
+.lcm-map-pane .mini-map {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+}
+.lcm-map-skel {
+  width: 100%;
+  height: 100%;
+}
+.lcm-nomap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-soft);
+  font-size: var(--fs-body);
+}
+@media (max-width: 720px) {
+  .lcm-backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .lcm-modal {
+    flex-direction: column;
+    width: 100%;
+    height: auto;
+    max-height: 92vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    animation: lcm-up 0.26s cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+  .lcm-card {
+    flex: 0 0 auto;
+  }
+  .lcm-cover {
+    height: 190px;
+  }
+  .lcm-map-pane {
+    flex: 1 1 auto;
+    min-height: 240px;
+    height: 42vh;
+  }
+}
+@keyframes lcm-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
 .cn-backdrop {
   position: fixed;
   inset: 0;
