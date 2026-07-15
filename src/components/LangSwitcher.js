@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LOCALES, DEFAULT_LOCALE, localeHref } from "@/lib/i18n";
+import { LOCALES, localeHref } from "@/lib/i18n";
 import { useI18n } from "@/lib/I18nProvider";
 
 const LABELS = {
@@ -31,10 +31,11 @@ export default function LangSwitcher() {
   const pathname = usePathname() || "/";
   const { locale } = useI18n();
 
-  // 현재 경로에서 언어 접두어를 떼어 '순수 경로'로
+  // 현재 경로에서 언어 접두어를 떼어 '순수 경로'로.
+  //  ⚠️ 기본 언어(ko)도 벗겨야 함 — /ko 경로에서 ko를 안 떼면
+  //     localeHref(en, "/ko") = "/en/ko" 처럼 언어코드가 이중으로 붙는 버그가 생김.
   let bare = pathname;
   for (const l of LOCALES) {
-    if (l === DEFAULT_LOCALE) continue;
     if (pathname === `/${l}`) {
       bare = "/";
       break;

@@ -274,8 +274,12 @@ function normName(name = "") {
   return String(name)
     .toLowerCase()
     .replace(/\s+/g, "")
+    // 회차 접두어/표기 먼저 제거 (숫자 제거보다 앞) — 예: 제29회 / 29회 / 제3차 / 2026년
+    .replace(/제?\s*\d+\s*(회|차|주년)/g, "")
+    .replace(/\d+(년|st|nd|rd|th)/g, "")
     .replace(/[0-9]/g, "")
-    .replace(/(축제|페스티벌|festival|문화제|엑스포|expo|행사)/g, "")
+    // 남은 회차 흔적('제'로 시작하는 한 글자) 및 흔한 꼬리말 제거
+    .replace(/(축제|페스티벌|페스타|festival|문화제|대축제|엑스포|expo|행사|기념행사|축전)/g, "")
     .replace(/[^가-힣a-z]/g, "");
 }
 function dedupKey(f) {
