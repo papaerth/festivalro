@@ -3,6 +3,7 @@ import BrandLogo from "@/components/BrandLogo";
 import { localeHref, isLocale, DEFAULT_LOCALE } from "@/lib/i18n";
 import SubmitForm from "@/components/SubmitForm";
 import { getFestivals, getFestivalNameMap } from "@/lib/festivals";
+import { matchSido } from "@/lib/regionsKr";
 
 // 등록·제보 페이지 — 축제 담당자 등록 / 주민 제보 폼.
 // 공문·홍보물용 대표 주소: /submit (지자체 발송 QR 링크가 여기를 가리킴)
@@ -46,6 +47,17 @@ export default async function SubmitPage({ params }) {
     displayName: nameMap[f.id] || f.name,
   }));
 
+  // 등록 폼의 지역 선택용: 시도 key → 시군구 목록 (실데이터 기반)
+  const sgSets = {};
+  for (const f of festivals) {
+    const sk = matchSido(f.sido || "");
+    if (!sk || !f.sigungu) continue;
+    (sgSets[sk] = sgSets[sk] || new Set()).add(f.sigungu);
+  }
+  const regionOptions = Object.fromEntries(
+    Object.entries(sgSets).map(([k, s]) => [k, [...s].sort((a, b) => a.localeCompare(b, "ko"))])
+  );
+
   return (
     <div>
       <header className="site-header">
@@ -58,7 +70,7 @@ export default async function SubmitPage({ params }) {
         <h1 className="legal-title">{r.title}</h1>
         <p>{r.intro}</p>
 
-        <SubmitForm festivals={list} />
+        <SubmitForm festivals={list} regionOptions={regionOptions} />
 
         <p className="legal-back">
           <Link href={home} className="popup-link">

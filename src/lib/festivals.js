@@ -14,6 +14,45 @@ import { SAMPLE_FESTIVALS } from "./sampleFestivals";
 import { translateText, translateNames } from "./translate";
 import { translateTextAI } from "./translateAI";
 import { getPublishedNewFestivals } from "./submissions";
+import { matchSido } from "./regionsKr";
+
+// 17개 시도 대략 중심 좌표 — 직접 등록 축제(좌표 없음)에 근사 마커를 띄우기 위한 폴백값.
+//  (시군구에 기존 축제가 있으면 그 평균 좌표를 우선 쓰고, 없으면 이 시도 중심을 씀)
+const SIDO_CENTER = {
+  seoul: [37.5665, 126.978], busan: [35.1796, 129.0756], daegu: [35.8714, 128.6014],
+  incheon: [37.4563, 126.7052], gwangju: [35.1595, 126.8526], daejeon: [36.3504, 127.3845],
+  ulsan: [35.5384, 129.3114], sejong: [36.48, 127.289], gyeonggi: [37.4138, 127.5183],
+  gangwon: [37.8228, 128.1555], chungbuk: [36.8, 127.7], chungnam: [36.6588, 126.6728],
+  jeonbuk: [35.7175, 127.153], jeonnam: [34.8161, 126.4629], gyeongbuk: [36.4919, 128.8889],
+  gyeongnam: [35.4606, 128.2132], jeju: [33.4996, 126.5312],
+};
+
+// 직접 등록 축제(좌표 없음)에 근사 좌표를 채워 지도 마커가 뜨게 함.
+//  우선순위: (같은 시도+시군구의 기존 축제 평균 좌표) → (시도 중심). 둘 다 없으면 좌표 없이 둠.
+function assignApproxCoords(list, coordFestivals) {
+  const acc = {}; // `${sidoKey}|${sigungu}` → 좌표 합계
+  for (const f of coordFestivals) {
+    if (Number.isFinite(f.lat) && Number.isFinite(f.lng) && f.sigungu) {
+      const key = `${matchSido(f.sido || "")}|${f.sigungu}`;
+      const a = acc[key] || (acc[key] = { lat: 0, lng: 0, n: 0 });
+      a.lat += f.lat; a.lng += f.lng; a.n += 1;
+    }
+  }
+  for (const f of list) {
+    if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) continue;
+    const sidoKey = matchSido(f.sido || "");
+    const a = acc[`${sidoKey}|${f.sigungu || ""}`];
+    if (a && a.n > 0) {
+      f.lat = a.lat / a.n;
+      f.lng = a.lng / a.n;
+      f.approxLocation = true;
+    } else if (SIDO_CENTER[sidoKey]) {
+      f.lat = SIDO_CENTER[sidoKey][0];
+      f.lng = SIDO_CENTER[sidoKey][1];
+      f.approxLocation = true;
+    }
+  }
+}
 
 // ── 국문 로마자 표기(개정 로마자, 간이) — 번역 실패 시 병기용 폴백 ──
 const RCHO = ["g","kk","n","d","tt","r","m","b","pp","s","ss","","j","jj","ch","k","t","p","h"];
@@ -334,6 +373,8 @@ export async function getFestivals() {
   try {
     const submitted = await getPublishedNewFestivals();
     if (submitted.length > 0) {
+      // 좌표 없는 직접 등록 축제에 지역 근사 좌표 부여 → 지도 마커가 뜨게 함
+      assignApproxCoords(submitted, merged);
       const seen = new Set(merged.filter((f) => normName(f.name).length > 1).map(dedupKey));
       for (const f of submitted) {
         const k = dedupKey(f);

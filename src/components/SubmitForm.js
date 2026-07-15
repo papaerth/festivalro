@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/I18nProvider";
+import { SIDO, SIDO_ORDER } from "@/lib/regionsKr";
+import { getSidoLabel } from "@/lib/i18n";
+
+// 시도 key → 한국어 정식명(저장용 place 구성 — 파싱이 되도록 한국어 고정)
+const SIDO_KO = Object.fromEntries(SIDO.map((s) => [s.key, s.ko]));
+const SG_ETC = "__etc__";
 
 // ────────────────────────────────────────────────────────────────
 //  등록·제보 폼 (2탭: 담당자 등록 / 주민 제보)
@@ -33,6 +39,14 @@ const T = {
     fPeriod: "축제 기간",
     fPlace: "장소",
     phPlace: "예: 충남 보령시 대천해수욕장 일원",
+    fSido: "시·도",
+    fSigungu: "시·군·구",
+    sidoSelect: "시·도 선택",
+    sigunguSelect: "시·군·구 선택",
+    sigunguEtc: "기타(직접 입력)",
+    phSigunguEtc: "예: 수성구",
+    fPlaceDetail: "상세 장소 (선택)",
+    phPlaceDetail: "예: 수성못 일대, 대천해수욕장",
     fIntro: "축제 소개",
     phIntro: "축제를 소개해 주세요. 어떤 축제인지, 볼거리·즐길거리 등. (최대 1000자)",
     fOrganizer: "주최·주관 기관",
@@ -80,6 +94,8 @@ const T = {
     errFestival: "축제명을 입력해 주세요.",
     errPeriod: "축제 기간을 입력해 주세요.",
     errPlace: "장소를 입력해 주세요.",
+    errSido: "시·도를 선택해 주세요.",
+    errSigungu: "시·군·구를 선택하거나 입력해 주세요.",
     errIntro: "축제 소개를 입력해 주세요.",
     errOrganizer: "주최·주관 기관을 입력해 주세요.",
     errContact: "담당자 연락처를 입력해 주세요.",
@@ -104,6 +120,14 @@ const T = {
     fPeriod: "Dates",
     fPlace: "Location",
     phPlace: "e.g. Daecheon Beach, Boryeong, Chungnam",
+    fSido: "Province/City",
+    fSigungu: "District",
+    sidoSelect: "Select province/city",
+    sigunguSelect: "Select district",
+    sigunguEtc: "Other (type it)",
+    phSigunguEtc: "e.g. Suseong-gu",
+    fPlaceDetail: "Venue detail (optional)",
+    phPlaceDetail: "e.g. Suseongmot area",
     fIntro: "Introduction",
     phIntro: "Introduce the festival — what it is, highlights, things to do. (up to 1000 chars)",
     fOrganizer: "Host / organizer",
@@ -147,6 +171,8 @@ const T = {
     errFestival: "Please enter the festival name.",
     errPeriod: "Please enter the dates.",
     errPlace: "Please enter the location.",
+    errSido: "Please select a province/city.",
+    errSigungu: "Please select or enter a district.",
     errIntro: "Please enter an introduction.",
     errOrganizer: "Please enter the host/organizer.",
     errContact: "Please enter a contact.",
@@ -255,7 +281,7 @@ function notifyFailure(detail) {
 
 let photoSeq = 0;
 
-export default function SubmitForm({ festivals = [] }) {
+export default function SubmitForm({ festivals = [], regionOptions = {} }) {
   const { locale } = useI18n();
   const t = T[locale] || T.en;
 
@@ -266,7 +292,7 @@ export default function SubmitForm({ festivals = [] }) {
   // 담당자 등록 필드
   const [org, setOrg] = useState({
     festivalName: "", festivalId: "", periodStart: "", periodEnd: "",
-    place: "", intro: "", organizer: "", contact: "",
+    sido: "", sigungu: "", sigunguEtc: "", placeDetail: "", intro: "", organizer: "", contact: "",
     timetable: "", lineup: "", parking: "", shuttle: "", food: "", experience: "", etc: "",
   });
   // 주민 제보 필드
@@ -375,9 +401,19 @@ export default function SubmitForm({ festivals = [] }) {
 
     let body;
     if (tab === "organizer") {
+      // 시군구: 선택값 or '기타'면 직접 입력값
+      const sigunguFinal =
+        org.sigungu === SG_ETC ? org.sigunguEtc.trim() : org.sigungu.trim();
+      // 저장용 장소: "시도(한국어) 시군구 상세" — 파싱이 되도록 한국어로 구성
+      const placeStr = [SIDO_KO[org.sido] || "", sigunguFinal, org.placeDetail.trim()]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
       if (!org.festivalName.trim()) return void setError(t.errFestival);
       if (!org.periodStart) return void setError(t.errPeriod);
-      if (!org.place.trim()) return void setError(t.errPlace);
+      if (!org.sido) return void setError(t.errSido);
+      if (!sigunguFinal) return void setError(t.errSigungu);
       if (!org.intro.trim()) return void setError(t.errIntro);
       if (!org.organizer.trim()) return void setError(t.errOrganizer);
       if (!org.contact.trim()) return void setError(t.errContact);
@@ -387,7 +423,7 @@ export default function SubmitForm({ festivals = [] }) {
         festivalId: org.festivalId,
         periodStart: org.periodStart,
         periodEnd: org.periodEnd || org.periodStart,
-        place: org.place,
+        place: placeStr,
         intro: org.intro,
         organizer: org.organizer,
         contact: org.contact,
@@ -452,7 +488,7 @@ export default function SubmitForm({ festivals = [] }) {
     setPhotos([]);
     setOrg({
       festivalName: "", festivalId: "", periodStart: "", periodEnd: "",
-      place: "", intro: "", organizer: "", contact: "",
+      sido: "", sigungu: "", sigunguEtc: "", placeDetail: "", intro: "", organizer: "", contact: "",
       timetable: "", lineup: "", parking: "", shuttle: "", food: "", experience: "", etc: "",
     });
     setRes({ category: t.cats[0], festivalName: "", festivalId: "", message: "", contact: "" });
@@ -524,7 +560,43 @@ export default function SubmitForm({ festivals = [] }) {
               </div>
             </Row>
 
-            <Text label={t.fPlace} req value={org.place} onChange={(v) => setO("place", v)} ph={t.phPlace} />
+            <Row>
+              <label style={field}>{t.fSido} · {t.fSigungu} <span style={req}>*</span></label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <select
+                  value={org.sido}
+                  onChange={(e) => { setO("sido", e.target.value); setO("sigungu", ""); setO("sigunguEtc", ""); }}
+                  style={{ ...input, flex: "1 1 150px", width: "auto" }}
+                >
+                  <option value="">{t.sidoSelect}</option>
+                  {SIDO_ORDER.map((k) => (
+                    <option key={k} value={k}>{getSidoLabel(k, locale)}</option>
+                  ))}
+                </select>
+                <select
+                  value={org.sigungu}
+                  onChange={(e) => setO("sigungu", e.target.value)}
+                  disabled={!org.sido}
+                  style={{ ...input, flex: "1 1 150px", width: "auto", opacity: org.sido ? 1 : 0.55 }}
+                >
+                  <option value="">{t.sigunguSelect}</option>
+                  {(regionOptions[org.sido] || []).map((sg) => (
+                    <option key={sg} value={sg}>{sg}</option>
+                  ))}
+                  <option value={SG_ETC}>{t.sigunguEtc}</option>
+                </select>
+              </div>
+              {org.sigungu === SG_ETC && (
+                <input
+                  type="text"
+                  value={org.sigunguEtc}
+                  onChange={(e) => setO("sigunguEtc", e.target.value)}
+                  placeholder={t.phSigunguEtc}
+                  style={{ ...input, marginTop: 8 }}
+                />
+              )}
+            </Row>
+            <Text label={t.fPlaceDetail} value={org.placeDetail} onChange={(v) => setO("placeDetail", v)} ph={t.phPlaceDetail} />
 
             <Row>
               <label style={field}>{t.fIntro} <span style={req}>*</span></label>
