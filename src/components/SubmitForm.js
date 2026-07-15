@@ -60,6 +60,7 @@ const T = {
     photoHint: (n) => `jpg·png·pdf, 한 장 10MB까지, 최대 ${n}장. 사진은 자동으로 용량이 줄어듭니다.`,
     addPhoto: "＋ 사진 추가",
     uploading: "업로드 중",
+    photoWait: "사진 업로드가 아직 끝나지 않았어요. 진행률이 끝난 뒤 다시 눌러 주세요.",
     // 주민 제보
     fCategory: "제보 유형",
     cats: ["새 축제 제보", "정보 오류 신고", "사진·후기 공유", "기타 의견"],
@@ -128,6 +129,7 @@ const T = {
     photoHint: (n) => `jpg·png·pdf, up to 10MB each, ${n} max. Photos are auto-compressed.`,
     addPhoto: "＋ Add photos",
     uploading: "Uploading",
+    photoWait: "Photos are still uploading. Please wait for the progress bars to finish, then tap again.",
     fCategory: "Type",
     cats: ["Suggest a festival", "Report an error", "Share photos/reviews", "Other feedback"],
     fRelFestival: "Related festival (optional)",
@@ -212,10 +214,13 @@ async function compressImage(file, maxDim = 1600, quality = 0.82) {
 }
 
 // ── 서명 URL로 직접 업로드(PUT) + 진행률 ──
+//  ⚠️ 타임아웃 필수: 없으면 네트워크가 멈췄을 때 사진이 '업로드 중'에 영원히 머물러
+//     제출이 조용히 막힘. 60초 안에 못 끝내면 실패로 처리해 사용자가 다시 시도하게 함.
 function uploadToSigned(signedUrl, blob, contentType, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", signedUrl);
+    xhr.timeout = 60000;
     xhr.setRequestHeader("Content-Type", contentType);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(e.loaded / e.total);
@@ -225,8 +230,27 @@ function uploadToSigned(signedUrl, blob, contentType, onProgress) {
         ? resolve()
         : reject(new Error("upload " + xhr.status));
     xhr.onerror = () => reject(new Error("network"));
+    xhr.ontimeout = () => reject(new Error("timeout"));
     xhr.send(blob);
   });
+}
+
+// 제출 실패 시 운영자에게 자동 알림 (조용한 실패 방지 — 기존 /api/report 재사용)
+function notifyFailure(detail) {
+  try {
+    fetch("/api/report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: "⚠️ 등록/제보 제출 실패 자동알림",
+        message: `축제로 /submit 제출이 실패했습니다.\n${detail}`,
+        contact: "",
+      }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* 알림 실패는 무시 */
+  }
 }
 
 let photoSeq = 0;
@@ -389,11 +413,13 @@ export default function SubmitForm({ festivals = [] }) {
       };
     }
 
-    // 업로드 진행 중인 사진이 있으면 잠깐 대기 안내
+    // 업로드 진행 중인 사진이 있으면 명확히 안내하고 대기 (조용한 차단 방지)
     if (photos.some((x) => x.status === "uploading")) {
-      setError(t.uploading + "…");
+      setError(t.photoWait);
       return;
     }
+
+    const who = tab === "organizer" ? org.festivalName : (res.message || "").slice(0, 30);
 
     setStatus("sending");
     try {
@@ -411,10 +437,12 @@ export default function SubmitForm({ festivals = [] }) {
       } else {
         setStatus("error");
         setError(data.error || t.fail);
+        notifyFailure(`[${tab}] ${who} — HTTP ${r.status}, ${data.error || "ok=false"}`);
       }
-    } catch {
+    } catch (err) {
       setStatus("error");
       setError(t.fail);
+      notifyFailure(`[${tab}] ${who} — 네트워크 예외: ${(err && err.message) || ""}`);
     }
   }
 
@@ -444,6 +472,7 @@ export default function SubmitForm({ festivals = [] }) {
   }
 
   const sending = status === "sending";
+  const uploadingCount = photos.filter((x) => x.status === "uploading").length;
 
   return (
     <form onSubmit={handleSubmit} style={{ maxWidth: 620, marginTop: 8 }} noValidate>
@@ -564,11 +593,50 @@ export default function SubmitForm({ festivals = [] }) {
         </>
       )}
 
-      {error && <p style={{ color: "#dc2626", margin: "12px 0", fontSize: 14 }}>{error}</p>}
+      {/* 오류를 눈에 띄는 배너로 (조용한 실패 방지) */}
+      {error && (
+        <p
+          role="alert"
+          style={{
+            margin: "14px 0",
+            padding: "12px 14px",
+            borderRadius: 10,
+            background: "#fdecec",
+            border: "1px solid #f5b5b5",
+            color: "#b42318",
+            fontSize: 14,
+            fontWeight: 600,
+            lineHeight: 1.5,
+          }}
+        >
+          ⚠️ {error}
+        </p>
+      )}
+
+      {/* 사진 업로드 중 안내 (제출이 왜 안 되는지 보이게) */}
+      {uploadingCount > 0 && (
+        <p style={{ margin: "10px 0", fontSize: 13, color: "var(--accent, #2563eb)" }}>
+          ⏳ {t.uploading}… ({uploadingCount})
+        </p>
+      )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
-        <button type="submit" disabled={sending} style={{ ...btnPrimary, opacity: sending ? 0.6 : 1, cursor: sending ? "default" : "pointer" }}>
-          {sending ? t.sending : tab === "organizer" ? t.submitOrg : t.submitRes}
+        <button
+          type="submit"
+          disabled={sending || uploadingCount > 0}
+          style={{
+            ...btnPrimary,
+            opacity: sending || uploadingCount > 0 ? 0.6 : 1,
+            cursor: sending || uploadingCount > 0 ? "default" : "pointer",
+          }}
+        >
+          {sending
+            ? t.sending
+            : uploadingCount > 0
+            ? `${t.uploading}… (${uploadingCount})`
+            : tab === "organizer"
+            ? t.submitOrg
+            : t.submitRes}
         </button>
         {tab === "organizer" && draftNote && (
           <span style={{ fontSize: 12, color: "var(--muted, #6b7280)" }}>💾 {t.draftSaved}</span>
