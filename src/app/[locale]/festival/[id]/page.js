@@ -133,8 +133,50 @@ export default async function FestivalDetailPage({ params }) {
     : null;
   const homeHref = localeHref(loc, "/");
 
+  // ── Event 구조화 데이터(JSON-LD) — 구글 '이벤트' 리치결과용 ──
+  //  데이터가 있는 필드만 포함. 종료 축제도 실제 날짜 그대로. 다국어는 번역된 name/description 사용.
+  const eventLd = festival.startDate
+    ? (() => {
+        const placeName =
+          [dict.regions[festival.region] || festival.sido, festival.sigungu]
+            .filter(Boolean)
+            .join(" ") || festival.name;
+        const ld = {
+          "@context": "https://schema.org",
+          "@type": "Event",
+          name: festival.name,
+          startDate: festival.startDate,
+          eventStatus: "https://schema.org/EventScheduled",
+          eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+          location: { "@type": "Place", name: placeName },
+          url: `${SITE_URL}${localeHref(loc, `/festival/${id}`)}`,
+        };
+        if (festival.endDate) ld.endDate = festival.endDate;
+        if (festival.addr) ld.location.address = festival.addr;
+        if (Number.isFinite(festival.lat) && Number.isFinite(festival.lng)) {
+          ld.location.geo = {
+            "@type": "GeoCoordinates",
+            latitude: festival.lat,
+            longitude: festival.lng,
+          };
+        }
+        if (festival.image) ld.image = [festival.image];
+        const desc = (festival.description || "").trim();
+        if (desc) ld.description = desc.length > 500 ? desc.slice(0, 500) : desc;
+        const org = submitted && submitted.fields && submitted.fields.organizer;
+        if (org) ld.organizer = { "@type": "Organization", name: org };
+        return ld;
+      })()
+    : null;
+
   return (
     <div style={{ "--accent": theme.color, "--accent-soft": theme.soft }}>
+      {eventLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(eventLd) }}
+        />
+      )}
       <header className="site-header">
         <div className="container">
           <BrandLogo />
