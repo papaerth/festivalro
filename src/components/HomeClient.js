@@ -8,6 +8,7 @@ import { matchSido } from "@/lib/regionsKr";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
+import { getTypeLabels } from "@/lib/i18n";
 import MapFilters from "./MapFilters";
 import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
@@ -89,6 +90,7 @@ function overlaps(startDate, endDate, rangeStart, rangeEnd) {
 
 export default function HomeClient({ festivals, usingSample, popScoreById = {} }) {
   const [season, setSeason] = useState(currentSeason());
+  const [type, setType] = useState(null); // null = 전체 유형(축제+전시+공연)
   const [sido, setSido] = useState(null); // null = 전체(전국)
   const [sigungu, setSigungu] = useState(null); // null = 시도 전체
   const [statusFilter, setStatusFilter] = useState(null); // null=전체
@@ -107,6 +109,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const { favorites, ready: favReady } = useFavorites();
   const ratings = useReviewStats();
   const { t, locale } = useI18n();
+  const typeLabels = getTypeLabels(locale); // { all, festival, exhibition, performance }
 
   // 축제마다 시도 key(_sido)를 한 번만 계산해 필터를 가볍게 유지
   const withSido = useMemo(
@@ -284,10 +287,14 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   };
   const periodLabel = period === "weekend" ? t.filters.weekend : t.filters.month;
 
-  // 지도 오버레이 필터 상태 — 부가필터(지역/기간/즐겨찾기)가 하나라도 켜졌는지
-  const filtersActive = !!(sido || sigungu || period || showFavorites);
+  // 유형 칩 토글 (다시 누르면 전체). 계절·지역 선택은 유지(직교 필터).
+  const pickType = (key) => setType((prev) => (prev === key ? null : key));
+
+  // 지도 오버레이 필터 상태 — 부가필터(유형/지역/기간/즐겨찾기)가 하나라도 켜졌는지
+  const filtersActive = !!(type || sido || sigungu || period || showFavorites);
   // 지도 위 '전체' 칩 — 선택·지도·부가필터·검색 초기화 (계절 선택은 유지)
   const resetFilters = () => {
+    setType(null);
     setSido(null);
     setSigungu(null);
     setPeriod(null);
@@ -302,28 +309,30 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const searching = q.length > 0;
 
   // 우선순위: 검색 > 기간(주말/이번달) > 즐겨찾기 > 계절+지역
+  //  유형(type) 필터는 어떤 모드에서든 마지막에 공통 적용 (선택 시에만).
   const base = useMemo(() => {
+    let list;
     if (searching) {
-      return withSido.filter(
+      list = withSido.filter(
         (f) =>
           f.name.toLowerCase().includes(q) ||
           (f.displayName || "").toLowerCase().includes(q) ||
           (f.sido || "").toLowerCase().includes(q) ||
           (f.sigungu || "").toLowerCase().includes(q)
       );
-    }
-    if (period) {
+    } else if (period) {
       const [rs, re] = period === "weekend" ? weekendRange() : monthRange();
-      return withSido.filter((f) => overlaps(f.startDate, f.endDate, rs, re));
+      list = withSido.filter((f) => overlaps(f.startDate, f.endDate, rs, re));
+    } else if (showFavorites) {
+      list = withSido.filter((f) => favorites.includes(f.id));
+    } else {
+      list = withSido
+        .filter((f) => f.season === season)
+        .filter((f) => (sido ? f._sido === sido : true))
+        .filter((f) => (sigungu ? f.sigungu === sigungu : true));
     }
-    if (showFavorites) {
-      return withSido.filter((f) => favorites.includes(f.id));
-    }
-    return withSido
-      .filter((f) => f.season === season)
-      .filter((f) => (sido ? f._sido === sido : true))
-      .filter((f) => (sigungu ? f.sigungu === sigungu : true));
-  }, [withSido, season, sido, sigungu, q, searching, period, showFavorites, favorites]);
+    return type ? list.filter((f) => f.type === type) : list;
+  }, [withSido, season, type, sido, sigungu, q, searching, period, showFavorites, favorites]);
 
   // 현재 선택한 시도의 시군구 목록(실제 축제가 있는 곳만) — 2단계 칩
   const sigunguList = useMemo(() => {
@@ -340,6 +349,8 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     const now = new Date();
     const scored = withSido
       .filter((f) => f.season === season)
+      // 메인 카드뉴스는 축제 우선: 유형 미선택 시 축제만, 선택 시 그 유형
+      .filter((f) => (type ? f.type === type : f.type === "festival"))
       .filter((f) => (sido ? f._sido === sido : true))
       .filter((f) => (sigungu ? f.sigungu === sigungu : true))
       .map((f) => ({ f, st: getStatusInfo(f.startDate, f.endDate, now) }))
@@ -356,12 +367,17 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       });
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, 10).map((x) => x.f);
-  }, [withSido, season, sido, sigungu, popScoreById]);
+  }, [withSido, season, type, sido, sigungu, popScoreById]);
 
-  // 블로그·영상 종합용 '메인 축제 후보' — 필터와 무관하게 전국 인기+임박 순 상위.
+  // 블로그·영상 종합용 '메인 축제 후보' — 전국 인기+임박 순 상위.
+  //  축제 우선: 유형 미선택 시 축제만 노출(메인 구성 유지), 유형 선택 시 그 유형.
   const mainShorts = useMemo(() => {
     const now = new Date();
-    const scored = withSido
+    const typed = type
+      ? withSido.filter((f) => f.type === type)
+      : withSido.filter((f) => f.type === "festival");
+    const pool = typed.length > 0 ? typed : withSido;
+    const scored = pool
       .map((f) => ({ f, st: getStatusInfo(f.startDate, f.endDate, now) }))
       .filter((x) => x.st.key === "ongoing" || x.st.key === "upcoming")
       .map(({ f, st }) => {
@@ -376,7 +392,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       });
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, 10).map((x) => x.f);
-  }, [withSido, popScoreById]);
+  }, [withSido, type, popScoreById]);
 
   // 기간 바로가기 토글 (다시 누르면 해제). 다른 모드와는 상호배타적.
   const togglePeriod = (key) => {
@@ -425,7 +441,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const [visibleCount, setVisibleCount] = useState(PAGE);
   useEffect(() => {
     setVisibleCount(PAGE);
-  }, [season, sido, sigungu, q, period, showFavorites, statusFilter]);
+  }, [season, type, sido, sigungu, q, period, showFavorites, statusFilter]);
   const visible = filtered.slice(0, visibleCount);
 
   // 지도용 목록: 필터 결과 + (검색으로 고른 축제가 필터 밖이면) 그 축제도 포함
@@ -488,6 +504,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
             <MapFilters
               season={season}
               onSeason={setSeason}
+              type={type}
+              onPickType={pickType}
+              typeLabels={typeLabels}
               period={period}
               onTogglePeriod={togglePeriod}
               showFavorites={showFavorites}

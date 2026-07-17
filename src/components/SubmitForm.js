@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/I18nProvider";
 import { SIDO, SIDO_ORDER } from "@/lib/regionsKr";
-import { getSidoLabel } from "@/lib/i18n";
+import { getSidoLabel, getTypeLabel } from "@/lib/i18n";
 
 // 시도 key → 한국어 정식명(저장용 place 구성 — 파싱이 되도록 한국어 고정)
 const SIDO_KO = Object.fromEntries(SIDO.map((s) => [s.key, s.ko]));
 const SG_ETC = "__etc__";
+// 행사 유형 선택지 (축제/전시·박람회/공연) — 라벨은 getTypeLabel로 13개 언어 자동
+const EVENT_TYPES = ["festival", "exhibition", "performance"];
 
 // ────────────────────────────────────────────────────────────────
 //  등록·제보 폼 (2탭: 담당자 등록 / 주민 제보)
@@ -34,8 +36,9 @@ const T = {
     resLead: "빠진 축제, 잘못된 정보, 사진·후기 등 무엇이든 알려 주세요.",
     // 기본(필수)
     secBasic: "기본 정보 (필수)",
-    fFestival: "축제명",
-    phFestival: "예: 보령머드축제 (입력 중 목록에서 선택하면 기존 축제와 연결돼요)",
+    fEventType: "행사 유형",
+    fFestival: "행사명",
+    phFestival: "예: 보령머드축제 (입력 중 목록에서 선택하면 기존 행사와 연결돼요)",
     fPeriod: "축제 기간",
     fPlace: "장소",
     phPlace: "예: 충남 보령시 대천해수욕장 일원",
@@ -51,8 +54,13 @@ const T = {
     phIntro: "축제를 소개해 주세요. 어떤 축제인지, 볼거리·즐길거리 등. (최대 1000자)",
     fOrganizer: "주최·주관 기관",
     phOrganizer: "예: 보령시 / 보령축제관광재단",
-    fContact: "담당자 연락처",
-    phContact: "이메일 또는 전화번호 (검토 결과 안내용)",
+    fManager: "담당자 성명",
+    phManager: "예: 홍길동",
+    fPhone: "담당자 전화",
+    phPhone: "예: 010-1234-5678",
+    fEmail: "담당자 이메일",
+    phEmail: "예: name@example.com",
+    contactHint: "전화·이메일 중 하나는 꼭 입력해 주세요. (검토 결과 안내용이며 외부에 공개되지 않습니다)",
     // 상세(선택)
     secDetail: "상세 정보 (선택) — 적을수록 페이지가 풍성해져요",
     fTimetable: "프로그램·일정",
@@ -98,7 +106,9 @@ const T = {
     errSigungu: "시·군·구를 선택하거나 입력해 주세요.",
     errIntro: "축제 소개를 입력해 주세요.",
     errOrganizer: "주최·주관 기관을 입력해 주세요.",
-    errContact: "담당자 연락처를 입력해 주세요.",
+    errManager: "담당자 성명을 입력해 주세요.",
+    errContactOne: "담당자 전화나 이메일 중 하나는 입력해 주세요.",
+    errEmailFmt: "이메일 형식이 올바르지 않습니다.",
     errMessage: "내용을 5자 이상 입력해 주세요.",
     errPhotoType: "jpg·png·pdf 파일만 올릴 수 있어요.",
     errPhotoSize: "한 파일은 10MB 이하만 가능해요.",
@@ -115,8 +125,9 @@ const T = {
     orgLead: "Are you a festival organizer? Register your info and it will appear on the festival page after review.",
     resLead: "Tell us about a missing festival, wrong info, photos or reviews — anything.",
     secBasic: "Basic info (required)",
-    fFestival: "Festival name",
-    phFestival: "e.g. Boryeong Mud Festival (pick from the list to link an existing festival)",
+    fEventType: "Event type",
+    fFestival: "Event name",
+    phFestival: "e.g. Boryeong Mud Festival (pick from the list to link an existing event)",
     fPeriod: "Dates",
     fPlace: "Location",
     phPlace: "e.g. Daecheon Beach, Boryeong, Chungnam",
@@ -132,8 +143,13 @@ const T = {
     phIntro: "Introduce the festival — what it is, highlights, things to do. (up to 1000 chars)",
     fOrganizer: "Host / organizer",
     phOrganizer: "e.g. Boryeong City / Boryeong Festival Foundation",
-    fContact: "Contact",
-    phContact: "Email or phone (to notify you of the review result)",
+    fManager: "Contact name",
+    phManager: "e.g. Gildong Hong",
+    fPhone: "Phone",
+    phPhone: "e.g. 010-1234-5678",
+    fEmail: "Email",
+    phEmail: "e.g. name@example.com",
+    contactHint: "Enter at least a phone or email (for review updates; kept private, never shown publicly).",
     secDetail: "Details (optional) — the more you add, the richer the page",
     fTimetable: "Program & schedule",
     phTimetable: "e.g. Oct 3 opening 18:00, fireworks 20:00 / Oct 4 parade 14:00",
@@ -175,7 +191,9 @@ const T = {
     errSigungu: "Please select or enter a district.",
     errIntro: "Please enter an introduction.",
     errOrganizer: "Please enter the host/organizer.",
-    errContact: "Please enter a contact.",
+    errManager: "Please enter a contact name.",
+    errContactOne: "Please enter at least a phone or email.",
+    errEmailFmt: "Please enter a valid email.",
     errMessage: "Please enter at least 5 characters.",
     errPhotoType: "Only jpg·png·pdf files are allowed.",
     errPhotoSize: "Each file must be 10MB or less.",
@@ -291,8 +309,10 @@ export default function SubmitForm({ festivals = [], regionOptions = {} }) {
 
   // 담당자 등록 필드
   const [org, setOrg] = useState({
+    eventType: "festival",
     festivalName: "", festivalId: "", periodStart: "", periodEnd: "",
-    sido: "", sigungu: "", sigunguEtc: "", placeDetail: "", intro: "", organizer: "", contact: "",
+    sido: "", sigungu: "", sigunguEtc: "", placeDetail: "", intro: "", organizer: "",
+    managerName: "", phone: "", email: "",
     timetable: "", lineup: "", parking: "", shuttle: "", food: "", experience: "", etc: "",
   });
   // 주민 제보 필드
@@ -416,9 +436,14 @@ export default function SubmitForm({ festivals = [], regionOptions = {} }) {
       if (!sigunguFinal) return void setError(t.errSigungu);
       if (!org.intro.trim()) return void setError(t.errIntro);
       if (!org.organizer.trim()) return void setError(t.errOrganizer);
-      if (!org.contact.trim()) return void setError(t.errContact);
+      if (!org.managerName.trim()) return void setError(t.errManager);
+      const phone = org.phone.trim();
+      const email = org.email.trim();
+      if (!phone && !email) return void setError(t.errContactOne);
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return void setError(t.errEmailFmt);
       body = {
         type: "organizer",
+        eventType: org.eventType,
         festivalName: org.festivalName,
         festivalId: org.festivalId,
         periodStart: org.periodStart,
@@ -426,7 +451,9 @@ export default function SubmitForm({ festivals = [], regionOptions = {} }) {
         place: placeStr,
         intro: org.intro,
         organizer: org.organizer,
-        contact: org.contact,
+        managerName: org.managerName,
+        phone,
+        email,
         timetable: org.timetable,
         lineup: org.lineup,
         parking: org.parking,
@@ -487,6 +514,7 @@ export default function SubmitForm({ festivals = [], regionOptions = {} }) {
     setError("");
     setPhotos([]);
     setOrg({
+      eventType: "festival",
       festivalName: "", festivalId: "", periodStart: "", periodEnd: "",
       sido: "", sigungu: "", sigunguEtc: "", placeDetail: "", intro: "", organizer: "", contact: "",
       timetable: "", lineup: "", parking: "", shuttle: "", food: "", experience: "", etc: "",
@@ -541,6 +569,19 @@ export default function SubmitForm({ festivals = [], regionOptions = {} }) {
           {/* 기본 정보 (필수) */}
           <fieldset style={fieldset}>
             <legend style={legend}>{t.secBasic}</legend>
+
+            <Row>
+              <label style={field}>{t.fEventType} <span style={req}>*</span></label>
+              <select
+                value={org.eventType}
+                onChange={(e) => setO("eventType", e.target.value)}
+                style={input}
+              >
+                {EVENT_TYPES.map((k) => (
+                  <option key={k} value={k}>{getTypeLabel(k, locale)}</option>
+                ))}
+              </select>
+            </Row>
 
             <FestivalPicker
               label={t.fFestival}
@@ -605,7 +646,15 @@ export default function SubmitForm({ festivals = [], regionOptions = {} }) {
             </Row>
 
             <Text label={t.fOrganizer} req value={org.organizer} onChange={(v) => setO("organizer", v)} ph={t.phOrganizer} />
-            <Text label={t.fContact} req value={org.contact} onChange={(v) => setO("contact", v)} ph={t.phContact} />
+            <Text label={t.fManager} req value={org.managerName} onChange={(v) => setO("managerName", v)} ph={t.phManager} />
+            <Row>
+              <label style={field}>{t.fPhone} · {t.fEmail} <span style={req}>*</span></label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input type="tel" value={org.phone} onChange={(e) => setO("phone", e.target.value)} placeholder={t.phPhone} style={{ ...input, flex: "1 1 160px", width: "auto" }} />
+                <input type="email" value={org.email} onChange={(e) => setO("email", e.target.value)} placeholder={t.phEmail} style={{ ...input, flex: "1 1 200px", width: "auto" }} />
+              </div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>{t.contactHint}</div>
+            </Row>
           </fieldset>
 
           {/* 상세 정보 (선택) */}

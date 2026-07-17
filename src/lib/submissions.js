@@ -132,6 +132,10 @@ export async function getPublishedNewFestivals() {
         const startDate = r.period_start;
         const endDate = r.period_end || r.period_start;
         const firstPhoto = Array.isArray(r.photos) && r.photos.find((p) => typeof p === "string" && p.startsWith("http") && !/\.pdf($|\?)/i.test(p));
+        // 등록 시 고른 행사 유형(category 컬럼에 저장됨) → type. 없으면 축제 기본.
+        const type = ["festival", "exhibition", "performance"].includes(r.category)
+          ? r.category
+          : "festival";
         return {
           id: `sub-${r.id}`,
           name: r.festival_name,
@@ -146,6 +150,7 @@ export async function getPublishedNewFestivals() {
           description: r.intro || "",
           image: firstPhoto || null,
           source: "submission", // 출처: 방문자/담당자 제출
+          type,
           addr,
           homepage: null,
           tel: null,

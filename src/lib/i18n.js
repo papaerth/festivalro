@@ -399,6 +399,29 @@ export function getSidoLabel(key, locale) {
   return field ? row[field] : row.roman; // 라틴 문자권은 로마자 공용
 }
 
+// ── 행사 유형(type) 라벨 (13개 언어) ──
+//  all(전체) / festival(축제) / exhibition(전시·박람회) / performance(공연)
+const TYPE_LABELS = {
+  all: { ko: "전체", en: "All", ja: "すべて", zh: "全部", "zh-TW": "全部", es: "Todos", fr: "Tous", ru: "Все", de: "Alle", ar: "الكل", vi: "Tất cả", id: "Semua", th: "ทั้งหมด" },
+  festival: { ko: "축제", en: "Festival", ja: "祭り", zh: "庆典", "zh-TW": "慶典", es: "Festival", fr: "Festival", ru: "Фестиваль", de: "Festival", ar: "مهرجان", vi: "Lễ hội", id: "Festival", th: "เทศกาล" },
+  exhibition: { ko: "전시·박람회", en: "Expo & Exhibition", ja: "展示・博覧会", zh: "展览·博览会", "zh-TW": "展覽·博覽會", es: "Exposición y feria", fr: "Exposition & salon", ru: "Выставка", de: "Ausstellung & Messe", ar: "معرض", vi: "Triển lãm & Hội chợ", id: "Pameran", th: "นิทรรศการ" },
+  performance: { ko: "공연", en: "Performance", ja: "公演", zh: "演出", "zh-TW": "演出", es: "Espectáculo", fr: "Spectacle", ru: "Спектакль", de: "Aufführung", ar: "عرض", vi: "Biểu diễn", id: "Pertunjukan", th: "การแสดง" },
+};
+
+// 유형 key + 언어 → 표시 이름 (없으면 영어 → key 폴백)
+export function getTypeLabel(key, locale) {
+  const row = TYPE_LABELS[key];
+  if (!row) return key;
+  return row[locale] || row.en || key;
+}
+
+// 해당 언어의 유형 라벨 전체 맵 { all, festival, exhibition, performance }
+export function getTypeLabels(locale) {
+  const out = {};
+  for (const k of Object.keys(TYPE_LABELS)) out[k] = getTypeLabel(k, locale);
+  return out;
+}
+
 // 상세페이지 확장 섹션 제목·라벨 (13개 언어). 내용(축제 데이터)은 번역 안 함.
 const SECTION_LABELS = {
   "ko": {

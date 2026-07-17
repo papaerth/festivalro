@@ -10,6 +10,30 @@ export const SEASONS = {
 // 화면에 보여줄 계절 순서 (봄 → 여름 → 가을 → 겨울)
 export const SEASON_ORDER = ["spring", "summer", "autumn", "winter"];
 
+// 행사 유형(type) 테마 — 축제 / 전시·박람회 / 공연
+//  · 축제는 기존 계절색을 그대로 쓰므로 지도 마커 톤을 바꾸지 않습니다(축제 중심 유지).
+//  · 전시·공연만 지도에서 별도 톤(보라/청록)으로 살짝 구분합니다.
+export const TYPES = {
+  festival: { key: "festival", label: "축제", color: "#C2578A", soft: "#F7E4EE", emoji: "🎉" },
+  exhibition: { key: "exhibition", label: "전시·박람회", color: "#6A4C93", soft: "#ECE5F5", emoji: "🖼️" },
+  performance: { key: "performance", label: "공연", color: "#2A7DB1", soft: "#E1EDF5", emoji: "🎭" },
+};
+
+// 필터 칩 순서 (전체 → 축제 → 전시·박람회 → 공연)
+export const TYPE_ORDER = ["festival", "exhibition", "performance"];
+
+// 유형 코드로 테마를 꺼내는 도우미 (없으면 축제 기본)
+export function typeTheme(type) {
+  return TYPES[type] || TYPES.festival;
+}
+
+// 지도 마커 색: 축제는 계절색(기존 그대로), 전시·공연은 유형색으로 구분
+export function markerColor(item) {
+  const t = item?.type;
+  if (t === "exhibition" || t === "performance") return TYPES[t].color;
+  return seasonColor(item?.season);
+}
+
 // 지역(권역) 정의. key는 데이터에서 쓰는 코드, 값은 화면에 보여줄 이름.
 export const REGIONS = {
   all: "전국",

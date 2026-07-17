@@ -11,7 +11,7 @@ import RelatedFestivals from "@/components/RelatedFestivals";
 import RecordView from "@/components/RecordView";
 import PrivacyLink from "@/components/PrivacyLink";
 import BrandTagline from "@/components/BrandTagline";
-import { SEASONS } from "@/lib/seasons";
+import { SEASONS, typeTheme } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import {
   LOCALES,
@@ -19,6 +19,7 @@ import {
   isLocale,
   getDictionary,
   getSections,
+  getTypeLabel,
   localeHref,
   HTML_LANG,
   SITE_URL,
@@ -63,7 +64,48 @@ const SOURCE = {
     ja: "全国文化祭り標準データ(行政安全部)",
     zh: "全国文化庆典标准数据（行政安全部）",
   },
+  kintex: {
+    ko: "킨텍스(KINTEX) · 경기데이터드림",
+    en: "KINTEX · Gyeonggi Data Dream",
+    ja: "KINTEX · 京畿データドリーム",
+    zh: "KINTEX · 京畿数据梦",
+  },
 };
+
+// "같은 장소의 다른 행사" 섹션 제목 (13개 언어)
+const SAME_VENUE = {
+  ko: "📍 같은 장소의 다른 행사",
+  en: "📍 More events at this venue",
+  ja: "📍 同じ会場の他のイベント",
+  zh: "📍 同一场馆的其他活动",
+  "zh-TW": "📍 同一場館的其他活動",
+  es: "📍 Más eventos en este lugar",
+  fr: "📍 Autres événements sur ce lieu",
+  ru: "📍 Другие события в этом месте",
+  de: "📍 Weitere Veranstaltungen an diesem Ort",
+  ar: "📍 فعاليات أخرى في نفس المكان",
+  vi: "📍 Sự kiện khác tại địa điểm này",
+  id: "📍 Acara lain di tempat ini",
+  th: "📍 กิจกรรมอื่นที่สถานที่นี้",
+};
+
+// schema.org Event 하위 유형 매핑 (전시=ExhibitionEvent, 축제=Festival)
+const TYPE_SCHEMA = {
+  festival: "Festival",
+  exhibition: "ExhibitionEvent",
+  performance: "Event",
+};
+
+// 행사 장소 문자열에서 '전시장 이름' 핵심만 추출 (예: "코엑스(COEX) 1층 A홀" → "코엑스")
+function venueKey(place = "") {
+  const s = String(place).trim();
+  if (!s) return "";
+  return s
+    .split(/[(（]/)[0]
+    .split(/\s+/)[0]
+    .replace(/[^가-힣A-Za-z0-9]/g, "")
+    .slice(0, 24);
+}
 
 export async function generateMetadata({ params }) {
   const { id, locale } = await params;
@@ -121,9 +163,26 @@ export default async function FestivalDetailPage({ params }) {
   ]);
   // "이 축제가 좋았다면" 추천 (같은 시군구→같은 계절 인기→비슷한 유형, 종료·현재 축제 제외)
   const related = await localizeFestivals(getRelatedFestivals(festival, allFestivals, 6), loc);
+
+  // 같은 장소(전시장)의 다른 행사 — 행사장소(eventplace)가 있는 경우(주로 전시·공연)만.
+  //  코엑스·벡스코처럼 한 장소에서 여러 행사가 열리는 경우를 위해 종료되지 않은 행사 최대 6개.
+  const myVenue = venueKey(festival.eventplace);
+  const sameVenue = myVenue
+    ? await localizeFestivals(
+        allFestivals
+          .filter((f) => f.id !== festival.id && venueKey(f.eventplace) === myVenue)
+          .filter((f) => getStatusInfo(f.startDate, f.endDate).key !== "ended")
+          .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""))
+          .slice(0, 6),
+        loc
+      )
+    : [];
+
   const S = getSections(loc);
   const fYear = festival.startDate ? festival.startDate.slice(0, 4) : null;
 
+  const ty = typeTheme(festival.type);
+  const typeLabel = getTypeLabel(festival.type || "festival", loc);
   const theme = SEASONS[festival.season] || SEASONS.spring;
   const status = getStatusInfo(festival.startDate, festival.endDate);
   const statusLabel =
@@ -137,13 +196,16 @@ export default async function FestivalDetailPage({ params }) {
   //  데이터가 있는 필드만 포함. 종료 축제도 실제 날짜 그대로. 다국어는 번역된 name/description 사용.
   const eventLd = festival.startDate
     ? (() => {
+        // 장소명: 행사장소(코엑스 등)가 있으면 우선, 없으면 지역명
         const placeName =
+          festival.eventplace ||
           [dict.regions[festival.region] || festival.sido, festival.sigungu]
             .filter(Boolean)
-            .join(" ") || festival.name;
+            .join(" ") ||
+          festival.name;
         const ld = {
           "@context": "https://schema.org",
-          "@type": "Event",
+          "@type": TYPE_SCHEMA[festival.type] || "Event",
           name: festival.name,
           startDate: festival.startDate,
           eventStatus: "https://schema.org/EventScheduled",
@@ -202,13 +264,18 @@ export default async function FestivalDetailPage({ params }) {
           />
           <div className="detail-hero-scrim" />
           <div className="detail-hero-content">
-            <span
-              className={`badge ${status.key}${status.soon ? " soon" : ""}`}
-              suppressHydrationWarning
-            >
-              {status.key === "ongoing" && <span className="live-dot" />}
-              {statusLabel}
-            </span>
+            <div className="detail-hero-badges">
+              <span
+                className={`badge ${status.key}${status.soon ? " soon" : ""}`}
+                suppressHydrationWarning
+              >
+                {status.key === "ongoing" && <span className="live-dot" />}
+                {statusLabel}
+              </span>
+              <span className="badge type-badge-inline" style={{ background: ty.color }}>
+                {ty.emoji} {typeLabel}
+              </span>
+            </div>
             <h1>
               {theme.emoji} {festival.name}
             </h1>
@@ -217,6 +284,7 @@ export default async function FestivalDetailPage({ params }) {
             </p>
             <p className="detail-place">
               📍 {festival.sido} {festival.sigungu}
+              {festival.eventplace ? ` · ${festival.eventplace}` : ""}
             </p>
           </div>
         </section>
@@ -351,6 +419,11 @@ export default async function FestivalDetailPage({ params }) {
           }
         />
 
+        {/* 같은 장소(전시장)의 다른 행사 — 코엑스·벡스코 등 한 장소 여러 행사 동선 */}
+        {sameVenue.length > 0 && (
+          <RelatedFestivals items={sameVenue} title={SAME_VENUE[loc] || SAME_VENUE.en} />
+        )}
+
         {/* 페이지 맨 아래 추천 — 다음 축제로 자연스럽게 이어지는 동선 */}
         <RelatedFestivals items={related} />
       </main>
@@ -368,6 +441,7 @@ export default async function FestivalDetailPage({ params }) {
           season: festival.season,
           region: festival.region,
           source: festival.source,
+          type: festival.type,
         }}
       />
 

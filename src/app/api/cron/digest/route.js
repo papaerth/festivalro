@@ -67,7 +67,7 @@ export async function GET(request) {
   // 대기 중인 제출 전체(최신순)
   const { data: rows, error } = await admin
     .from("submissions")
-    .select("id, token, type, category, festival_id, festival_name, period_start, period_end, place, contact, message, photos, created_at")
+    .select("id, token, type, category, festival_id, festival_name, period_start, period_end, place, contact, manager_name, phone, email, message, photos, created_at")
     .eq("status", "pending")
     .order("created_at", { ascending: false });
 
@@ -128,6 +128,16 @@ export async function GET(request) {
         : "";
       const naver = `<a href="https://search.naver.com/search.naver?query=${encodeURIComponent(r.festival_name || "")}" style="color:#2563eb">🔎 네이버로 확인</a>`;
 
+      // 담당자 연락처(운영자 전용) — 성명·전화·이메일. 구 데이터는 contact로 폴백.
+      const cParts = [];
+      if (r.manager_name) cParts.push(`👤 ${esc(r.manager_name)}`);
+      if (r.phone) cParts.push(`☎ <a href="tel:${esc(r.phone)}" style="color:#2563eb">${esc(r.phone)}</a>`);
+      if (r.email) cParts.push(`✉ <a href="mailto:${esc(r.email)}" style="color:#2563eb">${esc(r.email)}</a>`);
+      if (!cParts.length && r.contact) cParts.push(esc(r.contact));
+      const contactLine = cParts.length
+        ? `<div style="margin:6px 0;font-size:13px;color:#334155;background:#f1f5f9;border-radius:6px;padding:5px 8px">${cParts.join(" · ")}</div>`
+        : "";
+
       let banner, compare, pubLabel, pubLink;
       if (match) {
         // 이미 있는 축제 → 진위 대조 후 보충
@@ -165,6 +175,7 @@ export async function GET(request) {
         banner +
         `<div style="font-size:16px;font-weight:700;color:#0f172a">${title}</div>` +
         compare +
+        contactLine +
         msg +
         photoLine +
         `<div style="margin-top:10px">` +

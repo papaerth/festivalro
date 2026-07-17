@@ -40,6 +40,10 @@ export async function POST(request) {
 
   const type = b.type === "organizer" ? "organizer" : "resident";
 
+  // 행사 유형(축제/전시·박람회/공연) — 주최자 등록에서만 사용, category 컬럼에 저장(스키마 변경 불필요)
+  const EVENT_TYPES = ["festival", "exhibition", "performance"];
+  const eventType = EVENT_TYPES.includes(b.eventType) ? b.eventType : "festival";
+
   const photos = Array.isArray(b.photos)
     ? b.photos
         .filter((u) => typeof u === "string")
@@ -47,6 +51,12 @@ export async function POST(request) {
         .filter((u) => u.startsWith("http"))
         .slice(0, 10)
     : [];
+
+  // 담당자 연락처: 성명·전화·이메일 분리 저장 + contact(합본, 레거시/표시용)
+  const managerName = clip(b.managerName, 100);
+  const phone = clip(b.phone, 60);
+  const email = clip(b.email, 200);
+  const contactCombined = clip(b.contact, 200) || [phone, email].filter(Boolean).join(" / ");
 
   const row = {
     type,
@@ -58,7 +68,10 @@ export async function POST(request) {
     period_end: dateOrNull(b.periodEnd),
     place: clip(b.place, 300) || null,
     organizer: clip(b.organizer, 200) || null,
-    contact: clip(b.contact, 200) || null,
+    manager_name: managerName || null,
+    phone: phone || null,
+    email: email || null,
+    contact: contactCombined || null,
     intro: clip(b.intro, 1000) || null,
     timetable: clip(b.timetable, 4000) || null,
     lineup: clip(b.lineup, 2000) || null,
@@ -67,7 +80,8 @@ export async function POST(request) {
     food: clip(b.food, 2000) || null,
     experience: clip(b.experience, 2000) || null,
     etc: clip(b.etc, 2000) || null,
-    category: clip(b.category, 40) || null,
+    // 주최자 등록: 행사 유형 저장 / 주민 제보: 기존 제보 유형(category) 저장
+    category: type === "organizer" ? eventType : (clip(b.category, 40) || null),
     message: clip(b.message, 1000) || null,
     photos,
   };
