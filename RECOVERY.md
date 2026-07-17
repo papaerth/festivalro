@@ -1,5 +1,7 @@
 # 🛟 축제로(festivalro) 복구 가이드
 
+> **터미널에서 여는 법:** `cd C:\Users\sskk1\OneDrive\Desktop\festivalro` → `claude`
+
 > PC를 초기화했거나 새 컴퓨터에서 다시 개발을 시작할 때, **이 문서 하나만 순서대로 따라 하면** 로컬 개발 환경이 복구됩니다.
 > 사이트 코드는 GitHub에, 배포는 Vercel에 있으므로 **운영 중인 사이트(chukjero.com)는 이 작업과 무관하게 계속 정상 동작**합니다.
 >

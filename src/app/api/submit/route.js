@@ -48,6 +48,12 @@ export async function POST(request) {
         .slice(0, 10)
     : [];
 
+  // 담당자 연락처: 성명·전화·이메일 분리 저장 + contact(합본, 레거시/표시용)
+  const managerName = clip(b.managerName, 100);
+  const phone = clip(b.phone, 60);
+  const email = clip(b.email, 200);
+  const contactCombined = clip(b.contact, 200) || [phone, email].filter(Boolean).join(" / ");
+
   const row = {
     type,
     status: "pending",
@@ -58,7 +64,10 @@ export async function POST(request) {
     period_end: dateOrNull(b.periodEnd),
     place: clip(b.place, 300) || null,
     organizer: clip(b.organizer, 200) || null,
-    contact: clip(b.contact, 200) || null,
+    manager_name: managerName || null,
+    phone: phone || null,
+    email: email || null,
+    contact: contactCombined || null,
     intro: clip(b.intro, 1000) || null,
     timetable: clip(b.timetable, 4000) || null,
     lineup: clip(b.lineup, 2000) || null,
