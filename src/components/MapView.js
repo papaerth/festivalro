@@ -5,7 +5,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { SEASONS } from "@/lib/seasons";
+import { markerColor, typeTheme } from "@/lib/seasons";
 import { formatPeriod } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
 import { MAP_GESTURE_TEXT } from "@/lib/i18n";
@@ -23,11 +23,12 @@ const VIEW_DETAIL = {
   id: "Lihat →",
   th: "ดู →", ko: "상세보기 →", en: "View →", ja: "詳細 →", zh: "查看 →" };
 
-// 계절 색으로 물방울 모양 핀 아이콘을 만듭니다.
-function makePin(color) {
+// 물방울 모양 핀 아이콘. 축제는 계절색(기존 그대로), 전시·공연은 유형색 + 작은 글리프로 살짝 구분.
+function makePin(color, glyph = "") {
+  const inner = glyph ? `<span class="festival-pin-glyph">${glyph}</span>` : "";
   return L.divIcon({
     className: "festival-pin-wrap",
-    html: `<span class="festival-pin" style="--pin:${color}"></span>`,
+    html: `<span class="festival-pin" style="--pin:${color}">${inner}</span>`,
     iconSize: [22, 22],
     iconAnchor: [11, 22],
     popupAnchor: [0, -22],
@@ -175,13 +176,16 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
       />
       <KoreaLock />
       {shown.map((f) => {
-        const color = (SEASONS[f.season] || SEASONS.spring).color;
+        const color = markerColor(f);
+        // 전시·공연만 작은 글리프 표시 (축제는 기존처럼 색만)
+        const glyph =
+          f.type === "exhibition" || f.type === "performance" ? typeTheme(f.type).emoji : "";
         const r = ratings[f.id];
         return (
           <Marker
             key={f.id}
             position={[f.lat, f.lng]}
-            icon={makePin(color)}
+            icon={makePin(color, glyph)}
             eventHandlers={{
               click: () => onSelect && onSelect(f),
             }}

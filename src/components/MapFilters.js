@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SEASONS, SEASON_ORDER } from "@/lib/seasons";
+import { SEASONS, SEASON_ORDER, TYPES, TYPE_ORDER } from "@/lib/seasons";
 import { SIDO_ORDER } from "@/lib/regionsKr";
 import { getSidoLabel } from "@/lib/i18n";
 import { useI18n } from "@/lib/I18nProvider";
@@ -18,6 +18,9 @@ import { useI18n } from "@/lib/I18nProvider";
 export default function MapFilters({
   season,
   onSeason,
+  type,
+  onPickType,
+  typeLabels = {},
   period,
   onTogglePeriod,
   showFavorites,
@@ -75,6 +78,29 @@ export default function MapFilters({
 
   return (
     <div className="map-filters" ref={rootRef}>
+      {/* 0줄: 유형 (전체 · 축제 · 전시·박람회 · 공연) */}
+      <div className="mf-row" role="group" aria-label={typeLabels.all || "유형"}>
+        <button
+          className={`mf-chip ${!type ? "active" : ""}`}
+          onClick={() => onPickType(null)}
+        >
+          {typeLabels.all || "전체"}
+        </button>
+        {TYPE_ORDER.map((key) => {
+          const ty = TYPES[key];
+          return (
+            <button
+              key={key}
+              className={`mf-chip mf-type ${type === key ? "active" : ""}`}
+              style={{ "--accent": ty.color, "--accent-soft": ty.soft }}
+              onClick={() => onPickType(key)}
+            >
+              {ty.emoji} {typeLabels[key] || ty.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* 1줄: 계절 */}
       <div className="mf-row" role="group" aria-label={t.filters.season}>
         {SEASON_ORDER.map((key) => {

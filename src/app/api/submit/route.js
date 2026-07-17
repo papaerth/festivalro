@@ -40,6 +40,10 @@ export async function POST(request) {
 
   const type = b.type === "organizer" ? "organizer" : "resident";
 
+  // 행사 유형(축제/전시·박람회/공연) — 주최자 등록에서만 사용, category 컬럼에 저장(스키마 변경 불필요)
+  const EVENT_TYPES = ["festival", "exhibition", "performance"];
+  const eventType = EVENT_TYPES.includes(b.eventType) ? b.eventType : "festival";
+
   const photos = Array.isArray(b.photos)
     ? b.photos
         .filter((u) => typeof u === "string")
@@ -76,7 +80,8 @@ export async function POST(request) {
     food: clip(b.food, 2000) || null,
     experience: clip(b.experience, 2000) || null,
     etc: clip(b.etc, 2000) || null,
-    category: clip(b.category, 40) || null,
+    // 주최자 등록: 행사 유형 저장 / 주민 제보: 기존 제보 유형(category) 저장
+    category: type === "organizer" ? eventType : (clip(b.category, 40) || null),
     message: clip(b.message, 1000) || null,
     photos,
   };

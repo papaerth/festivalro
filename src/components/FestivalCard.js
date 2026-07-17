@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { SEASONS } from "@/lib/seasons";
+import { SEASONS, typeTheme } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
+import { getTypeLabel } from "@/lib/i18n";
 import { useCardNews } from "./CardNewsProvider";
 import CoverImage from "./CoverImage";
 import FavoriteButton from "./FavoriteButton";
 
 // 축제 하나를 카드 형태로 보여줍니다. (상단 대표 이미지 + 정보)
 export default function FestivalCard({ festival, rating }) {
-  const { t, href } = useI18n();
+  const { t, href, locale } = useI18n();
   const { open: openCardNews } = useCardNews();
 
   // 카드 클릭 → 카드뉴스 뷰어 먼저 열기 (Ctrl/⌘·휠클릭·새 탭은 기존처럼 상세로)
@@ -20,6 +21,7 @@ export default function FestivalCard({ festival, rating }) {
     openCardNews(festival);
   };
   const season = SEASONS[festival.season] || SEASONS.spring;
+  const ty = typeTheme(festival.type);
   const status = getStatusInfo(festival.startDate, festival.endDate);
   const regionName = t.regions[festival.region] || "";
   // 예정은 D-day(언어 무관), 진행중/종료는 언어별 라벨
@@ -45,6 +47,12 @@ export default function FestivalCard({ festival, rating }) {
       <span className={badgeClass} suppressHydrationWarning>
         {status.key === "ongoing" && <span className="live-dot" />}
         {statusLabel}
+      </span>
+      <span
+        className="badge type-badge"
+        style={{ background: ty.color }}
+      >
+        {ty.emoji} {getTypeLabel(festival.type || "festival", locale)}
       </span>
       <FavoriteButton id={festival.id} />
       <div className="card-body">

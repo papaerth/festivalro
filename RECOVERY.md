@@ -56,9 +56,15 @@ npm install
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 회원/로그인 | 같은 화면 → **anon / public** 키 (공개돼도 되는 키) |
 | `YOUTUBE_API_KEY` | 영상 섹션 | console.cloud.google.com → API 및 서비스 → 사용자 인증 정보 → API 키(`AIza...`) |
 | `NEXT_PUBLIC_GA_ID` | 방문 통계(GA) | analytics.google.com → 관리 → 데이터 스트림 → **측정 ID(`G-...`)** |
+| `GG_DATA_KEY` *(선택)* | **킨텍스(KINTEX) 전시·박람회** 일정 | data.gg.go.kr(경기데이터드림) → 회원가입/로그인 → 인증키 발급 → "킨텍스_KINTEX 행사 일정" Open API 신청 후 받은 **인증키**. 안 넣으면 킨텍스만 빠지고 나머지 전시·공연/축제는 정상. |
+
+> 🎪 **전시·박람회·공연 안내:** 축제 외에 전시회·박람회·공연도 자동으로 나옵니다.
+> - **코엑스·벡스코 등 전국 전시·공연**은 `TOUR_API_KEY`(한국관광공사)로 **자동 수집**됩니다. 별도 키 불필요.
+> - **킨텍스(고양) 전용 일정**만 위 `GG_DATA_KEY`(경기데이터드림, 별도 무료 발급)를 넣으면 추가로 붙습니다. (킨텍스는 공공데이터포털이 아니라 경기데이터드림에만 실시간 API가 있어 키가 별도입니다.)
+> - 전시 주최사는 **직접 등록 폼**(/submit)에서 유형을 "전시·박람회/공연"으로 골라 직접 올릴 수도 있습니다.
 
 메모:
-- `_BASE`, `_HOST`, `_ENABLED`로 끝나는 변수는 코드에 기본값이 있어 **넣지 않아도 됩니다.**
+- `_BASE`, `_HOST`, `_ENABLED`로 끝나는 변수는 코드에 기본값이 있어 **넣지 않아도 됩니다.** (`EVENTS_API_ENABLED=false`로 전시·공연 자동수집을 끌 수 있음)
 - `CRON_SECRET`은 운영(Vercel)의 자동 새로고침용이라 **로컬 개발에는 불필요**합니다.
 - 키를 비워두면 해당 기능만 샘플/링크로 대체되고 **사이트 자체는 정상 실행**됩니다.
 - 💡 **Supabase anon 키(`eyJ...`)에는 프로젝트 주소가 들어있어**, 키만 있으면 URL은 `https://<ref>.supabase.co`로 복원할 수 있습니다.
@@ -94,7 +100,7 @@ npm run dev
 - [ ] `gh auth login` 로그인
 - [ ] `gh repo clone papaerth/festivalro`
 - [ ] `npm install`
-- [ ] `.env.local` 생성 후 위 7개 키 채우기 (발급처에서 확인)
+- [ ] `.env.local` 생성 후 위 7개 키 채우기 (발급처에서 확인) · 킨텍스 원하면 `GG_DATA_KEY` 추가(선택)
 - [ ] `npm run dev` → http://localhost:3000 확인
 
 ---

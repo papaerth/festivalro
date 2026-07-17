@@ -6,7 +6,7 @@
 //  - 날짜는 데모용으로 2026년 기준입니다. 오늘 날짜에 따라
 //    '진행중 / 예정 / 종료' 배지가 자동으로 계산됩니다.
 // ────────────────────────────────────────────────────────────────
-export const SAMPLE_FESTIVALS = [
+const SAMPLE_RAW = [
   // ─── 봄 (spring) ───
   {
     id: "jinhae-gunhangje",
@@ -309,4 +309,57 @@ export const SAMPLE_FESTIVALS = [
       "남포동 광복로 일대를 화려한 조명과 크리스마스 트리로 장식하는 부산의 겨울 빛 축제입니다.",
     image: null,
   },
+
+  // ─── 전시·박람회 / 공연 데모 (유형 필터 미리보기용) ───
+  {
+    id: "coex-cafeshow",
+    name: "서울카페쇼",
+    sido: "서울특별시",
+    sigungu: "강남구",
+    region: "seoul",
+    lat: 37.5126,
+    lng: 127.0589,
+    season: "autumn",
+    startDate: "2026-11-04",
+    endDate: "2026-11-07",
+    description: "코엑스에서 열리는 아시아 최대 규모의 커피·차 산업 전시회입니다.",
+    image: null,
+    type: "exhibition",
+    eventplace: "코엑스(COEX) 1층 A~C홀",
+  },
+  {
+    id: "bexco-motorshow",
+    name: "부산국제모터쇼",
+    sido: "부산광역시",
+    sigungu: "해운대구",
+    region: "gyeongsang",
+    lat: 35.1691,
+    lng: 129.1349,
+    season: "summer",
+    startDate: "2026-06-25",
+    endDate: "2026-07-05",
+    description: "벡스코(BEXCO)에서 열리는 국내 대표 자동차 산업 박람회입니다.",
+    image: null,
+    type: "exhibition",
+    eventplace: "벡스코(BEXCO) 제1전시장",
+  },
+  {
+    id: "seoul-arts-concert",
+    name: "예술의전당 교향악축제",
+    sido: "서울특별시",
+    sigungu: "서초구",
+    region: "seoul",
+    lat: 37.4795,
+    lng: 127.0119,
+    season: "spring",
+    startDate: "2026-04-01",
+    endDate: "2026-04-20",
+    description: "국내 주요 교향악단이 한자리에 모이는 대표 클래식 공연입니다.",
+    image: null,
+    type: "performance",
+    eventplace: "예술의전당 콘서트홀",
+  },
 ];
+
+// 모든 샘플에 유형(type) 기본값(축제)을 보장 — 지도/필터/배지가 항상 동작하도록
+export const SAMPLE_FESTIVALS = SAMPLE_RAW.map((f) => ({ type: "festival", ...f }));

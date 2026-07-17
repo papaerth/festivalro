@@ -14,6 +14,7 @@ import { SAMPLE_FESTIVALS } from "./sampleFestivals";
 import { translateText, translateNames } from "./translate";
 import { translateTextAI } from "./translateAI";
 import { getPublishedNewFestivals } from "./submissions";
+import { fetchFromKintex } from "./kintex";
 import { matchSido } from "./regionsKr";
 
 // 17개 시도 대략 중심 좌표 — 직접 등록 축제(좌표 없음)에 근사 마커를 띄우기 위한 폴백값.
@@ -78,6 +79,28 @@ const TOUR_API_BASE =
   process.env.TOUR_API_BASE ||
   "https://apis.data.go.kr/B551011/KorService2/searchFestival2";
 
+// TourAPI areaBasedList2 / detailIntro2 — 전시·박람회·공연(행사) 조회·날짜 보강용
+const AREA_LIST_BASE =
+  process.env.TOUR_AREALIST_BASE ||
+  "https://apis.data.go.kr/B551011/KorService2/areaBasedList2";
+const INTRO_BASE =
+  process.env.TOUR_INTRO_BASE ||
+  "https://apis.data.go.kr/B551011/KorService2/detailIntro2";
+
+// ── 유형(type) 분류 ──
+//  모든 항목은 축제 / 전시·박람회(exhibition) / 공연(performance) 중 하나로 태깅됩니다.
+//  TourAPI contentTypeId=15(행사/공연/축제)의 소분류코드(cat3)를 기준으로 자동 분류:
+//    · A0207* (문화관광축제/일반축제)        → festival(축제)
+//    · A02080500 전시회 / A02080600 박람회   → exhibition(전시·박람회)
+//    · 그 밖의 A0208* (공연/연극/콘서트 등)   → performance(공연)
+//    · 코드가 없으면(대부분 축제 피드)         → festival(축제) 기본
+export function classifyType(cat3) {
+  const c = String(cat3 || "");
+  if (c === "A02080500" || c === "A02080600") return "exhibition";
+  if (c.startsWith("A0208")) return "performance";
+  return "festival";
+}
+
 // 시/도 이름 → 우리 서비스의 권역(region) 코드로 변환
 function sidoToRegion(sido = "") {
   if (sido.includes("서울")) return "seoul";
@@ -137,6 +160,7 @@ function mapTourItem(item) {
     image: item.firstimage || null,
     source: "tour", // 출처: 한국관광공사 TourAPI
     cat3: item.cat3 || null, // TourAPI 소분류코드(비슷한 유형 추천용)
+    type: classifyType(item.cat3), // 유형: 축제/전시·박람회/공연
     addr: item.addr1 || "",
     homepage: null,
     tel: null,
@@ -257,6 +281,7 @@ function mapStandardItem(item) {
     description: (item.fstvlCo || item.fstvlCn || item.opar || "").trim(),
     image: null, // 표준데이터엔 이미지가 없음 → 화면에서 계절색 카드로 대체
     source: "standard", // 출처: 지자체 표준데이터(행정안전부)
+    type: "festival", // 문화축제 표준데이터는 전부 축제
     addr,
     homepage: item.homepageUrl || null,
     tel: item.phoneNumber || null,
@@ -308,6 +333,147 @@ const fetchFromStandardApi = unstable_cache(fetchStandardRaw, ["standard-festiva
   revalidate: 60 * 60 * 6,
 });
 
+// ── TourAPI 전시·박람회·공연(행사) 조회 ──
+//  축제 피드(searchFestival2)는 유형 분류코드가 대부분 비어 있어 전시·공연을 골라낼 수 없습니다.
+//  그래서 areaBasedList2로 '공연/행사(cat2=A0208)'만 별도로 가져와 유형을 붙이고,
+//  목록엔 개최일자가 없으므로 detailIntro2로 날짜·장소를 보강한 뒤,
+//  '오늘 이후(종료 안 된)' 항목만 남깁니다.  (모든 호출은 기존 TOUR_API_KEY 하나로 동작)
+const EVENTS_ENABLED = process.env.EVENTS_API_ENABLED !== "false";
+
+// areaBasedList2 응답 1건 → 우리 객체(날짜는 이후 detailIntro2로 보강)
+function mapEventItem(item) {
+  const sido = (item.addr1 || "").split(" ")[0] || "";
+  const sigungu = (item.addr1 || "").split(" ")[1] || "";
+  return {
+    id: String(item.contentid),
+    name: item.title,
+    sido,
+    sigungu,
+    region: sidoToRegion(sido),
+    lat: Number(item.mapy),
+    lng: Number(item.mapx),
+    season: "spring", // detailIntro2 날짜로 보강 후 다시 계산
+    startDate: "",
+    endDate: "",
+    description: item.addr1 || "",
+    image: item.firstimage || null,
+    source: "tour",
+    cat3: item.cat3 || null,
+    type: classifyType(item.cat3), // exhibition 또는 performance
+    addr: item.addr1 || "",
+    homepage: null,
+    tel: null,
+  };
+}
+
+// detailIntro2로 개최일자(YYYYMMDD)·장소를 가져옵니다.
+//  반환: 날짜 객체 | null(없음) | { quota:true }(429 할당량 초과 → 상위에서 조기 중단)
+async function fetchEventDates(contentId, serviceKey) {
+  const params = new URLSearchParams({
+    serviceKey,
+    MobileOS: "ETC",
+    MobileApp: "chukjero",
+    _type: "json",
+    contentId: String(contentId),
+    contentTypeId: "15",
+  });
+  const res = await fetchWithTimeout(`${INTRO_BASE}?${params.toString()}`, {
+    next: { revalidate: 60 * 60 * 24 },
+  }, 8000);
+  if (res.status === 429) return { quota: true }; // 할당량 초과
+  if (!res.ok) return null;
+  const data = await res.json();
+  const raw = data?.response?.body?.items?.item;
+  const it = Array.isArray(raw) ? raw[0] : raw;
+  if (!it) return null;
+  return {
+    startDate: normalizeDate(it.eventstartdate),
+    endDate: normalizeDate(it.eventenddate) || normalizeDate(it.eventstartdate),
+    eventplace: (it.eventplace || "").trim() || null,
+  };
+}
+
+async function fetchEventsRaw() {
+  const apiKey = process.env.TOUR_API_KEY;
+  let serviceKey = apiKey;
+  try {
+    serviceKey = decodeURIComponent(apiKey);
+  } catch {
+    serviceKey = apiKey;
+  }
+
+  // 1) areaBasedList2에서 공연/행사(cat2=A0208)만 페이지네이션으로 수집
+  const collected = [];
+  for (let page = 1; page <= 3; page++) {
+    const params = new URLSearchParams({
+      serviceKey,
+      MobileOS: "ETC",
+      MobileApp: "chukjero",
+      _type: "json",
+      arrange: "A",
+      numOfRows: "100",
+      pageNo: String(page),
+      contentTypeId: "15",
+      cat1: "A02",
+      cat2: "A0208",
+    });
+    const res = await fetchWithTimeout(`${AREA_LIST_BASE}?${params.toString()}`, {
+      next: { revalidate: 60 * 60 * 12 },
+    });
+    if (!res.ok) break;
+    const data = await res.json();
+    const raw = data?.response?.body?.items?.item;
+    const items = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    collected.push(...items);
+    const total = Number(data?.response?.body?.totalCount || 0);
+    if (page * 100 >= total || items.length === 0) break;
+  }
+
+  const mapped = collected
+    .map(mapEventItem)
+    .filter((f) => f.name && Number.isFinite(f.lat) && Number.isFinite(f.lng));
+  if (mapped.length === 0) throw new Error("전시·공연 목록이 비어 있음");
+
+  // 2) detailIntro2로 날짜 보강(동시 6건씩). 429(할당량)면 즉시 중단하고 얻은 것만 사용.
+  const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const CONC = 6;
+  const enriched = [];
+  let quotaHit = false;
+  for (let i = 0; i < mapped.length && !quotaHit; i += CONC) {
+    const batch = mapped.slice(i, i + CONC);
+    const results = await Promise.all(
+      batch.map(async (f) => {
+        try {
+          const d = await fetchEventDates(f.id, serviceKey);
+          if (d && d.quota) { quotaHit = true; return null; }
+          if (!d || !d.startDate) return null;
+          return {
+            ...f,
+            startDate: d.startDate,
+            endDate: d.endDate || d.startDate,
+            season: seasonOf(d.startDate), // 개최월 기준 계절 (여름 필터에 7~8월 전시가 걸림)
+            eventplace: d.eventplace,
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+    enriched.push(...results.filter(Boolean));
+  }
+  if (quotaHit) console.warn("[축제로] 전시·공연: API 할당량 초과로 일부만 수집");
+
+  // 3) 종료되지 않은(오늘 이후 종료) 행사만
+  const upcoming = enriched.filter((f) => f.endDate >= today);
+  if (upcoming.length === 0) throw new Error("표시할 전시·공연이 없음");
+  return upcoming;
+}
+
+// 성공 결과만 캐시(24시간) — detailIntro2 호출량(할당량) 절약.
+const fetchFromEventsApi = unstable_cache(fetchEventsRaw, ["tour-events-v1"], {
+  revalidate: 60 * 60 * 24,
+});
+
 // 중복 판정용 정규화 이름 (공백·숫자·흔한 접미사 제거)
 function normName(name = "") {
   return String(name)
@@ -352,20 +518,37 @@ export async function getFestivals() {
 
   const standardEnabled = process.env.STANDARD_API_ENABLED !== "false";
 
-  const [tourRes, stdRes] = await Promise.allSettled([
+  const [tourRes, stdRes, eventsRes, kintexRes] = await Promise.allSettled([
     fetchFromTourApi(apiKey),
     standardEnabled ? fetchFromStandardApi() : Promise.resolve([]),
+    EVENTS_ENABLED ? fetchFromEventsApi() : Promise.resolve([]),
+    fetchFromKintex(), // 경기데이터드림 킨텍스(키 없으면 조용히 빈 배열)
   ]);
 
   const tourList = tourRes.status === "fulfilled" ? tourRes.value : [];
   const stdList = stdRes.status === "fulfilled" ? stdRes.value : [];
+  const eventsList = eventsRes.status === "fulfilled" ? eventsRes.value : [];
+  const kintexList = kintexRes.status === "fulfilled" ? kintexRes.value : [];
   if (tourRes.status === "rejected")
     console.warn("[축제로] TourAPI 실패:", tourRes.reason?.message);
   if (stdRes.status === "rejected")
     console.warn("[축제로] 표준데이터 실패:", stdRes.reason?.message);
+  if (eventsRes.status === "rejected")
+    console.warn("[축제로] 전시·공연 실패:", eventsRes.reason?.message);
+  if (kintexRes.status === "rejected")
+    console.warn("[축제로] 킨텍스 실패:", kintexRes.reason?.message);
 
   const merged = mergeFestivals(tourList, stdList);
-  if (merged.length === 0) return SAMPLE_FESTIVALS; // 둘 다 실패 → 안전장치
+
+  // 전시·박람회·공연 병합 (contentid 중복만 제거하고 이어붙임)
+  const idSeen = new Set(merged.map((f) => f.id));
+  for (const f of [...eventsList, ...kintexList]) {
+    if (idSeen.has(f.id)) continue;
+    idSeen.add(f.id);
+    merged.push(f);
+  }
+
+  if (merged.length === 0) return SAMPLE_FESTIVALS; // 전부 실패 → 안전장치
 
   // 게시된 '새 축제'(기존과 연결 안 된 담당자 등록) 합성 후 병합.
   //  - 이름+지역이 기존 축제와 겹치면 새로 추가하지 않음(중복 방지).

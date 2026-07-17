@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/I18nProvider";
 import { SIDO, SIDO_ORDER } from "@/lib/regionsKr";
-import { getSidoLabel } from "@/lib/i18n";
+import { getSidoLabel, getTypeLabel } from "@/lib/i18n";
 
 // 시도 key → 한국어 정식명(저장용 place 구성 — 파싱이 되도록 한국어 고정)
 const SIDO_KO = Object.fromEntries(SIDO.map((s) => [s.key, s.ko]));
 const SG_ETC = "__etc__";
+// 행사 유형 선택지 (축제/전시·박람회/공연) — 라벨은 getTypeLabel로 13개 언어 자동
+const EVENT_TYPES = ["festival", "exhibition", "performance"];
 
 // ────────────────────────────────────────────────────────────────
 //  등록·제보 폼 (2탭: 담당자 등록 / 주민 제보)
@@ -34,8 +36,9 @@ const T = {
     resLead: "빠진 축제, 잘못된 정보, 사진·후기 등 무엇이든 알려 주세요.",
     // 기본(필수)
     secBasic: "기본 정보 (필수)",
-    fFestival: "축제명",
-    phFestival: "예: 보령머드축제 (입력 중 목록에서 선택하면 기존 축제와 연결돼요)",
+    fEventType: "행사 유형",
+    fFestival: "행사명",
+    phFestival: "예: 보령머드축제 (입력 중 목록에서 선택하면 기존 행사와 연결돼요)",
     fPeriod: "축제 기간",
     fPlace: "장소",
     phPlace: "예: 충남 보령시 대천해수욕장 일원",
@@ -122,8 +125,9 @@ const T = {
     orgLead: "Are you a festival organizer? Register your info and it will appear on the festival page after review.",
     resLead: "Tell us about a missing festival, wrong info, photos or reviews — anything.",
     secBasic: "Basic info (required)",
-    fFestival: "Festival name",
-    phFestival: "e.g. Boryeong Mud Festival (pick from the list to link an existing festival)",
+    fEventType: "Event type",
+    fFestival: "Event name",
+    phFestival: "e.g. Boryeong Mud Festival (pick from the list to link an existing event)",
     fPeriod: "Dates",
     fPlace: "Location",
     phPlace: "e.g. Daecheon Beach, Boryeong, Chungnam",
@@ -305,6 +309,7 @@ export default function SubmitForm({ festivals = [], regionOptions = {} }) {
 
   // 담당자 등록 필드
   const [org, setOrg] = useState({
+    eventType: "festival",
     festivalName: "", festivalId: "", periodStart: "", periodEnd: "",
     sido: "", sigungu: "", sigunguEtc: "", placeDetail: "", intro: "", organizer: "",
     managerName: "", phone: "", email: "",
@@ -438,6 +443,7 @@ export default function SubmitForm({ festivals = [], regionOptions = {} }) {
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return void setError(t.errEmailFmt);
       body = {
         type: "organizer",
+        eventType: org.eventType,
         festivalName: org.festivalName,
         festivalId: org.festivalId,
         periodStart: org.periodStart,
@@ -508,6 +514,7 @@ export default function SubmitForm({ festivals = [], regionOptions = {} }) {
     setError("");
     setPhotos([]);
     setOrg({
+      eventType: "festival",
       festivalName: "", festivalId: "", periodStart: "", periodEnd: "",
       sido: "", sigungu: "", sigunguEtc: "", placeDetail: "", intro: "", organizer: "", contact: "",
       timetable: "", lineup: "", parking: "", shuttle: "", food: "", experience: "", etc: "",
@@ -562,6 +569,19 @@ export default function SubmitForm({ festivals = [], regionOptions = {} }) {
           {/* 기본 정보 (필수) */}
           <fieldset style={fieldset}>
             <legend style={legend}>{t.secBasic}</legend>
+
+            <Row>
+              <label style={field}>{t.fEventType} <span style={req}>*</span></label>
+              <select
+                value={org.eventType}
+                onChange={(e) => setO("eventType", e.target.value)}
+                style={input}
+              >
+                {EVENT_TYPES.map((k) => (
+                  <option key={k} value={k}>{getTypeLabel(k, locale)}</option>
+                ))}
+              </select>
+            </Row>
 
             <FestivalPicker
               label={t.fFestival}
