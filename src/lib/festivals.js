@@ -429,10 +429,19 @@ async function fetchEventsRaw() {
     if (page * 100 >= total || items.length === 0) break;
   }
 
-  const mapped = collected
+  const mappedAll = collected
     .map(mapEventItem)
     .filter((f) => f.name && Number.isFinite(f.lat) && Number.isFinite(f.lng));
-  if (mapped.length === 0) throw new Error("전시·공연 목록이 비어 있음");
+  if (mappedAll.length === 0) throw new Error("전시·공연 목록이 비어 있음");
+
+  // 전시·박람회를 앞에 두고(사용자 우선순위), detailIntro2 호출을 상한(EVENTS_MAX, 기본 60)까지만.
+  //  ⚠️ detailIntro2는 일일 한도가 낮고 상세페이지(프로그램·이용안내)와 공유하므로,
+  //     리스트 보강이 그 한도를 다 쓰지 않도록 상한을 둡니다. (없으면 상세페이지 정보가 막힘)
+  const EVENTS_MAX = Number(process.env.EVENTS_MAX || 60);
+  const mapped = mappedAll
+    .slice()
+    .sort((a, b) => (a.type === "exhibition" ? 0 : 1) - (b.type === "exhibition" ? 0 : 1))
+    .slice(0, EVENTS_MAX);
 
   // 2) detailIntro2로 날짜 보강(동시 6건씩). 429(할당량)면 즉시 중단하고 얻은 것만 사용.
   const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
