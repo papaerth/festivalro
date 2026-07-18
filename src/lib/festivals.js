@@ -15,6 +15,7 @@ import { translateText, translateNames } from "./translate";
 import { translateTextAI } from "./translateAI";
 import { getPublishedNewFestivals } from "./submissions";
 import { fetchFromKintex } from "./kintex";
+import { fetchFromCulture } from "./culture";
 import { matchSido } from "./regionsKr";
 
 // 17개 시도 대략 중심 좌표 — 직접 등록 축제(좌표 없음)에 근사 마커를 띄우기 위한 폴백값.
@@ -338,7 +339,9 @@ const fetchFromStandardApi = unstable_cache(fetchStandardRaw, ["standard-festiva
 //  그래서 areaBasedList2로 '공연/행사(cat2=A0208)'만 별도로 가져와 유형을 붙이고,
 //  목록엔 개최일자가 없으므로 detailIntro2로 날짜·장소를 보강한 뒤,
 //  '오늘 이후(종료 안 된)' 항목만 남깁니다.  (모든 호출은 기존 TOUR_API_KEY 하나로 동작)
-const EVENTS_ENABLED = process.env.EVENTS_API_ENABLED !== "false";
+//  ⚠️ 기본 OFF: detailIntro2는 일일 한도가 낮고 상세페이지와 공유하므로, 전시·공연은
+//     문화포털 API(culture.js)를 기본 소스로 씁니다. 이 방식을 쓰려면 EVENTS_API_ENABLED=true.
+const EVENTS_ENABLED = process.env.EVENTS_API_ENABLED === "true";
 
 // areaBasedList2 응답 1건 → 우리 객체(날짜는 이후 detailIntro2로 보강)
 function mapEventItem(item) {
@@ -527,31 +530,31 @@ export async function getFestivals() {
 
   const standardEnabled = process.env.STANDARD_API_ENABLED !== "false";
 
-  const [tourRes, stdRes, eventsRes, kintexRes] = await Promise.allSettled([
+  const [tourRes, stdRes, cultureRes, eventsRes, kintexRes] = await Promise.allSettled([
     fetchFromTourApi(apiKey),
     standardEnabled ? fetchFromStandardApi() : Promise.resolve([]),
-    EVENTS_ENABLED ? fetchFromEventsApi() : Promise.resolve([]),
+    fetchFromCulture(), // 문화포털 전시·공연(활용신청 전이면 빈 배열) — 기본 소스
+    EVENTS_ENABLED ? fetchFromEventsApi() : Promise.resolve([]), // (선택) TourAPI 기반
     fetchFromKintex(), // 경기데이터드림 킨텍스(키 없으면 조용히 빈 배열)
   ]);
 
   const tourList = tourRes.status === "fulfilled" ? tourRes.value : [];
   const stdList = stdRes.status === "fulfilled" ? stdRes.value : [];
+  const cultureList = cultureRes.status === "fulfilled" ? cultureRes.value : [];
   const eventsList = eventsRes.status === "fulfilled" ? eventsRes.value : [];
   const kintexList = kintexRes.status === "fulfilled" ? kintexRes.value : [];
   if (tourRes.status === "rejected")
     console.warn("[축제로] TourAPI 실패:", tourRes.reason?.message);
   if (stdRes.status === "rejected")
     console.warn("[축제로] 표준데이터 실패:", stdRes.reason?.message);
-  if (eventsRes.status === "rejected")
-    console.warn("[축제로] 전시·공연 실패:", eventsRes.reason?.message);
   if (kintexRes.status === "rejected")
     console.warn("[축제로] 킨텍스 실패:", kintexRes.reason?.message);
 
   const merged = mergeFestivals(tourList, stdList);
 
-  // 전시·박람회·공연 병합 (contentid 중복만 제거하고 이어붙임)
+  // 전시·박람회·공연 병합 (id 중복만 제거하고 이어붙임)
   const idSeen = new Set(merged.map((f) => f.id));
-  for (const f of [...eventsList, ...kintexList]) {
+  for (const f of [...cultureList, ...eventsList, ...kintexList]) {
     if (idSeen.has(f.id)) continue;
     idSeen.add(f.id);
     merged.push(f);
