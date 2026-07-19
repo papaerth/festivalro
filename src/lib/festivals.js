@@ -16,6 +16,7 @@ import { translateTextAI } from "./translateAI";
 import { getPublishedNewFestivals } from "./submissions";
 import { fetchFromKintex } from "./kintex";
 import { fetchFromCulture } from "./culture";
+import { fetchFromSeoul } from "./seoul";
 import { matchSido } from "./regionsKr";
 
 // 17개 시도 대략 중심 좌표 — 직접 등록 축제(좌표 없음)에 근사 마커를 띄우기 위한 폴백값.
@@ -537,16 +538,18 @@ export async function getFestivals() {
 
   const standardEnabled = process.env.STANDARD_API_ENABLED !== "false";
 
-  const [tourRes, stdRes, cultureRes, eventsRes, kintexRes] = await Promise.allSettled([
+  const [tourRes, stdRes, seoulRes, cultureRes, eventsRes, kintexRes] = await Promise.allSettled([
     fetchFromTourApi(apiKey),
     standardEnabled ? fetchFromStandardApi() : Promise.resolve([]),
-    fetchFromCulture(), // 문화포털 전시·공연(활용신청 전이면 빈 배열) — 기본 소스
+    fetchFromSeoul(), // 서울 공연·전시(키 없으면 빈 배열) — 전시 보강 주력
+    fetchFromCulture(), // 문화포털 전시·공연(기본 OFF)
     EVENTS_ENABLED ? fetchFromEventsApi() : Promise.resolve([]), // (선택) TourAPI 기반
     fetchFromKintex(), // 경기데이터드림 킨텍스(키 없으면 조용히 빈 배열)
   ]);
 
   const tourList = tourRes.status === "fulfilled" ? tourRes.value : [];
   const stdList = stdRes.status === "fulfilled" ? stdRes.value : [];
+  const seoulList = seoulRes.status === "fulfilled" ? seoulRes.value : [];
   const cultureList = cultureRes.status === "fulfilled" ? cultureRes.value : [];
   const eventsList = eventsRes.status === "fulfilled" ? eventsRes.value : [];
   const kintexList = kintexRes.status === "fulfilled" ? kintexRes.value : [];
@@ -554,16 +557,24 @@ export async function getFestivals() {
     console.warn("[축제로] TourAPI 실패:", tourRes.reason?.message);
   if (stdRes.status === "rejected")
     console.warn("[축제로] 표준데이터 실패:", stdRes.reason?.message);
+  if (seoulRes.status === "rejected")
+    console.warn("[축제로] 서울 문화행사 실패:", seoulRes.reason?.message);
   if (kintexRes.status === "rejected")
     console.warn("[축제로] 킨텍스 실패:", kintexRes.reason?.message);
 
   const merged = mergeFestivals(tourList, stdList);
 
-  // 전시·박람회·공연 병합 (id 중복만 제거하고 이어붙임)
+  // 추가 소스(서울·문화포털·킨텍스 등) 병합 — 중복 제거 필수:
+  //  ① id 중복 제거  ② 이름+지역(dedupKey) 중복 제거(기존 축제/행사와 겹치면 스킵, 기존 우선).
+  //  이렇게 하면 서울 축제가 TourAPI 축제와 겹쳐도 하나만 남습니다.
   const idSeen = new Set(merged.map((f) => f.id));
-  for (const f of [...cultureList, ...eventsList, ...kintexList]) {
+  const nameSeen = new Set(merged.filter((f) => normName(f.name).length > 1).map(dedupKey));
+  for (const f of [...seoulList, ...cultureList, ...eventsList, ...kintexList]) {
     if (idSeen.has(f.id)) continue;
+    const k = dedupKey(f);
+    if (normName(f.name).length > 1 && nameSeen.has(k)) continue; // 이름+지역 중복
     idSeen.add(f.id);
+    nameSeen.add(k);
     merged.push(f);
   }
 
