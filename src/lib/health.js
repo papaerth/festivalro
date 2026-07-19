@@ -118,9 +118,15 @@ const CHECKS = [
     label: "Google 번역",
     configured: () => isSet(process.env.GOOGLE_TRANSLATE_API_KEY),
     async check() {
-      // languages: 키 검증용 GET(무료)
-      const r = await ping(`https://translation.googleapis.com/language/translate/v2/languages?key=${process.env.GOOGLE_TRANSLATE_API_KEY}&target=en`);
-      return r.ok ? { ok: true } : { ok: false, detail: `HTTP ${r.status}` };
+      // 실제 앱과 동일한 translate POST로 점검(languages 메타 엔드포인트는 키 제한 시 오탐).
+      const r = await ping(`https://translation.googleapis.com/language/translate/v2?key=${process.env.GOOGLE_TRANSLATE_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: ["ok"], source: "ko", target: "en", format: "text" }),
+      });
+      if (!r.ok) return { ok: false, detail: `HTTP ${r.status}` };
+      const ok = !!(await r.json())?.data?.translations?.length;
+      return ok ? { ok: true } : { ok: false, detail: "no translation" };
     },
   },
   {
