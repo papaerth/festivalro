@@ -14,10 +14,15 @@ import "server-only";
 // ────────────────────────────────────────────────────────────────
 import { unstable_cache } from "next/cache";
 
-const CULTURE_ENABLED = process.env.CULTURE_API_ENABLED !== "false";
+// 기본 OFF: data.go.kr 게이트웨이(B553457)가 현재 500 "Unexpected errors"로 불안정(백엔드 이슈).
+//  전시·공연 유형은 축제 피드 제목 분류(festivals.js classifyType)로 대체함.
+//  이 API가 정상화되면 CULTURE_API_ENABLED=true 로 켜서 추가 수집 가능.
+const CULTURE_ENABLED = process.env.CULTURE_API_ENABLED === "true";
+// data.go.kr 게이트웨이 경유 엔드포인트(활용신청 대상 15138937 · 기관코드 B553457).
+//  ※ 혹시 기관에서 경로를 바꾸면 .env의 CULTURE_API_BASE로 덮어쓸 수 있습니다.
 const CULTURE_BASE =
   process.env.CULTURE_API_BASE ||
-  "http://www.culture.go.kr/openapi/rest/publicperformancedisplays/period";
+  "https://apis.data.go.kr/B553457/nopenapi/rest/publicperformancedisplays/period";
 
 // 시/도 이름 → 권역 코드 (festivals.js와 동일 규칙, 순환 import 방지용 최소 복제)
 function sidoToRegion(sido = "") {

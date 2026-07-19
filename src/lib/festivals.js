@@ -90,15 +90,22 @@ const INTRO_BASE =
 
 // ── 유형(type) 분류 ──
 //  모든 항목은 축제 / 전시·박람회(exhibition) / 공연(performance) 중 하나로 태깅됩니다.
-//  TourAPI contentTypeId=15(행사/공연/축제)의 소분류코드(cat3)를 기준으로 자동 분류:
-//    · A0207* (문화관광축제/일반축제)        → festival(축제)
-//    · A02080500 전시회 / A02080600 박람회   → exhibition(전시·박람회)
-//    · 그 밖의 A0208* (공연/연극/콘서트 등)   → performance(공연)
-//    · 코드가 없으면(대부분 축제 피드)         → festival(축제) 기본
-export function classifyType(cat3) {
+//  1순위: TourAPI 소분류코드(cat3) — 있으면 그대로 신뢰
+//    · A0207* → festival, A02080500 전시회/A02080600 박람회 → exhibition, 그 밖 A0208* → performance
+//  2순위: 코드가 비어 있으면(현재 행사 대부분이 그렇다) 제목 키워드로 보수적 판정.
+//    · 강한 신호(박람회·엑스포·비엔날레·…페어 / 뮤지컬·콘서트·공연예술·…)만 전시/공연으로,
+//      그 외에는 축제로 둠 → 축제 중심 구성이 오염되지 않게.
+//  ※ 이 방식은 추가 API 호출이 전혀 없습니다(이미 받는 축제 목록을 분류만).
+export function classifyType(cat3, title = "") {
   const c = String(cat3 || "");
   if (c === "A02080500" || c === "A02080600") return "exhibition";
   if (c.startsWith("A0208")) return "performance";
+  if (c.startsWith("A0207")) return "festival";
+  const t = String(title);
+  if (/(전시회|전시전|박람회|엑스포|expo|비엔날레|아트페어|일러스트레이션페어|핸드메이드페어|디자인위크|북페어|도서전|모터쇼|가구페어|아트페스타)/i.test(t))
+    return "exhibition";
+  if (/(뮤지컬|오페라|콘서트|리사이틀|내한공연|교향|필하모닉|음악회|연극제|국악공연|공연예술|상설공연|문화공연|정기공연)/i.test(t))
+    return "performance";
   return "festival";
 }
 
@@ -161,7 +168,7 @@ function mapTourItem(item) {
     image: item.firstimage || null,
     source: "tour", // 출처: 한국관광공사 TourAPI
     cat3: item.cat3 || null, // TourAPI 소분류코드(비슷한 유형 추천용)
-    type: classifyType(item.cat3), // 유형: 축제/전시·박람회/공연
+    type: classifyType(item.cat3, item.title), // 유형: 축제/전시·박람회/공연 (코드+제목)
     addr: item.addr1 || "",
     homepage: null,
     tel: null,
