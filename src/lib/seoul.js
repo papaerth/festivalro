@@ -23,12 +23,15 @@ function stableId(str = "") {
   return (h >>> 0).toString(36);
 }
 
-// CODENAME(분류) → 우리 유형. 축제→festival, 전시/미술→exhibition, 그 외 공연류→performance.
-function mapCategory(codename = "") {
+// CODENAME(분류)+제목 → 우리 유형. 전시·공연·축제만 채택, 그 외(교육/체험·기타·영화)는 null(제외).
+function mapCategory(codename = "", title = "") {
+  // 제목이 명백한 전시·박람회면 분류코드보다 우선(축제로 잘못 태깅된 박람회 교정)
+  if (/(박람회|엑스포|expo|전시회)/i.test(String(title))) return "exhibition";
   const c = String(codename);
   if (c.includes("축제")) return "festival";
   if (c.includes("전시") || c.includes("미술") || c.includes("박람")) return "exhibition";
-  return "performance"; // 콘서트/클래식/뮤지컬/오페라/연극/무용/국악/독주 등
+  if (/(콘서트|클래식|뮤지컬|오페라|연극|무용|국악|독주|독창|음악|공연)/.test(c)) return "performance";
+  return null; // 교육/체험, 기타, 영화 등 → 채택 안 함
 }
 
 // "2026-10-28 00:00:00.0" 또는 "2026-10-28~..." → "2026-10-28"
@@ -64,6 +67,8 @@ function mapRow(row) {
   const title = (row.TITLE || "").trim();
   const start = toDate(row.STRTDATE || row.DATE);
   if (!title || !start) return null;
+  const type = mapCategory(row.CODENAME, title);
+  if (!type) return null; // 전시·공연·축제가 아니면 제외(교육/체험·기타·영화 등)
   const end = toDate(row.END_DATE) || toDate((row.DATE || "").split("~")[1]) || start;
   const { lat, lng } = safeCoords(row.LAT, row.LOT);
   const gu = (row.GUNAME || "").trim();
@@ -82,7 +87,7 @@ function mapRow(row) {
     description: (row.PLACE || "").trim(),
     image: img.startsWith("http") ? img : null,
     source: "seoul", // 출처: 서울 열린데이터광장
-    type: mapCategory(row.CODENAME),
+    type,
     eventplace: (row.PLACE || "").trim() || null,
     addr: `서울특별시 ${gu}`.trim(),
     homepage: (row.HMPG_ADDR || "").trim() || null,
