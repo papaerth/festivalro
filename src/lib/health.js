@@ -124,7 +124,11 @@ const CHECKS = [
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ q: ["ok"], source: "ko", target: "en", format: "text" }),
       });
-      if (!r.ok) return { ok: false, detail: `HTTP ${r.status}` };
+      if (!r.ok) {
+        const t = await r.text().catch(() => "");
+        const reason = t.match(/"message"\s*:\s*"([^"]+)"/)?.[1] || t.slice(0, 100);
+        return { ok: false, detail: `HTTP ${r.status} ${reason}`.slice(0, 160) };
+      }
       const ok = !!(await r.json())?.data?.translations?.length;
       return ok ? { ok: true } : { ok: false, detail: "no translation" };
     },
