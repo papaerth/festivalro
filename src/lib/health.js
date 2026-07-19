@@ -51,6 +51,9 @@ const CHECKS = [
   {
     key: "standard",
     label: "전국문화축제 표준데이터",
+    // 이 정부 호스트는 원래 응답이 느려 단기 실패가 잦음 → 7일 연속일 때만 메일 알림
+    // (상태 표시등에는 그대로 빨강으로 표시됨). 기본 임계값은 2일.
+    alertAfter: 7,
     configured: () => isSet(process.env.TOUR_API_KEY) && process.env.STANDARD_API_ENABLED !== "false",
     async check() {
       const key = decodeKey(process.env.TOUR_API_KEY);
@@ -157,8 +160,11 @@ const CHECKS = [
   },
 ];
 
-// [공개] 감시 대상 소스 메타(표시명 등) — 어드민 페이지에서 라벨 참조용
-export const HEALTH_SOURCES = CHECKS.map((c) => ({ key: c.key, label: c.label }));
+// 소스별 알림 임계값(연속 실패일). 지정 없으면 기본 2일.
+const ALERT_AFTER = Object.fromEntries(CHECKS.map((c) => [c.key, c.alertAfter || 2]));
+
+// [공개] 감시 대상 소스 메타(표시명·임계값) — 어드민 페이지 참조용
+export const HEALTH_SOURCES = CHECKS.map((c) => ({ key: c.key, label: c.label, alertAfter: c.alertAfter || 2 }));
 
 // 각 소스를 한 번씩 점검. persist=true면 DB 기록 + 연속실패 갱신, sendAlerts=true면 알림.
 export async function runHealthChecks({ persist = true, sendAlerts = true } = {}) {
@@ -220,8 +226,9 @@ async function persistAndAlert(results, sendAlerts) {
     };
     if (r.status === "ok") row.last_ok_at = nowIso;
 
-    // 이틀(2회) 연속 실패 + 최근 알림 없음 → 알림 대상
-    if (fails >= 2 && !recentlyAlerted) {
+    // 소스별 임계값(기본 2일, 표준데이터 7일) 연속 실패 + 최근 알림 없음 → 알림 대상
+    const threshold = ALERT_AFTER[r.key] || 2;
+    if (fails >= threshold && !recentlyAlerted) {
       toAlert.push({ ...r, fails });
       row.last_alert_at = nowIso;
     }
@@ -248,7 +255,7 @@ async function sendAlert(failed) {
   const html =
     `<div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;font-size:15px;line-height:1.6">` +
     `<h2 style="color:#dc2626;margin:0 0 8px">⚠️ 축제로 · API 상태 경고</h2>` +
-    `<p style="color:#475569;margin:0 0 12px">아래 API가 <b>이틀 연속</b> 응답하지 않습니다. <b>키 만료 또는 서비스 개편</b> 가능성이 있으니 확인이 필요합니다. (사이트는 나머지 소스로 정상 동작 중입니다.)</p>` +
+    `<p style="color:#475569;margin:0 0 12px">아래 API가 <b>여러 날 연속</b> 응답하지 않습니다. <b>키 만료 또는 서비스 개편</b> 가능성이 있으니 확인이 필요합니다. (사이트는 나머지 소스로 정상 동작 중입니다.)</p>` +
     `<ul style="padding-left:20px">${rows}</ul>` +
     `<p style="color:#64748b;font-size:13px;margin-top:16px">키 재발급 방법은 저장소의 <b>RECOVERY.md</b>를, 실시간 상태는 <b>/admin/report</b> 페이지를 확인하세요.</p>` +
     `</div>`;
@@ -287,5 +294,6 @@ export async function getHealthReport() {
     ...r,
     consecutiveFails: db[r.key]?.consecutive_fails ?? (r.status === "fail" ? 1 : 0),
     lastOkAt: db[r.key]?.last_ok_at || null,
+    alertAfter: ALERT_AFTER[r.key] || 2,
   }));
 }

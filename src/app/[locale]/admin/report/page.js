@@ -33,7 +33,8 @@ export default async function AdminReportPage({ searchParams }) {
   const report = await getHealthReport();
   const okN = report.filter((r) => r.status === "ok").length;
   const failN = report.filter((r) => r.status === "fail").length;
-  const alerting = report.filter((r) => r.status === "fail" && (r.consecutiveFails || 0) >= 2);
+  // 경고 배너는 소스별 알림 임계값(기본 2일, 표준데이터 7일) 이상일 때만
+  const alerting = report.filter((r) => r.status === "fail" && (r.consecutiveFails || 0) >= (r.alertAfter || 2));
 
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "28px 18px", fontFamily: "system-ui, sans-serif" }}>
@@ -45,7 +46,7 @@ export default async function AdminReportPage({ searchParams }) {
 
       {alerting.length > 0 && (
         <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: 10, padding: "12px 14px", marginBottom: 16, fontSize: 14 }}>
-          ⚠️ <b>{alerting.map((r) => r.label).join(", ")}</b> — 이틀 이상 연속 응답 없음. 키 만료·개편 가능성이 있어 확인이 필요합니다.
+          ⚠️ <b>{alerting.map((r) => `${r.label}(${r.consecutiveFails}일 연속)`).join(", ")}</b> — 알림 기준을 넘겨 응답이 없습니다. 키 만료·개편 가능성이 있어 확인이 필요합니다.
           (재발급 방법은 저장소 RECOVERY.md 참고)
         </div>
       )}
