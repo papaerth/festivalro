@@ -20,3 +20,7 @@ create table if not exists public.api_health (
 -- 서버(service_role)만 읽고 쓰도록: RLS 켜고 정책은 두지 않음
 --  → anon/authenticated는 접근 불가, 서버(service_role)만 RLS 우회로 접근.
 alter table public.api_health enable row level security;
+
+-- ⚠️ 이 프로젝트는 새 테이블에 service_role 권한을 자동 부여하지 않으므로 명시적으로 부여.
+--    (GRANT는 권한을 '주는' 것이라 데이터 삭제·파괴가 아님. submissions가 되는 이유와 동일)
+grant all on public.api_health to service_role;

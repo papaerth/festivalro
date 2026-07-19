@@ -141,6 +141,8 @@ create table if not exists public.api_health (
 
 alter table public.api_health enable row level security;
 -- 정책 없음 = anon/authenticated 접근 불가. service_role(서버)만 RLS를 우회해 접근.
+-- 이 프로젝트는 새 테이블에 service_role 권한을 자동 부여하지 않으므로 명시적으로 부여.
+grant all on public.api_health to service_role;
 
 
 -- 5) 축제별 평균 별점/후기 수 집계 뷰 (목록·지도 표시용)
