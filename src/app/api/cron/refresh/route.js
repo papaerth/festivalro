@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { LOCALES, localeHref } from "@/lib/i18n";
+import { runHealthChecks } from "@/lib/health";
 
 // ────────────────────────────────────────────────────────────────
 //  자동 새로고침 (하루 한 번 Vercel Cron이 호출)
@@ -14,6 +15,7 @@ import { LOCALES, localeHref } from "@/lib/i18n";
 // ────────────────────────────────────────────────────────────────
 
 export const dynamic = "force-dynamic"; // 항상 즉시 실행(캐시된 응답 방지)
+export const maxDuration = 60; // 화면 갱신 + API 건강 점검을 함께 하므로 여유
 
 export async function GET(request) {
   const secret = process.env.CRON_SECRET;
@@ -29,5 +31,14 @@ export async function GET(request) {
     revalidatePath(localeHref(l, "/"));
   }
 
-  return Response.json({ ok: true, refreshed: "home", locales: LOCALES.length });
+  // 겸사겸사 외부 API 건강 점검 (하루 1회). 실패해도 화면 갱신엔 영향 없음.
+  let health = null;
+  try {
+    const results = await runHealthChecks({ persist: true, sendAlerts: true });
+    health = { ok: results.filter((r) => r.status === "ok").length, fail: results.filter((r) => r.status === "fail").length };
+  } catch (e) {
+    console.warn("[refresh] 건강 점검 실패(무해):", e?.message);
+  }
+
+  return Response.json({ ok: true, refreshed: "home", locales: LOCALES.length, health });
 }

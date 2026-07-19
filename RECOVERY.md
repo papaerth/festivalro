@@ -54,8 +54,14 @@ npm install
 | `NAVER_CLIENT_SECRET` | 블로그 후기 탭 | 같은 화면 → Client Secret **[보기]** (ID와 다른 짧은 값) |
 | `NEXT_PUBLIC_SUPABASE_URL` | 회원/로그인 | supabase.com → 프로젝트 → Settings → API → **Project URL** |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 회원/로그인 | 같은 화면 → **anon / public** 키 (공개돼도 되는 키) |
+| `SUPABASE_SERVICE_ROLE_KEY` | 등록·제보 저장, 알림, 상태감시(서버 전용) | 같은 화면 → **service_role** 키 (⚠️ 비공개 — 절대 노출 금지) |
 | `YOUTUBE_API_KEY` | 영상 섹션 | console.cloud.google.com → API 및 서비스 → 사용자 인증 정보 → API 키(`AIza...`) |
+| `GOOGLE_TRANSLATE_API_KEY` | 다국어 번역(기계) | console.cloud.google.com → 같은 프로젝트 → Cloud Translation API 사용설정 → API 키 |
+| `ANTHROPIC_API_KEY` *(선택)* | 소개글 고품질 AI 번역 | console.anthropic.com → API Keys → 발급(`sk-ant-...`). 없으면 Google 번역으로 자동 폴백 |
+| `RESEND_API_KEY` | 등록 다이제스트·**API 상태 경고** 메일 | resend.com → 로그인 → **API Keys** → 발급(`re_...`) |
+| `REPORT_TO_EMAIL` | 위 알림을 받을 내 이메일 | 내 이메일 주소 (Resend 도메인 미인증 시 Resend 가입 이메일로만 수신) |
 | `NEXT_PUBLIC_GA_ID` | 방문 통계(GA) | analytics.google.com → 관리 → 데이터 스트림 → **측정 ID(`G-...`)** |
+| `CRON_SECRET` *(선택)* | 크론·`/admin/report` 잠금 | 임의의 긴 문자열 직접 생성. 넣으면 `/admin/report?key=<값>` 이어야 열림 |
 | `SEOUL_API_KEY` *(권장·선택)* | **서울시 전시/미술·공연** 대폭 보강 | data.seoul.go.kr(서울 열린데이터광장) → 회원가입 → 로그인 → 마이페이지 → **인증키 신청**(즉시 자동발급, 무료) → 받은 키. 안 넣으면 서울 전시·공연만 빠지고 나머지는 정상. |
 | `GG_DATA_KEY` *(선택)* | **킨텍스(KINTEX) 전시·박람회** 일정 | data.gg.go.kr(경기데이터드림) → 회원가입/로그인 → 인증키 발급 → "킨텍스_KINTEX 행사 일정" Open API 신청 후 받은 **인증키**. 안 넣으면 킨텍스만 빠지고 나머지 전시·공연/축제는 정상. |
 
@@ -67,6 +73,12 @@ npm install
 > - 모든 소스는 **이름+지역 기준 중복 제거**되어 같은 행사가 두 번 나오지 않습니다.
 >
 > 참고(개발자용): 문화포털 「공연전시정보」 API(data.go.kr 15138937) 연동 코드도 있으나(`CULTURE_API_ENABLED=true`), 현재 해당 정부 API 게이트웨이가 불안정(500)해 **기본 비활성**입니다. TourAPI 제목분류 방식이 기본이라 신경 안 쓰셔도 됩니다.
+
+> 🩺 **API 상태 자동 감시:** 위 외부 API들이 조용히 죽는 걸 막기 위해, **하루 1회(자동 새로고침 때 겸사겸사)** 각 API를 가볍게 한 번씩 호출해 정상 여부를 확인합니다.
+> - **이틀 연속 실패**하면 `REPORT_TO_EMAIL`로 **경고 메일**이 옵니다: "○○ API가 응답하지 않습니다 — 키 만료 또는 개편 가능성". → 위 표에서 해당 키를 재발급/교체하세요.
+> - 실시간 상태는 **`chukjero.com/admin/report`** 에서 초록/빨강/회색 표시등으로 확인할 수 있습니다. (`CRON_SECRET`을 설정했다면 `/admin/report?key=<CRON_SECRET>`)
+> - **어떤 API가 죽어도 사이트는 나머지 소스로 정상 동작**하도록 설계돼 있습니다(모든 외부호출이 `Promise.allSettled`+개별 폴백).
+> - ⚙️ **최초 1회 설정(이메일 알림용):** Supabase → SQL Editor 에 `supabase/schema.sql`을 다시 붙여넣고 **[Run]** 하면 상태 저장 테이블(`api_health`)이 생깁니다. (안 해도 `/admin/report` 실시간 표시는 동작하지만, '이틀 연속' 추적·메일 알림은 이 테이블이 있어야 켜집니다.)
 
 메모:
 - `_BASE`, `_HOST`, `_ENABLED`로 끝나는 변수는 코드에 기본값이 있어 **넣지 않아도 됩니다.** (`EVENTS_API_ENABLED=false`로 전시·공연 자동수집을 끌 수 있음)

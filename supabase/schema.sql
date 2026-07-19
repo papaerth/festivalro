@@ -126,6 +126,23 @@ grant insert, update, delete on public.reviews to authenticated;
 grant select, insert, delete on public.visits to authenticated;
 
 
+-- 4-1) API 건강 감시 상태 (하루 1회 크론이 기록 · 이틀 연속 실패 시 메일 알림)
+--     서버(service_role)만 읽고 씀. 어드민 상태페이지(/admin/report)에서 표시.
+create table if not exists public.api_health (
+  source text primary key,              -- tour / standard / seoul / youtube / naver / ...
+  label text,                           -- 표시명
+  ok boolean not null default true,     -- 마지막 점검 정상 여부
+  consecutive_fails int not null default 0, -- 연속 실패 횟수(=일수, 하루 1회 점검)
+  detail text,                          -- 실패 사유(HTTP 코드 등)
+  last_ok_at timestamptz,               -- 마지막 정상 응답 시각
+  last_checked_at timestamptz not null default now(),
+  last_alert_at timestamptz             -- 마지막 알림 발송 시각(재알림 쿨다운용)
+);
+
+alter table public.api_health enable row level security;
+-- 정책 없음 = anon/authenticated 접근 불가. service_role(서버)만 RLS를 우회해 접근.
+
+
 -- 5) 축제별 평균 별점/후기 수 집계 뷰 (목록·지도 표시용)
 create or replace view public.review_stats
 with (security_invoker = true) as
