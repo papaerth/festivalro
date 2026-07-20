@@ -3125,6 +3125,21 @@ h3 {
 .mf-chip.open {
   border-color: var(--accent);
 }
+/* 계절 칩의 펼침/접힘 캐럿 */
+.mf-caret {
+  font-size: 10px;
+  margin-left: 1px;
+  opacity: 0.85;
+}
+/* 월 세분화 서브행: 계절 칩보다 살짝 작게 해서 하위 단계로 읽히게 (가로 스크롤은 .mf-row 상속) */
+.map-filters .mf-month-row {
+  padding-left: 8px;
+}
+.mf-chip.mf-month {
+  height: 27px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
 
 /* 지역 선택 패널 (지도 위에 떠서) */
 .mf-region {

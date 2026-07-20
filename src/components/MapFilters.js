@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SEASONS, SEASON_ORDER, TYPES, TYPE_ORDER } from "@/lib/seasons";
+import { SEASONS, SEASON_ORDER, SEASON_MONTHS, TYPES, TYPE_ORDER } from "@/lib/seasons";
 import { SIDO_ORDER } from "@/lib/regionsKr";
-import { getSidoLabel } from "@/lib/i18n";
+import { getSidoLabel, getMonthLabel } from "@/lib/i18n";
 import { useI18n } from "@/lib/I18nProvider";
 
 // ────────────────────────────────────────────────────────────────
@@ -18,6 +18,8 @@ import { useI18n } from "@/lib/I18nProvider";
 export default function MapFilters({
   season,
   onSeason,
+  month,
+  onPickMonth,
   type,
   onPickType,
   typeLabels = {},
@@ -38,7 +40,19 @@ export default function MapFilters({
 }) {
   const { t, locale } = useI18n();
   const [regionOpen, setRegionOpen] = useState(false);
+  const [monthOpen, setMonthOpen] = useState(!!month); // 월 세분화 서브행 펼침 여부(평소 접힘)
   const rootRef = useRef(null);
+
+  // 계절 칩 탭: 다른 계절이면 그 계절로 전환(+월 초기화) 후 월 펼침,
+  //  같은 계절을 다시 탭하면 월 서브행만 접기/펼치기(선택은 유지).
+  const tapSeason = (key) => {
+    if (key !== season) {
+      onSeason(key);
+      setMonthOpen(true);
+    } else {
+      setMonthOpen((v) => !v);
+    }
+  };
 
   // 지역 패널: Esc 또는 바깥(지도 등) 클릭 시 닫기
   useEffect(() => {
@@ -101,21 +115,39 @@ export default function MapFilters({
         })}
       </div>
 
-      {/* 1줄: 계절 */}
+      {/* 1줄: 계절 (활성 계절 탭 시 아래 월 서브행 펼침/접기) */}
       <div className="mf-row" role="group" aria-label={t.filters.season}>
         {SEASON_ORDER.map((key) => {
           const s = SEASONS[key];
+          const active = season === key;
           return (
             <button
               key={key}
-              className={`mf-chip ${season === key ? "active" : ""}`}
-              onClick={() => onSeason(key)}
+              className={`mf-chip ${active ? "active" : ""}`}
+              onClick={() => tapSeason(key)}
+              aria-expanded={active ? monthOpen : undefined}
             >
               {s.emoji} {t.seasons[key]}
+              {active && <span className="mf-caret" aria-hidden="true">{monthOpen ? " ▴" : " ▾"}</span>}
             </button>
           );
         })}
       </div>
+
+      {/* 1.5줄: 월 세분화 (계절 탭으로 펼쳤을 때만 · 가로 스크롤) */}
+      {monthOpen && (
+        <div className="mf-row mf-month-row" role="group" aria-label="월">
+          {(SEASON_MONTHS[season] || []).map((m) => (
+            <button
+              key={m}
+              className={`mf-chip mf-month ${month === m ? "active" : ""}`}
+              onClick={() => onPickMonth(m)}
+            >
+              {getMonthLabel(m, locale)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 2줄: 전체 · 기간 · 즐겨찾기 · 지역 */}
       <div className="mf-row">

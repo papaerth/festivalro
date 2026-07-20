@@ -10,6 +10,14 @@ export const SEASONS = {
 // 화면에 보여줄 계절 순서 (봄 → 여름 → 가을 → 겨울)
 export const SEASON_ORDER = ["spring", "summer", "autumn", "winter"];
 
+// 계절별 월(세분화 필터용) — 봄 3~5월, 여름 6~8월, 가을 9~11월, 겨울 12·1·2월
+export const SEASON_MONTHS = {
+  spring: [3, 4, 5],
+  summer: [6, 7, 8],
+  autumn: [9, 10, 11],
+  winter: [12, 1, 2],
+};
+
 // 행사 유형(type) 테마 — 축제 / 전시·박람회 / 공연
 //  · 축제는 기존 계절색을 그대로 쓰므로 지도 마커 톤을 바꾸지 않습니다(축제 중심 유지).
 //  · 전시·공연만 지도에서 별도 톤(보라/청록)으로 살짝 구분합니다.

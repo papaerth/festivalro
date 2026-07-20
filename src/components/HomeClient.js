@@ -88,8 +88,25 @@ function overlaps(startDate, endDate, rangeStart, rangeEnd) {
   return startDate <= rangeEnd && endDate >= rangeStart;
 }
 
+// 행사 기간이 특정 '월'(1~12, 연도 무관)에 걸치는지.
+//  예: 2026-06-26~2026-08-17 → 6·7·8월 모두 true (두 달에 걸쳐도 양쪽 다 잡힘)
+function overlapsMonth(startDate, endDate, month) {
+  if (!startDate) return false;
+  const [sy, sm] = String(startDate).split("-").map(Number);
+  const [ey, em] = String(endDate || startDate).split("-").map(Number);
+  if (!sy || !sm) return false;
+  const si = sy * 12 + (sm - 1);
+  const ei = (ey || sy) * 12 + ((em || sm) - 1);
+  if (ei - si >= 11) return true; // 12개월 이상 걸치면 모든 달 포함
+  for (let i = si; i <= ei; i++) {
+    if ((i % 12) + 1 === month) return true;
+  }
+  return false;
+}
+
 export default function HomeClient({ festivals, usingSample, popScoreById = {} }) {
   const [season, setSeason] = useState(currentSeason());
+  const [month, setMonth] = useState(null); // null = 계절 전체 / 1~12 = 그 달에 걸치는 행사만
   const [type, setType] = useState(null); // null = 전체 유형(축제+전시+공연)
   const [sido, setSido] = useState(null); // null = 전체(전국)
   const [sigungu, setSigungu] = useState(null); // null = 시도 전체
@@ -208,6 +225,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setPeriod(null);
     setShowFavorites(false);
     setStatusFilter(null);
+    setMonth(null);
     setSido(null);
     setSigungu(null);
     setSelected(null);
@@ -290,10 +308,19 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   // 유형 칩 토글 (다시 누르면 전체). 계절·지역 선택은 유지(직교 필터).
   const pickType = (key) => setType((prev) => (prev === key ? null : key));
 
-  // 지도 오버레이 필터 상태 — 부가필터(유형/지역/기간/즐겨찾기)가 하나라도 켜졌는지
-  const filtersActive = !!(type || sido || sigungu || period || showFavorites);
+  // 계절을 바꾸면 월 선택 초기화 (계절 안 월 칩이 새 계절 기준으로 다시 펼쳐지게)
+  const pickSeason = (key) => {
+    setSeason(key);
+    setMonth(null);
+  };
+  // 월 칩 토글 (다시 누르면 계절 전체로). 계절/지역/유형 선택은 유지.
+  const pickMonth = (m) => setMonth((prev) => (prev === m ? null : m));
+
+  // 지도 오버레이 필터 상태 — 부가필터(월/유형/지역/기간/즐겨찾기)가 하나라도 켜졌는지
+  const filtersActive = !!(month || type || sido || sigungu || period || showFavorites);
   // 지도 위 '전체' 칩 — 선택·지도·부가필터·검색 초기화 (계절 선택은 유지)
   const resetFilters = () => {
+    setMonth(null);
     setType(null);
     setSido(null);
     setSigungu(null);
@@ -327,12 +354,13 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       list = withSido.filter((f) => favorites.includes(f.id));
     } else {
       list = withSido
-        .filter((f) => f.season === season)
+        // 월 선택 시: 그 달에 걸치는 행사만(계절 분류 무관). 미선택 시: 계절 전체.
+        .filter((f) => (month ? overlapsMonth(f.startDate, f.endDate, month) : f.season === season))
         .filter((f) => (sido ? f._sido === sido : true))
         .filter((f) => (sigungu ? f.sigungu === sigungu : true));
     }
     return type ? list.filter((f) => f.type === type) : list;
-  }, [withSido, season, type, sido, sigungu, q, searching, period, showFavorites, favorites]);
+  }, [withSido, season, month, type, sido, sigungu, q, searching, period, showFavorites, favorites]);
 
   // 현재 선택한 시도의 시군구 목록(실제 축제가 있는 곳만) — 2단계 칩
   const sigunguList = useMemo(() => {
@@ -348,7 +376,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const carousel = useMemo(() => {
     const now = new Date();
     const scored = withSido
-      .filter((f) => f.season === season)
+      .filter((f) => (month ? overlapsMonth(f.startDate, f.endDate, month) : f.season === season))
       // 메인 카드뉴스는 축제 우선: 유형 미선택 시 축제만, 선택 시 그 유형
       .filter((f) => (type ? f.type === type : f.type === "festival"))
       .filter((f) => (sido ? f._sido === sido : true))
@@ -367,7 +395,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       });
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, 10).map((x) => x.f);
-  }, [withSido, season, type, sido, sigungu, popScoreById]);
+  }, [withSido, season, month, type, sido, sigungu, popScoreById]);
 
   // 블로그·영상 종합용 '메인 축제 후보' — 전국 인기+임박 순 상위.
   //  축제 우선: 유형 미선택 시 축제만 노출(메인 구성 유지), 유형 선택 시 그 유형.
@@ -441,7 +469,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const [visibleCount, setVisibleCount] = useState(PAGE);
   useEffect(() => {
     setVisibleCount(PAGE);
-  }, [season, type, sido, sigungu, q, period, showFavorites, statusFilter]);
+  }, [season, month, type, sido, sigungu, q, period, showFavorites, statusFilter]);
   const visible = filtered.slice(0, visibleCount);
 
   // 지도용 목록: 필터 결과 + (검색으로 고른 축제가 필터 밖이면) 그 축제도 포함
@@ -503,7 +531,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
             {/* 지도 위 오버레이 필터 (계절/기간/즐겨찾기/지역) */}
             <MapFilters
               season={season}
-              onSeason={setSeason}
+              onSeason={pickSeason}
+              month={month}
+              onPickMonth={pickMonth}
               type={type}
               onPickType={pickType}
               typeLabels={typeLabels}

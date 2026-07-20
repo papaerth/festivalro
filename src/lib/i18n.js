@@ -422,6 +422,28 @@ export function getTypeLabels(locale) {
   return out;
 }
 
+// ── 월 표기(계절 세분화 필터용) — 각 언어 관습대로 ──
+//  CJK/한국어는 "N월/N月", 그 외는 짧은 월명. 인덱스는 month-1(0~11).
+const MONTH_SUFFIX = { ko: "월", ja: "月", zh: "月", "zh-TW": "月" };
+const MONTH_SHORT = {
+  en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+  es: ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"],
+  fr: ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"],
+  de: ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"],
+  ru: ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"],
+  vi: ["Th1", "Th2", "Th3", "Th4", "Th5", "Th6", "Th7", "Th8", "Th9", "Th10", "Th11", "Th12"],
+  id: ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"],
+  th: ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."],
+  ar: ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"],
+};
+
+// month(1~12) + locale → 표시 문자열. 예: (7,"ko")="7월" · (7,"en")="Jul" · (7,"ja")="7月"
+export function getMonthLabel(month, locale) {
+  if (MONTH_SUFFIX[locale]) return `${month}${MONTH_SUFFIX[locale]}`;
+  const arr = MONTH_SHORT[locale] || MONTH_SHORT.en;
+  return arr[month - 1] || String(month);
+}
+
 // 상세페이지 확장 섹션 제목·라벨 (13개 언어). 내용(축제 데이터)은 번역 안 함.
 const SECTION_LABELS = {
   "ko": {
