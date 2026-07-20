@@ -320,6 +320,23 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   //  → 지도 마커 집합이 그 유형으로 바뀌며 부드럽게 줌 조정됨(지역·계절·월 필터는 유지).
   const selectType = (key) => setType(key);
 
+  // 목록 유형 탭 클릭: 유형 변경으로 목록 길이가 바뀌어 화면이 위로 튀지 않도록,
+  //  목록 탭(listRef)의 화면상 위치를 변경 전후로 유지(스크롤 보정).
+  const changeListType = (key) => {
+    const before = listRef.current ? listRef.current.getBoundingClientRect().top : null;
+    if (key === null) setType(null);
+    else selectType(key);
+    if (before != null) {
+      requestAnimationFrame(() => {
+        const after = listRef.current ? listRef.current.getBoundingClientRect().top : null;
+        if (after != null) {
+          const delta = after - before;
+          if (Math.abs(delta) > 1) window.scrollBy(0, delta);
+        }
+      });
+    }
+  };
+
   // 계절을 바꾸면 월 선택 초기화 (계절 안 월 칩이 새 계절 기준으로 다시 펼쳐지게)
   const pickSeason = (key) => {
     setSeason(key);
@@ -647,17 +664,19 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
         {/* 유형 탭: 지도 유형 칩·캐러셀 탭과 같은 type 상태를 공유(양방향 동기화) */}
         <div className="list-type-tabs" role="tablist" ref={listRef}>
           <button
+            type="button"
             className={`ltab ${!type ? "active" : ""}`}
-            onClick={() => setType(null)}
+            onClick={() => changeListType(null)}
           >
             {typeLabels.all}
           </button>
           {TYPE_ORDER.map((k) => (
             <button
               key={k}
+              type="button"
               className={`ltab ${type === k ? "active" : ""}`}
               style={{ "--tab": TYPES[k].color }}
-              onClick={() => selectType(k)}
+              onClick={() => changeListType(k)}
             >
               {TYPES[k].emoji} {typeLabels[k]}
             </button>

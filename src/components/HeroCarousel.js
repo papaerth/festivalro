@@ -84,7 +84,7 @@ export default function HeroCarousel({ carousels = {}, tabLabels = {}, activeTyp
     return () => clearInterval(id);
   }, [paused, n, scrollToIndex]);
 
-  // 필터로 목록이 바뀌면 처음으로 되돌림 + 확장 팝업 닫기
+  // 필터/탭으로 목록이 바뀌면 처음으로 되돌림 + 확장 팝업 닫기 (가로 스크롤만 리셋)
   useEffect(() => {
     setActive(0);
     setExpanded(null);
@@ -92,6 +92,15 @@ export default function HeroCarousel({ carousels = {}, tabLabels = {}, activeTyp
     if (el) el.scrollTo({ left: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [n, festivals]);
+
+  // 탭 전환 시 은은한 페이드 재생(리마운트 없이 CSS 애니메이션만 재시작 → 페이지 스크롤 튐 방지)
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    el.style.animation = "none";
+    void el.offsetWidth; // 리플로우 강제
+    el.style.animation = "";
+  }, [activeTab]);
 
   if (visibleTabs.length === 0) return null;
 
@@ -105,6 +114,7 @@ export default function HeroCarousel({ carousels = {}, tabLabels = {}, activeTyp
           {visibleTabs.map((k) => (
             <button
               key={k}
+              type="button"
               role="tab"
               aria-selected={k === activeTab}
               className={`hero-tab ${k === activeTab ? "active" : ""}`}
@@ -137,8 +147,7 @@ export default function HeroCarousel({ carousels = {}, tabLabels = {}, activeTyp
             ‹
           </button>
         )}
-        {/* key={activeTab}: 탭 전환 시 리마운트되며 은은한 페이드 */}
-        <div key={activeTab} className="hero-scroller" ref={scroller} onScroll={onScroll}>
+        <div className="hero-scroller" ref={scroller} onScroll={onScroll}>
           {festivals.map((f) => {
             const season = SEASONS[f.season] || SEASONS.spring;
             const st = getStatusInfo(f.startDate, f.endDate);
