@@ -8,7 +8,7 @@ import { matchSido } from "@/lib/regionsKr";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
-import { getTypeLabels, getCarouselTabs, getHeroButtonLabel } from "@/lib/i18n";
+import { getTypeLabels, getCarouselTabs, getHeroButtonLabel, getTagLabels } from "@/lib/i18n";
 import MapFilters from "./MapFilters";
 import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
@@ -91,6 +91,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const [season, setSeason] = useState(currentSeason());
   const [month, setMonth] = useState(null); // null = 계절 전체 / 1~12 = 그 달에 걸치는 행사만
   const [type, setType] = useState(null); // null = 전체 유형(축제+전시+공연)
+  const [tags, setTags] = useState([]); // 세부 태그(불꽃놀이/야간/물놀이) — 다중 선택, 선택한 태그를 '모두' 가진 축제만
   const [sido, setSido] = useState(null); // null = 전체(전국)
   const [sigungu, setSigungu] = useState(null); // null = 시도 전체
   const [statusFilter, setStatusFilter] = useState(null); // null=전체
@@ -111,6 +112,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const ratings = useReviewStats();
   const { t, locale } = useI18n();
   const typeLabels = getTypeLabels(locale); // { all, festival, exhibition, performance }
+  const tagLabels = getTagLabels(locale); // { fireworks, night, water }
   const carouselTabs = getCarouselTabs(locale); // { festival, performance, exhibition }
 
   // 축제마다 시도 key(_sido)를 한 번만 계산해 필터를 가볍게 유지
@@ -321,6 +323,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
 
   // 유형 칩 토글 (다시 누르면 전체). 계절·지역 선택은 유지(직교 필터).
   const pickType = (key) => setType((prev) => (prev === key ? null : key));
+  // 세부 태그 칩 토글 (다시 누르면 해제). 다중 선택 가능.
+  const toggleTag = (key) =>
+    setTags((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   // 캐러셀 탭 선택 → 지도 유형 필터를 그 유형으로 '설정'(토글 아님).
   //  → 지도 마커 집합이 그 유형으로 바뀌며 부드럽게 줌 조정됨(지역·계절·월 필터는 유지).
   const selectType = (key) => setType(key);
@@ -351,11 +356,12 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const pickMonth = (m) => setMonth((prev) => (prev === m ? null : m));
 
   // 지도 오버레이 필터 상태 — 부가필터(월/유형/지역/기간/즐겨찾기)가 하나라도 켜졌는지
-  const filtersActive = !!(month || type || sido || sigungu || period || showFavorites);
+  const filtersActive = !!(month || type || tags.length || sido || sigungu || period || showFavorites);
   // 지도 위 '전체' 칩 — 선택·지도·부가필터·검색 초기화 (계절 선택은 유지)
   const resetFilters = () => {
     setMonth(null);
     setType(null);
+    setTags([]);
     setSido(null);
     setSigungu(null);
     setPeriod(null);
@@ -393,8 +399,11 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
         .filter((f) => (sido ? f._sido === sido : true))
         .filter((f) => (sigungu ? f.sigungu === sigungu : true));
     }
-    return type ? list.filter((f) => f.type === type) : list;
-  }, [withSido, season, month, type, sido, sigungu, q, searching, period, showFavorites, favorites]);
+    if (type) list = list.filter((f) => f.type === type);
+    // 세부 태그: 선택한 태그를 '모두' 가진 축제만(유형 필터와 조합). 미선택이면 통과.
+    if (tags.length) list = list.filter((f) => tags.every((tg) => (f.tags || []).includes(tg)));
+    return list;
+  }, [withSido, season, month, type, tags, sido, sigungu, q, searching, period, showFavorites, favorites]);
 
   // 현재 선택한 시도의 시군구 목록(실제 축제가 있는 곳만) — 2단계 칩
   const sigunguList = useMemo(() => {
@@ -510,7 +519,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const [visibleCount, setVisibleCount] = useState(PAGE);
   useEffect(() => {
     setVisibleCount(PAGE);
-  }, [season, month, type, sido, sigungu, q, period, showFavorites, statusFilter]);
+  }, [season, month, type, tags, sido, sigungu, q, period, showFavorites, statusFilter]);
   const visible = filtered.slice(0, visibleCount);
 
   // 지도용 목록: 필터 결과 + (검색으로 고른 축제가 필터 밖이면) 그 축제도 포함
@@ -581,6 +590,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
               type={type}
               onPickType={pickType}
               typeLabels={typeLabels}
+              tags={tags}
+              onToggleTag={toggleTag}
+              tagLabels={tagLabels}
               period={period}
               onTogglePeriod={togglePeriod}
               showFavorites={showFavorites}

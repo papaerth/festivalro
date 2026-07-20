@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { SEASONS, SEASON_ORDER, SEASON_MONTHS, TYPES, TYPE_ORDER } from "@/lib/seasons";
+import { TAG_DEFS, TAG_ORDER } from "@/lib/tags";
 import { SIDO_ORDER } from "@/lib/regionsKr";
 import { getSidoLabel, getMonthLabel } from "@/lib/i18n";
 import { useI18n } from "@/lib/I18nProvider";
@@ -23,6 +24,9 @@ export default function MapFilters({
   type,
   onPickType,
   typeLabels = {},
+  tags = [],
+  onToggleTag,
+  tagLabels = {},
   period,
   onTogglePeriod,
   showFavorites,
@@ -57,6 +61,7 @@ export default function MapFilters({
     type ? typeLabels[type] || (TYPES[type] && TYPES[type].label) : typeLabels.all || t.filters.clearAll,
     month ? `${t.seasons[season]} ${getMonthLabel(month, locale)}` : t.seasons[season],
   ];
+  for (const k of tags) summaryParts.push(`${TAG_DEFS[k].emoji} ${tagLabels[k] || k}`);
   if (period === "weekend") summaryParts.push(stripEmoji(t.filters.weekend));
   if (period === "month") summaryParts.push(stripEmoji(t.filters.month));
   if (showFavorites) summaryParts.push("❤️");
@@ -150,6 +155,20 @@ export default function MapFilters({
             </button>
           );
         })}
+      </div>
+
+      {/* 0.5줄: 세부 태그 (🎆 불꽃놀이 · 🌙 야간 · 💧 물놀이) — 다중 선택, 유형과 조합 */}
+      <div className="mf-row mf-tag-row" role="group" aria-label={t.filters.tags || "태그"}>
+        {TAG_ORDER.map((k) => (
+          <button
+            key={k}
+            className={`mf-chip mf-tag ${tags.includes(k) ? "active" : ""}`}
+            onClick={() => onToggleTag && onToggleTag(k)}
+            aria-pressed={tags.includes(k)}
+          >
+            {TAG_DEFS[k].emoji} {tagLabels[k] || k}
+          </button>
+        ))}
       </div>
 
       {/* 1줄: 계절 (활성 계절 탭 시 아래 월 서브행 펼침/접기) */}

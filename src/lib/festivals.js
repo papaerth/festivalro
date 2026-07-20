@@ -18,6 +18,8 @@ import { fetchFromKintex } from "./kintex";
 import { fetchFromCulture } from "./culture";
 import { fetchFromSeoul } from "./seoul";
 import { fetchFromKcisa } from "./kcisa";
+import { computeTags } from "./tags";
+import { TAG_CURATION } from "./tagCuration";
 import { matchSido } from "./regionsKr";
 
 // 17개 시도 대략 중심 좌표 — 직접 등록 축제(좌표 없음)에 근사 마커를 띄우기 위한 폴백값.
@@ -541,10 +543,16 @@ function mergeFestivals(tourList, stdList) {
 // [공개] 전체 축제 목록 가져오기 (서버 컴포넌트에서 사용)
 //  - TourAPI + 표준데이터를 병렬로 불러와 합칩니다.
 //  - 한쪽이 실패해도 다른 쪽 데이터로 동작하고, 둘 다 실패하면 샘플로 대체합니다.
+// 각 축제에 세부 유형 태그(불꽃놀이/야간/물놀이)를 붙입니다.
+//  · 제목·소개 키워드 자동감지 + tagCuration.js 수동 교정 반영.
+function withTags(list) {
+  return list.map((f) => ({ ...f, tags: computeTags(f, TAG_CURATION[f.id]) }));
+}
+
 export async function getFestivals() {
   const apiKey = process.env.TOUR_API_KEY;
   const hasRealKey = apiKey && apiKey !== "여기에_키를_붙여넣기";
-  if (!hasRealKey) return SAMPLE_FESTIVALS;
+  if (!hasRealKey) return withTags(SAMPLE_FESTIVALS);
 
   const standardEnabled = process.env.STANDARD_API_ENABLED !== "false";
 
@@ -590,7 +598,7 @@ export async function getFestivals() {
     merged.push(f);
   }
 
-  if (merged.length === 0) return SAMPLE_FESTIVALS; // 전부 실패 → 안전장치
+  if (merged.length === 0) return withTags(SAMPLE_FESTIVALS); // 전부 실패 → 안전장치
 
   // 게시된 '새 축제'(기존과 연결 안 된 담당자 등록) 합성 후 병합.
   //  - 이름+지역이 기존 축제와 겹치면 새로 추가하지 않음(중복 방지).
@@ -612,7 +620,7 @@ export async function getFestivals() {
     /* 제출 축제 병합 실패는 무시 */
   }
 
-  return merged;
+  return withTags(merged);
 }
 
 // [공개] 축제 목록에 현재 언어의 표시명(displayName)·시군구(displaySigungu)를 채웁니다.

@@ -1468,6 +1468,31 @@ h3 {
   font-weight: 600;
   margin-top: 4px;
 }
+/* ── 세부 태그 배지/칩 (🎆 불꽃놀이 · 🌙 야간 · 💧 물놀이) ── */
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+.tag-chip {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-soft);
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  line-height: 1.6;
+  white-space: nowrap;
+}
+/* 상세페이지 상단 태그 배지 (유형 배지 옆) */
+.tag-badge-inline {
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  font-weight: 700;
+}
 
 /* ── 상태 배지 ── */
 .badge {

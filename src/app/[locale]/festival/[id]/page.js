@@ -12,6 +12,7 @@ import RecordView from "@/components/RecordView";
 import PrivacyLink from "@/components/PrivacyLink";
 import BrandTagline from "@/components/BrandTagline";
 import { SEASONS, typeTheme } from "@/lib/seasons";
+import { TAG_DEFS } from "@/lib/tags";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import {
   LOCALES,
@@ -20,6 +21,7 @@ import {
   getDictionary,
   getSections,
   getTypeLabel,
+  getTagLabel,
   localeHref,
   HTML_LANG,
   SITE_URL,
@@ -275,6 +277,13 @@ export default async function FestivalDetailPage({ params }) {
               <span className="badge type-badge-inline" style={{ background: ty.color }}>
                 {ty.emoji} {typeLabel}
               </span>
+              {(festival.tags || []).map((k) =>
+                TAG_DEFS[k] ? (
+                  <span key={k} className="badge tag-badge-inline">
+                    {TAG_DEFS[k].emoji} {getTagLabel(k, loc)}
+                  </span>
+                ) : null
+              )}
             </div>
             <h1>
               {theme.emoji} {festival.name}

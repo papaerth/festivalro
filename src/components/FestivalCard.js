@@ -4,7 +4,8 @@ import Link from "next/link";
 import { SEASONS, typeTheme } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
-import { getTypeLabel } from "@/lib/i18n";
+import { getTypeLabel, getTagLabel } from "@/lib/i18n";
+import { TAG_DEFS } from "@/lib/tags";
 import { useCardNews } from "./CardNewsProvider";
 import CoverImage from "./CoverImage";
 import FavoriteButton from "./FavoriteButton";
@@ -67,6 +68,17 @@ export default function FestivalCard({ festival, rating }) {
         <span className="card-region">
           {season.emoji} {regionName} · {festival.displaySigungu || festival.sigungu}
         </span>
+        {festival.tags && festival.tags.length > 0 && (
+          <div className="card-tags">
+            {festival.tags.map((k) =>
+              TAG_DEFS[k] ? (
+                <span key={k} className="tag-chip">
+                  {TAG_DEFS[k].emoji} {getTagLabel(k, locale)}
+                </span>
+              ) : null
+            )}
+          </div>
+        )}
       </div>
     </Link>
   );

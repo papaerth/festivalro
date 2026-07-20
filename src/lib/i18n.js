@@ -457,6 +457,25 @@ export function getCarouselTabs(locale) {
   return out;
 }
 
+// ── 세부 유형 태그명 (불꽃놀이 / 야간 / 물놀이) 13개 언어 ──
+const TAG_LABELS = {
+  fireworks: { ko: "불꽃놀이", en: "Fireworks", ja: "花火", zh: "烟花", "zh-TW": "煙火", es: "Fuegos artificiales", fr: "Feux d'artifice", ru: "Фейерверк", de: "Feuerwerk", ar: "الألعاب النارية", vi: "Pháo hoa", id: "Kembang api", th: "พลุ" },
+  night: { ko: "야간", en: "Night", ja: "夜間", zh: "夜间", "zh-TW": "夜間", es: "Nocturno", fr: "Nocturne", ru: "Ночной", de: "Nacht", ar: "ليلي", vi: "Ban đêm", id: "Malam", th: "กลางคืน" },
+  water: { ko: "물놀이", en: "Water Fun", ja: "水遊び", zh: "戏水", "zh-TW": "戲水", es: "Agua", fr: "Jeux d'eau", ru: "Водный", de: "Wasserspaß", ar: "ألعاب مائية", vi: "Nghịch nước", id: "Main air", th: "เล่นน้ำ" },
+};
+// 태그 key + 언어 → 표시 이름 (없으면 영어 → key 폴백)
+export function getTagLabel(key, locale) {
+  const row = TAG_LABELS[key];
+  if (!row) return key;
+  return row[locale] || row.en || key;
+}
+// 해당 언어의 태그 라벨 전체 맵 { fireworks, night, water }
+export function getTagLabels(locale) {
+  const out = {};
+  for (const k of Object.keys(TAG_LABELS)) out[k] = getTagLabel(k, locale);
+  return out;
+}
+
 // ── 히어로 유형별 바로가기 버튼 문구 (13개 언어). n=오늘 진행중 건수 ──
 //  festival=오늘 진행중 축제 / festivalWeek=진행 축제 적을 때 이번 주말 폴백(축제 우선)
 //  performance·exhibition=오늘 진행중 공연/전시 건수. 클릭 시 해당 유형+진행중 목록으로 이동.
