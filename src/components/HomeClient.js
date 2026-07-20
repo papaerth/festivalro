@@ -116,6 +116,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const [period, setPeriod] = useState(null); // null | "weekend" | "month"
   const [showFavorites, setShowFavorites] = useState(false);
   const [mapFocus, setMapFocus] = useState(null); // 카드/마커에서 고른 축제 위치
+  const [popupOpen, setPopupOpen] = useState(false); // 마커 팝업 열림 → 필터 접힘
   const [selected, setSelected] = useState(null); // 블로그·영상 섹션 연동 대상(축제) — null=인기축제 종합
   const [flashSignal, setFlashSignal] = useState(0); // 선택 시마다 +1 → 섹션 하이라이트
   const [resetSignal, setResetSignal] = useState(0); // 선택 해제 시 +1 → 지도 줌아웃 + 마커 팝업 닫기
@@ -590,6 +591,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
               favReady={favReady}
               filtersActive={filtersActive}
               onReset={resetFilters}
+              collapsed={popupOpen}
             />
             <MapView
               festivals={mapFestivals}
@@ -597,6 +599,8 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
               focus={mapFocus}
               onSelect={handleMapSelect}
               resetSignal={resetSignal}
+              onPopupOpen={() => setPopupOpen(true)}
+              onPopupClose={() => setPopupOpen(false)}
             />
           </div>
         </div>

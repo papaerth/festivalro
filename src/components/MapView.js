@@ -1,6 +1,6 @@
 "use client";
 
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import Link from "next/link";
@@ -57,6 +57,15 @@ function FitBounds({ points }) {
     if (instant) map.fitBounds(points, { padding: [40, 40], maxZoom: 12 });
     else map.flyToBounds(points, { padding: [40, 40], maxZoom: 12, duration: 0.5 });
   }, [points, map]);
+  return null;
+}
+
+// 마커 팝업 열림/닫힘을 상위(HomeClient)에 알림 → 필터 접힘 연동.
+function PopupEvents({ onOpen, onClose }) {
+  useMapEvents({
+    popupopen: () => onOpen && onOpen(),
+    popupclose: () => onClose && onClose(),
+  });
   return null;
 }
 
@@ -149,7 +158,7 @@ function ResetView({ signal, points }) {
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
-export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, resetSignal = 0 }) {
+export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null }) {
   const { locale, href } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 터치 기기에서만 제스처 핸들링 활성화 (한 손가락 스크롤 / 두 손가락 지도 조작 + 안내)
@@ -208,7 +217,12 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
               if (m) markerRefs.current[f.id] = m;
             }}
           >
-            <Popup>
+            <Popup
+              autoPan
+              keepInView
+              autoPanPaddingTopLeft={[16, 120]}
+              autoPanPaddingBottomRight={[16, 28]}
+            >
               <strong>{f.displayName || f.name}</strong>
               <br />
               <span>{formatPeriod(f.startDate, f.endDate)}</span>
@@ -232,6 +246,7 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
       <FitBounds points={points} />
       <FocusFly focus={focus} markerRefs={markerRefs} />
       <ResetView signal={resetSignal} points={points} />
+      <PopupEvents onOpen={onPopupOpen} onClose={onPopupClose} />
     </MapContainer>
   );
 }

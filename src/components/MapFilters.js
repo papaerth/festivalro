@@ -37,11 +37,31 @@ export default function MapFilters({
   favReady = false,
   filtersActive,
   onReset,
+  collapsed = false, // 마커 팝업이 열리면 true → 한 줄 요약 모드로 접어 겹침 방지
 }) {
   const { t, locale } = useI18n();
   const [regionOpen, setRegionOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(!!month); // 월 세분화 서브행 펼침 여부(평소 접힘)
+  const [userExpanded, setUserExpanded] = useState(false); // 접힘 중 사용자가 다시 펼침
   const rootRef = useRef(null);
+
+  // 팝업이 닫히면(collapsed=false) 사용자 펼침 상태 초기화 → 원래대로 펼쳐짐
+  useEffect(() => {
+    if (!collapsed) setUserExpanded(false);
+  }, [collapsed]);
+  const showSummary = collapsed && !userExpanded;
+
+  // 접힘 요약 문구: 유형 · 계절(월) · 기간 · 즐겨찾기 · 지역 중 활성인 것만
+  const stripEmoji = (s = "") => s.replace(/^[^\p{L}\p{N}]+/u, "").trim();
+  const summaryParts = [
+    type ? typeLabels[type] || (TYPES[type] && TYPES[type].label) : typeLabels.all || t.filters.clearAll,
+    month ? `${t.seasons[season]} ${getMonthLabel(month, locale)}` : t.seasons[season],
+  ];
+  if (period === "weekend") summaryParts.push(stripEmoji(t.filters.weekend));
+  if (period === "month") summaryParts.push(stripEmoji(t.filters.month));
+  if (showFavorites) summaryParts.push("❤️");
+  if (sido) summaryParts.push(getSidoLabel(sido, locale) + (sigungu ? " " + sigungu : ""));
+  const summaryText = summaryParts.filter(Boolean).join(" · ");
 
   // 계절 칩 탭: 다른 계절이면 그 계절로 전환(+월 초기화) 후 월 펼침,
   //  같은 계절을 다시 탭하면 월 서브행만 접기/펼치기(선택은 유지).
@@ -89,6 +109,23 @@ export default function MapFilters({
     onRegionAll();
     setRegionOpen(false);
   };
+
+  // 팝업 열림 → 한 줄 요약(누르면 다시 펼침)
+  if (showSummary) {
+    return (
+      <div className="map-filters map-filters-collapsed" ref={rootRef}>
+        <button
+          type="button"
+          className="mf-summary"
+          onClick={() => setUserExpanded(true)}
+          aria-label={summaryText}
+        >
+          <span className="mf-summary-text">{summaryText}</span>
+          <span className="mf-summary-caret" aria-hidden="true">▾</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="map-filters" ref={rootRef}>
