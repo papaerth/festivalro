@@ -12,6 +12,7 @@ import "server-only";
 //  응답: { culturalEventInfo: { list_total_count, RESULT:{CODE}, row:[ {CODENAME,TITLE,...} ] } }
 // ────────────────────────────────────────────────────────────────
 import { unstable_cache } from "next/cache";
+import { typeByTitle } from "./festivals";
 
 const SEOUL_HOST = process.env.SEOUL_API_HOST || "http://openapi.seoul.go.kr:8088";
 const PAGE = 1000; // 한 요청 최대 1000행
@@ -25,13 +26,18 @@ function stableId(str = "") {
 
 // CODENAME(분류)+제목 → 우리 유형. 전시·공연·축제만 채택, 그 외(교육/체험·기타·영화)는 null(제외).
 function mapCategory(codename = "", title = "") {
-  // 제목이 명백한 전시·박람회면 분류코드보다 우선(축제로 잘못 태깅된 박람회 교정)
-  if (/(박람회|엑스포|expo|전시회)/i.test(String(title))) return "exhibition";
+  // 1) 제목 강신호 우선 — 미술관/전시/갤러리/박람회 등은 CODENAME이 '축제'여도 전시로 교정.
+  //    (서울 데이터엔 여름행사·식물원 전시 등이 '축제'로 뭉뚱그려진 경우가 있어 인기축제 오염 방지)
+  const byTitle = typeByTitle(title); // 'festival'|'exhibition'|'performance'|null
+  if (byTitle === "exhibition" || byTitle === "performance") return byTitle;
+  // 2) CODENAME 분류
   const c = String(codename);
   if (c.includes("축제")) return "festival";
   if (c.includes("전시") || c.includes("미술") || c.includes("박람")) return "exhibition";
   if (/(콘서트|클래식|뮤지컬|오페라|연극|무용|국악|독주|독창|음악|공연)/.test(c)) return "performance";
-  return null; // 교육/체험, 기타, 영화 등 → 채택 안 함
+  // 3) 제목이 '축제/페스티벌'이면 축제로 채택, 그 외(교육/체험·기타·영화 등)는 제외
+  if (byTitle === "festival") return "festival";
+  return null;
 }
 
 // "2026-10-28 00:00:00.0" 또는 "2026-10-28~..." → "2026-10-28"
@@ -128,7 +134,7 @@ async function fetchSeoulRaw() {
   return out;
 }
 
-const seoulCached = unstable_cache(fetchSeoulRaw, ["seoul-events-v1"], {
+const seoulCached = unstable_cache(fetchSeoulRaw, ["seoul-events-v2"], {
   revalidate: 60 * 60 * 12,
 });
 
