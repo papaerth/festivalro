@@ -8,7 +8,8 @@ import { useEffect, useRef, useMemo } from "react";
 import { markerColor, typeTheme } from "@/lib/seasons";
 import { formatPeriod } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
-import { MAP_GESTURE_TEXT } from "@/lib/i18n";
+import { MAP_GESTURE_TEXT, getMarketText } from "@/lib/i18n";
+import { nextMarketDay, formatMarketDate } from "@/lib/marketDay";
 import { isTouchDevice } from "@/lib/mapGesture";
 import MapDirections from "./MapDirections";
 
@@ -169,6 +170,33 @@ function ResetView({ signal, points }) {
   return null;
 }
 
+// 전통시장 마커 팝업 — 기간 대신 장날/운영시간을 보여줍니다.
+function MarketPopup({ f, locale, href, viewDetail }) {
+  const mt = getMarketText(locale);
+  const nd = nextMarketDay(f.openDays);
+  const name = f.displayName || f.name;
+  return (
+    <>
+      <strong>{name}</strong>
+      <br />
+      <span>
+        {nd
+          ? nd.isToday
+            ? `🏪 ${mt.today}`
+            : `🏪 ${mt.next}: ${formatMarketDate(nd.date, mt.intl)}`
+          : f.hours
+          ? `🕕 ${f.hours}`
+          : mt.typeLabel(f.marketType)}
+      </span>
+      <br />
+      <Link className="popup-link" href={href(`/market/${f.id}`)}>
+        {viewDetail}
+      </Link>
+      <MapDirections name={name} lat={f.lat} lng={f.lng} compact />
+    </>
+  );
+}
+
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
@@ -215,9 +243,11 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
       <KoreaLock />
       {shown.map((f) => {
         const color = markerColor(f);
-        // 전시·공연만 작은 글리프 표시 (축제는 기존처럼 색만)
+        // 전시·공연·시장만 작은 글리프 표시 (축제는 기존처럼 색만)
         const glyph =
-          f.type === "exhibition" || f.type === "performance" ? typeTheme(f.type).emoji : "";
+          f.type === "exhibition" || f.type === "performance" || f.type === "market"
+            ? typeTheme(f.type).emoji
+            : "";
         const r = ratings[f.id];
         return (
           <Marker
@@ -232,22 +262,28 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
             }}
           >
             <Popup autoPan={false}>
-              <strong>{f.displayName || f.name}</strong>
-              <br />
-              <span>{formatPeriod(f.startDate, f.endDate)}</span>
-              {r && r.count > 0 && (
+              {f.type === "market" ? (
+                <MarketPopup f={f} locale={locale} href={href} viewDetail={viewDetail} />
+              ) : (
                 <>
+                  <strong>{f.displayName || f.name}</strong>
                   <br />
-                  <span>
-                    ⭐ {r.avg.toFixed(1)} ({r.count})
-                  </span>
+                  <span>{formatPeriod(f.startDate, f.endDate)}</span>
+                  {r && r.count > 0 && (
+                    <>
+                      <br />
+                      <span>
+                        ⭐ {r.avg.toFixed(1)} ({r.count})
+                      </span>
+                    </>
+                  )}
+                  <br />
+                  <Link className="popup-link" href={href(`/festival/${f.id}`)}>
+                    {viewDetail}
+                  </Link>
+                  <MapDirections name={f.displayName || f.name} lat={f.lat} lng={f.lng} compact />
                 </>
               )}
-              <br />
-              <Link className="popup-link" href={href(`/festival/${f.id}`)}>
-                {viewDetail}
-              </Link>
-              <MapDirections name={f.displayName || f.name} lat={f.lat} lng={f.lng} compact />
             </Popup>
           </Marker>
         );

@@ -8,10 +8,11 @@ import { matchSido } from "@/lib/regionsKr";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
-import { getTypeLabels, getCarouselTabs, getHeroButtonLabel, getTagLabels, getSeasonText } from "@/lib/i18n";
+import { getTypeLabels, getCarouselTabs, getHeroButtonLabel, getTagLabels, getSeasonText, getMarketText } from "@/lib/i18n";
 import { getSeasonBanner } from "@/lib/season";
 import MapFilters from "./MapFilters";
 import FestivalCard from "./FestivalCard";
+import MarketCard from "./MarketCard";
 import FavoriteAlerts from "./FavoriteAlerts";
 import AccountMenu from "./AccountMenu";
 import LangSwitcher from "./LangSwitcher";
@@ -88,11 +89,12 @@ function overlapsMonth(startDate, endDate, month) {
   return false;
 }
 
-export default function HomeClient({ festivals, usingSample, popScoreById = {} }) {
+export default function HomeClient({ festivals, markets = [], usingSample, popScoreById = {} }) {
   const [season, setSeason] = useState(currentSeason());
   const [month, setMonth] = useState(null); // null = 계절 전체 / 1~12 = 그 달에 걸치는 행사만
   const [type, setType] = useState(null); // null = 전체 유형(축제+전시+공연)
   const [tags, setTags] = useState([]); // 세부 태그(불꽃놀이/야간/물놀이) — 다중 선택, 선택한 태그를 '모두' 가진 축제만
+  const [showMarkets, setShowMarkets] = useState(false); // 🏪 장터·야시장 모드 (지도·목록을 시장으로 전환)
   const [sido, setSido] = useState(null); // null = 전체(전국)
   const [sigungu, setSigungu] = useState(null); // null = 시도 전체
   const [statusFilter, setStatusFilter] = useState(null); // null=전체
@@ -115,12 +117,18 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const { t, locale } = useI18n();
   const typeLabels = getTypeLabels(locale); // { all, festival, exhibition, performance }
   const tagLabels = getTagLabels(locale); // { fireworks, night, water }
+  const marketText = getMarketText(locale);
   const carouselTabs = getCarouselTabs(locale); // { festival, performance, exhibition }
 
   // 축제마다 시도 key(_sido)를 한 번만 계산해 필터를 가볍게 유지
   const withSido = useMemo(
     () => festivals.map((f) => ({ ...f, _sido: matchSido(f.sido || "") })),
     [festivals]
+  );
+  // 전통시장에도 동일하게 _sido 부여 (지역 필터 재사용)
+  const marketsWithSido = useMemo(
+    () => markets.map((m) => ({ ...m, _sido: matchSido(m.sido || "") })),
+    [markets]
   );
 
   // 축제 목록으로 부드럽게 스크롤 (배지 CTA에서만 — 필터가 목록 바로 위라
@@ -333,6 +341,37 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   // 세부 태그 칩 토글 (다시 누르면 해제). 다중 선택 가능.
   const toggleTag = (key) =>
     setTags((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+
+  // 🏪 장터·야시장 토글: 켜면 지도·목록을 시장으로 전환. 축제용 유형/기간/즐겨찾기 필터는 초기화(혼동 방지).
+  const toggleMarkets = () => {
+    setShowMarkets((v) => {
+      const next = !v;
+      if (next) {
+        setType(null);
+        setTags([]);
+        setPeriod(null);
+        setShowFavorites(false);
+        setStatusFilter(null);
+        setMapFocus(null);
+      }
+      return next;
+    });
+  };
+
+  // 시장 목록: 지역·검색만 적용 (계절/기간/상태 무관 — 시장은 상시).
+  const marketFiltered = useMemo(() => {
+    if (!showMarkets) return [];
+    const qq = query.trim().toLowerCase();
+    return marketsWithSido.filter((m) => {
+      if (sido && m._sido !== sido) return false;
+      if (sigungu && m.sigungu !== sigungu) return false;
+      if (qq) {
+        const hay = `${m.name} ${m.displayName || ""} ${m.sigungu || ""}`.toLowerCase();
+        if (!hay.includes(qq)) return false;
+      }
+      return true;
+    });
+  }, [showMarkets, marketsWithSido, sido, sigungu, query]);
   // 캐러셀 탭 선택 → 지도 유형 필터를 그 유형으로 '설정'(토글 아님).
   //  → 지도 마커 집합이 그 유형으로 바뀌며 부드럽게 줌 조정됨(지역·계절·월 필터는 유지).
   const selectType = (key) => setType(key);
@@ -363,12 +402,13 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const pickMonth = (m) => setMonth((prev) => (prev === m ? null : m));
 
   // 지도 오버레이 필터 상태 — 부가필터(월/유형/지역/기간/즐겨찾기)가 하나라도 켜졌는지
-  const filtersActive = !!(month || type || tags.length || sido || sigungu || period || showFavorites);
+  const filtersActive = !!(month || type || tags.length || sido || sigungu || period || showFavorites || showMarkets);
   // 지도 위 '전체' 칩 — 선택·지도·부가필터·검색 초기화 (계절 선택은 유지)
   const resetFilters = () => {
     setMonth(null);
     setType(null);
     setTags([]);
+    setShowMarkets(false);
     setSido(null);
     setSigungu(null);
     setPeriod(null);
@@ -529,9 +569,10 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   }, [season, month, type, tags, sido, sigungu, q, period, showFavorites, statusFilter]);
   const visible = filtered.slice(0, visibleCount);
 
-  // 지도용 목록: 필터 결과 + (검색으로 고른 축제가 필터 밖이면) 그 축제도 포함
-  //  → 검색으로 선택한 축제의 마커/팝업이 항상 뜨도록 보장
+  // 지도용 목록: 시장 모드면 시장 마커, 아니면 축제 필터 결과
+  //  (+ 검색으로 고른 축제가 필터 밖이면 그 축제도 포함해 마커/팝업이 항상 뜨게)
   const mapFestivals = useMemo(() => {
+    if (showMarkets) return marketFiltered;
     if (
       selected &&
       Number.isFinite(selected.lat) &&
@@ -541,7 +582,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       return [...filtered, selected];
     }
     return filtered;
-  }, [filtered, selected]);
+  }, [showMarkets, marketFiltered, filtered, selected]);
 
   // 블로그·영상 섹션 소스: 선택 축제가 있으면 그 축제, 없으면 인기축제 종합
   const feedSource = selected ? [selected] : mainShorts;
@@ -616,6 +657,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
               tags={tags}
               onToggleTag={toggleTag}
               tagLabels={tagLabels}
+              showMarkets={showMarkets}
+              onToggleMarkets={toggleMarkets}
+              marketChipLabel={marketText.chip}
               period={period}
               onTogglePeriod={togglePeriod}
               showFavorites={showFavorites}
@@ -709,7 +753,27 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
         {/* 즐겨찾기 알림 — 얇은 배너 (즐겨찾기 있을 때만) */}
         <FavoriteAlerts festivals={festivals} />
 
-        {/* ⑤ 축제 목록 — 유형 탭 + 상태 요약(=필터) + 카드 그리드 */}
+        {/* ⑤ 목록 — 🏪 시장 모드면 전통시장, 아니면 축제 목록 */}
+        {showMarkets ? (
+          <>
+            <div className="market-list-head" ref={listRef}>
+              <span className="market-list-title">
+                🏪 {marketText.section} · {marketFiltered.length}
+              </span>
+              <button type="button" className="status-clear" onClick={toggleMarkets}>
+                {t.filters.clearAll}
+              </button>
+            </div>
+            <div className="card-grid">
+              {marketFiltered.length === 0 ? (
+                <div className="empty">{t.list.emptyDefault}</div>
+              ) : (
+                marketFiltered.map((m) => <MarketCard key={m.id} market={m} />)
+              )}
+            </div>
+          </>
+        ) : (
+          <>
         {/* 유형 탭: 지도 유형 칩·캐러셀 탭과 같은 type 상태를 공유(양방향 동기화) */}
         <div className="list-type-tabs" role="tablist" ref={listRef}>
           <button
@@ -789,6 +853,8 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
             {t.list.loadMore}{" "}
             <span>{t.list.remain(filtered.length - visibleCount)}</span>
           </button>
+        )}
+          </>
         )}
 
         {/* 최근 본 축제 — 이어보기 동선 (브라우저 기록, 회원가입 X) */}

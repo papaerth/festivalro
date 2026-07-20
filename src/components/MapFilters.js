@@ -27,6 +27,9 @@ export default function MapFilters({
   tags = [],
   onToggleTag,
   tagLabels = {},
+  showMarkets = false,
+  onToggleMarkets,
+  marketChipLabel = "장터·야시장",
   period,
   onTogglePeriod,
   showFavorites,
@@ -155,6 +158,15 @@ export default function MapFilters({
             </button>
           );
         })}
+        {/* 전통시장(장터·야시장) — 별도 토글. 켜면 지도·목록이 시장으로 전환 */}
+        <button
+          className={`mf-chip mf-type mf-market ${showMarkets ? "active" : ""}`}
+          style={{ "--accent": TYPES.market.color, "--accent-soft": TYPES.market.soft }}
+          onClick={() => onToggleMarkets && onToggleMarkets()}
+          aria-pressed={showMarkets}
+        >
+          {TYPES.market.emoji} {marketChipLabel}
+        </button>
       </div>
 
       {/* 0.5줄: 세부 태그 (🎆 불꽃놀이 · 🌙 야간 · 💧 물놀이) — 다중 선택, 유형과 조합 */}

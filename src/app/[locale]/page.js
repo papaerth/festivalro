@@ -1,5 +1,6 @@
 import HomeClient from "@/components/HomeClient";
 import { getFestivals, localizeFestivals, isUsingSampleData } from "@/lib/festivals";
+import { getMarkets } from "@/lib/markets";
 import { getPopularFestivals } from "@/lib/popular";
 import { isLocale, DEFAULT_LOCALE, SITE_URL } from "@/lib/i18n";
 
@@ -60,6 +61,9 @@ export default async function HomePage({ params }) {
     popular.map((f) => [f.id, f.popScore])
   );
 
+  // 전통시장(장터·야시장) — 지도 필터 토글에서만 노출(메인 추천 X). 현재 언어로 이름 번역.
+  const markets = await localizeFestivals(await getMarkets(), loc);
+
   return (
     <>
       <script
@@ -68,6 +72,7 @@ export default async function HomePage({ params }) {
       />
       <HomeClient
         festivals={localized}
+        markets={markets}
         usingSample={usingSample}
         popScoreById={popScoreById}
       />

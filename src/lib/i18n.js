@@ -476,6 +476,31 @@ export function getTagLabels(locale) {
   return out;
 }
 
+// ── 전통시장(장터·야시장) 문구 (13개 언어) ──
+const MARKET_I18N = {
+  ko: { chip: "장터·야시장", fiveday: "5일장", night: "야시장", today: "오늘 장서는 날!", next: "다음 장날", section: "전통시장", intl: "ko" },
+  en: { chip: "Markets", fiveday: "5-Day Market", night: "Night Market", today: "Market day today!", next: "Next market day", section: "Traditional Markets", intl: "en" },
+  ja: { chip: "市場・夜市", fiveday: "五日市", night: "夜市", today: "今日は市が立つ日！", next: "次の市の日", section: "伝統市場", intl: "ja" },
+  zh: { chip: "集市·夜市", fiveday: "五日集", night: "夜市", today: "今天赶集日！", next: "下个集市日", section: "传统市场", intl: "zh" },
+  "zh-TW": { chip: "集市·夜市", fiveday: "五日集", night: "夜市", today: "今天趕集日！", next: "下個集市日", section: "傳統市場", intl: "zh-TW" },
+  es: { chip: "Mercados", fiveday: "Mercado de 5 días", night: "Mercado nocturno", today: "¡Día de mercado hoy!", next: "Próximo día de mercado", section: "Mercados tradicionales", intl: "es" },
+  fr: { chip: "Marchés", fiveday: "Marché de 5 jours", night: "Marché nocturne", today: "Jour de marché aujourd'hui !", next: "Prochain jour de marché", section: "Marchés traditionnels", intl: "fr" },
+  ru: { chip: "Рынки", fiveday: "Рынок 5-го дня", night: "Ночной рынок", today: "Сегодня базарный день!", next: "Следующий базарный день", section: "Традиционные рынки", intl: "ru" },
+  de: { chip: "Märkte", fiveday: "5-Tage-Markt", night: "Nachtmarkt", today: "Heute ist Markttag!", next: "Nächster Markttag", section: "Traditionelle Märkte", intl: "de" },
+  ar: { chip: "الأسواق", fiveday: "سوق كل 5 أيام", night: "سوق ليلي", today: "اليوم يوم السوق!", next: "يوم السوق القادم", section: "الأسواق التقليدية", intl: "ar" },
+  vi: { chip: "Chợ", fiveday: "Chợ phiên 5 ngày", night: "Chợ đêm", today: "Hôm nay là ngày họp chợ!", next: "Ngày họp chợ tới", section: "Chợ truyền thống", intl: "vi" },
+  id: { chip: "Pasar", fiveday: "Pasar 5-harian", night: "Pasar malam", today: "Hari pasar hari ini!", next: "Hari pasar berikutnya", section: "Pasar tradisional", intl: "id" },
+  th: { chip: "ตลาด", fiveday: "ตลาดนัด 5 วัน", night: "ตลาดกลางคืน", today: "วันนี้เป็นวันตลาดนัด!", next: "วันตลาดนัดถัดไป", section: "ตลาดดั้งเดิม", intl: "th" },
+};
+// 전통시장 문구 묶음(현재 언어). marketType(한국어 "5일장"/"야시장") → 현지어 라벨 포함.
+export function getMarketText(locale) {
+  const L = MARKET_I18N[locale] || MARKET_I18N.en;
+  return {
+    ...L,
+    typeLabel: (mt) => (mt === "야시장" ? L.night : L.fiveday),
+  };
+}
+
 // ── 개화·단풍 시즌 배지/배너 문구 (13개 언어) ──
 const SEASON_I18N = {
   ko: { bBefore: "개화 예상", bPeak: "지금 절정", bWane: "개화 끝물", fBefore: "단풍 예상", fPeak: "지금 단풍 절정", fWane: "단풍 끝물", bnBloom: "지금 벚꽃 절정", bnFoliage: "지금 단풍 절정", note: "예상일 기준 · 실제와 다를 수 있음" },

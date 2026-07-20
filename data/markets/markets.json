@@ -1,0 +1,26 @@
+{
+  "note": "전통시장 시드 데이터(기획자 직접 등록). 5일장은 openDays=끝자리(예:[4,9]=4·9일), 야시장은 openDays=[]+hours. 좌표는 근사값이라 필요시 수정. 나중에 공공데이터 API 키 등록되면 markets.js에서 자동 보강.",
+  "markets": [
+    { "id": "mkt-moran", "name": "성남 모란민속5일장", "marketType": "5일장", "sido": "경기도", "sigungu": "성남시 중원구", "region": "gyeonggi", "lat": 37.4336, "lng": 127.1516, "openDays": [4, 9], "hours": "", "addr": "경기도 성남시 중원구 성남동" },
+    { "id": "mkt-jeongseon", "name": "정선아리랑시장(정선5일장)", "marketType": "5일장", "sido": "강원특별자치도", "sigungu": "정선군", "region": "gangwon", "lat": 37.3805, "lng": 128.6607, "openDays": [2, 7], "hours": "", "addr": "강원특별자치도 정선군 정선읍 봉양리" },
+    { "id": "mkt-bongpyeong", "name": "봉평장", "marketType": "5일장", "sido": "강원특별자치도", "sigungu": "평창군", "region": "gangwon", "lat": 37.5637, "lng": 128.3560, "openDays": [2, 7], "hours": "", "addr": "강원특별자치도 평창군 봉평면" },
+    { "id": "mkt-bukpyeong", "name": "북평민속5일장", "marketType": "5일장", "sido": "강원특별자치도", "sigungu": "동해시", "region": "gangwon", "lat": 37.4906, "lng": 129.1266, "openDays": [3, 8], "hours": "", "addr": "강원특별자치도 동해시 북평동" },
+    { "id": "mkt-hwagae", "name": "화개장터", "marketType": "5일장", "sido": "경상남도", "sigungu": "하동군", "region": "gyeongsang", "lat": 35.2378, "lng": 127.6089, "openDays": [1, 6], "hours": "", "addr": "경상남도 하동군 화개면 탑리" },
+    { "id": "mkt-anseong", "name": "안성맞춤남사당5일장", "marketType": "5일장", "sido": "경기도", "sigungu": "안성시", "region": "gyeonggi", "lat": 37.0086, "lng": 127.2699, "openDays": [2, 7], "hours": "", "addr": "경기도 안성시 서인동" },
+    { "id": "mkt-suncheon", "name": "순천아랫장(웃장)", "marketType": "5일장", "sido": "전라남도", "sigungu": "순천시", "region": "jeolla", "lat": 34.9508, "lng": 127.4914, "openDays": [2, 7], "hours": "", "addr": "전라남도 순천시 풍덕동" },
+    { "id": "mkt-hampyeong", "name": "함평천지시장(함평5일장)", "marketType": "5일장", "sido": "전라남도", "sigungu": "함평군", "region": "jeolla", "lat": 35.0656, "lng": 126.5169, "openDays": [2, 7], "hours": "", "addr": "전라남도 함평군 함평읍" },
+    { "id": "mkt-seosan", "name": "서산동부시장(서산5일장)", "marketType": "5일장", "sido": "충청남도", "sigungu": "서산시", "region": "chungcheong", "lat": 36.7846, "lng": 126.4524, "openDays": [2, 7], "hours": "", "addr": "충청남도 서산시 동문동" },
+    { "id": "mkt-jinan", "name": "진안고원시장(진안5일장)", "marketType": "5일장", "sido": "전북특별자치도", "sigungu": "진안군", "region": "jeolla", "lat": 35.7917, "lng": 127.4249, "openDays": [4, 9], "hours": "", "addr": "전북특별자치도 진안군 진안읍" },
+
+    { "id": "night-bupyeong", "name": "부산 부평깡통야시장", "marketType": "야시장", "sido": "부산광역시", "sigungu": "중구", "region": "gyeongsang", "lat": 35.0996, "lng": 129.0281, "openDays": [], "hours": "매일 19:30~24:00", "addr": "부산광역시 중구 부평동" },
+    { "id": "night-jeonju", "name": "전주 남부시장 야시장", "marketType": "야시장", "sido": "전북특별자치도", "sigungu": "전주시 완산구", "region": "jeolla", "lat": 35.8113, "lng": 127.1435, "openDays": [], "hours": "금·토 18:00~24:00", "addr": "전북특별자치도 전주시 완산구 전동" },
+    { "id": "night-seomun", "name": "대구 서문시장 야시장", "marketType": "야시장", "sido": "대구광역시", "sigungu": "중구", "region": "gyeongsang", "lat": 35.8690, "lng": 128.5806, "openDays": [], "hours": "매일 19:00~23:30(동절기 단축)", "addr": "대구광역시 중구 대신동" },
+    { "id": "night-songjeong", "name": "광주 1913송정역시장", "marketType": "야시장", "sido": "광주광역시", "sigungu": "광산구", "region": "jeolla", "lat": 35.1361, "lng": 126.7925, "openDays": [], "hours": "매일 11:00~22:00(점포별 상이)", "addr": "광주광역시 광산구 송정동" },
+    { "id": "night-daein", "name": "광주 대인예술야시장(별장)", "marketType": "야시장", "sido": "광주광역시", "sigungu": "동구", "region": "jeolla", "lat": 35.1493, "lng": 126.9186, "openDays": [], "hours": "매주 토 18:00~23:00", "addr": "광주광역시 동구 대인동" },
+    { "id": "night-mokpo", "name": "목포 남진야시장", "marketType": "야시장", "sido": "전라남도", "sigungu": "목포시", "region": "jeolla", "lat": 34.7899, "lng": 126.3897, "openDays": [], "hours": "금·토 18:00~24:00", "addr": "전라남도 목포시 자유시장" },
+    { "id": "night-gwangjang", "name": "서울 광장시장", "marketType": "야시장", "sido": "서울특별시", "sigungu": "종로구", "region": "seoul", "lat": 37.5701, "lng": 126.9997, "openDays": [], "hours": "매일 09:00~23:00(점포별 상이)", "addr": "서울특별시 종로구 예지동" },
+    { "id": "night-dongmun", "name": "제주 동문시장 야시장", "marketType": "야시장", "sido": "제주특별자치도", "sigungu": "제주시", "region": "jeju", "lat": 33.5127, "lng": 126.5270, "openDays": [], "hours": "매일 18:00~24:00", "addr": "제주특별자치도 제주시 이도1동" },
+    { "id": "night-sokcho", "name": "속초관광수산시장", "marketType": "야시장", "sido": "강원특별자치도", "sigungu": "속초시", "region": "gangwon", "lat": 38.2075, "lng": 128.5915, "openDays": [], "hours": "매일(점포별 상이)", "addr": "강원특별자치도 속초시 중앙동" },
+    { "id": "night-gyeongju", "name": "경주 중앙시장 야시장", "marketType": "야시장", "sido": "경상북도", "sigungu": "경주시", "region": "gyeongsang", "lat": 35.8438, "lng": 129.2124, "openDays": [], "hours": "금·토 18:00~23:00", "addr": "경상북도 경주시 성동동" }
+  ]
+}

@@ -1540,6 +1540,55 @@ h3 {
   .season-banner-note { margin-left: 0; width: 100%; }
 }
 
+/* ── 전통시장(장터·야시장) ── */
+.market-cover {
+  position: relative;
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.market-cover-emoji { font-size: 46px; line-height: 1; }
+.market-today-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: #e5484d;
+  color: #fff;
+  font-weight: 800;
+}
+.market-day {
+  font-size: var(--fs-caption);
+  color: var(--text-soft);
+  font-weight: 600;
+  margin: 5px 0 0;
+}
+.market-day.today { color: #e5484d; font-weight: 800; }
+.market-card-actions { margin-top: 8px; }
+/* 목록 헤더(시장 모드) */
+.market-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 0 12px;
+}
+.market-list-title { font-weight: 800; font-size: var(--fs-heading); }
+/* 상세 */
+.market-detail-head { margin: 10px 0 16px; }
+.market-detail-head h1 { font-size: clamp(20px, 4vw, 28px); margin: 8px 0; }
+.market-detail-day { font-weight: 700; margin: 6px 0; }
+.market-detail-day.today { color: #e5484d; }
+.market-detail-map {
+  height: 300px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 14px 0;
+}
+.market-detail-map .mini-map { height: 100%; width: 100%; }
+.market-nearby { margin-top: 26px; }
+.market-nearby-title { font-size: var(--fs-heading); font-weight: 800; margin: 0 0 12px; }
+
 /* ── 상태 배지 ── */
 .badge {
   display: inline-flex;

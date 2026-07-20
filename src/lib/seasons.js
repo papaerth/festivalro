@@ -25,9 +25,12 @@ export const TYPES = {
   festival: { key: "festival", label: "축제", color: "#C2578A", soft: "#F7E4EE", emoji: "🎉" },
   exhibition: { key: "exhibition", label: "전시·박람회", color: "#6A4C93", soft: "#ECE5F5", emoji: "🖼️" },
   performance: { key: "performance", label: "공연", color: "#2A7DB1", soft: "#E1EDF5", emoji: "🎭" },
+  // 전통시장(장터·야시장) — 축제 중심 구성을 지키려 TYPE_ORDER(캐러셀/목록 탭)에는 넣지 않고,
+  //  지도 필터의 별도 토글 칩으로만 노출. 마커·배지 색/이모지용으로만 정의.
+  market: { key: "market", label: "장터·야시장", color: "#3E8E5A", soft: "#E2F0E8", emoji: "🏪" },
 };
 
-// 필터 칩 순서 (전체 → 축제 → 전시·박람회 → 공연)
+// 필터 칩 순서 (전체 → 축제 → 전시·박람회 → 공연). ※ market 제외(별도 토글).
 export const TYPE_ORDER = ["festival", "exhibition", "performance"];
 
 // 유형 코드로 테마를 꺼내는 도우미 (없으면 축제 기본)
@@ -38,7 +41,7 @@ export function typeTheme(type) {
 // 지도 마커 색: 축제는 계절색(기존 그대로), 전시·공연은 유형색으로 구분
 export function markerColor(item) {
   const t = item?.type;
-  if (t === "exhibition" || t === "performance") return TYPES[t].color;
+  if (t === "exhibition" || t === "performance" || t === "market") return TYPES[t].color;
   return seasonColor(item?.season);
 }
 
