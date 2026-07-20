@@ -17,6 +17,7 @@ import { getPublishedNewFestivals } from "./submissions";
 import { fetchFromKintex } from "./kintex";
 import { fetchFromCulture } from "./culture";
 import { fetchFromSeoul } from "./seoul";
+import { fetchFromKcisa } from "./kcisa";
 import { matchSido } from "./regionsKr";
 
 // 17개 시도 대략 중심 좌표 — 직접 등록 축제(좌표 없음)에 근사 마커를 띄우기 위한 폴백값.
@@ -538,10 +539,11 @@ export async function getFestivals() {
 
   const standardEnabled = process.env.STANDARD_API_ENABLED !== "false";
 
-  const [tourRes, stdRes, seoulRes, cultureRes, eventsRes, kintexRes] = await Promise.allSettled([
+  const [tourRes, stdRes, seoulRes, kcisaRes, cultureRes, eventsRes, kintexRes] = await Promise.allSettled([
     fetchFromTourApi(apiKey),
     standardEnabled ? fetchFromStandardApi() : Promise.resolve([]),
     fetchFromSeoul(), // 서울 공연·전시(키 없으면 빈 배열) — 전시 보강 주력
+    fetchFromKcisa(), // 전국 국립 미술관·박물관 전시(키 없으면 빈 배열)
     fetchFromCulture(), // 문화포털 전시·공연(기본 OFF)
     EVENTS_ENABLED ? fetchFromEventsApi() : Promise.resolve([]), // (선택) TourAPI 기반
     fetchFromKintex(), // 경기데이터드림 킨텍스(키 없으면 조용히 빈 배열)
@@ -550,6 +552,7 @@ export async function getFestivals() {
   const tourList = tourRes.status === "fulfilled" ? tourRes.value : [];
   const stdList = stdRes.status === "fulfilled" ? stdRes.value : [];
   const seoulList = seoulRes.status === "fulfilled" ? seoulRes.value : [];
+  const kcisaList = kcisaRes.status === "fulfilled" ? kcisaRes.value : [];
   const cultureList = cultureRes.status === "fulfilled" ? cultureRes.value : [];
   const eventsList = eventsRes.status === "fulfilled" ? eventsRes.value : [];
   const kintexList = kintexRes.status === "fulfilled" ? kintexRes.value : [];
@@ -569,7 +572,7 @@ export async function getFestivals() {
   //  이렇게 하면 서울 축제가 TourAPI 축제와 겹쳐도 하나만 남습니다.
   const idSeen = new Set(merged.map((f) => f.id));
   const nameSeen = new Set(merged.filter((f) => normName(f.name).length > 1).map(dedupKey));
-  for (const f of [...seoulList, ...cultureList, ...eventsList, ...kintexList]) {
+  for (const f of [...seoulList, ...kcisaList, ...cultureList, ...eventsList, ...kintexList]) {
     if (idSeen.has(f.id)) continue;
     const k = dedupKey(f);
     if (normName(f.name).length > 1 && nameSeen.has(k)) continue; // 이름+지역 중복
