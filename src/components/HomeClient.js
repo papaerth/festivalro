@@ -308,6 +308,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
 
   // 유형 칩 토글 (다시 누르면 전체). 계절·지역 선택은 유지(직교 필터).
   const pickType = (key) => setType((prev) => (prev === key ? null : key));
+  // 캐러셀 탭 선택 → 지도 유형 필터를 그 유형으로 '설정'(토글 아님).
+  //  → 지도 마커 집합이 그 유형으로 바뀌며 부드럽게 줌 조정됨(지역·계절·월 필터는 유지).
+  const selectType = (key) => setType(key);
 
   // 계절을 바꾸면 월 선택 초기화 (계절 안 월 칩이 새 계절 기준으로 다시 펼쳐지게)
   const pickSeason = (key) => {
@@ -532,6 +535,8 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
             <HeroCarousel
               carousels={carousels}
               tabLabels={carouselTabs}
+              activeType={type}
+              onSelectType={selectType}
               onPick={handleHeroPick}
               onReset={resetSelection}
             />

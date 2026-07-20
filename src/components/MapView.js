@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from "rea
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { markerColor, typeTheme } from "@/lib/seasons";
 import { formatPeriod } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
@@ -35,16 +35,27 @@ function makePin(color, glyph = "") {
   });
 }
 
-// 마커들이 모두 보이도록 지도 범위를 자동으로 맞춰줍니다.
+// 마커들이 모두 보이도록 지도 범위를 자동으로 맞춥니다.
+//  첫 렌더는 즉시, 이후(유형/지역/계절 전환 등 마커 집합 변경)는 부드럽게(flyToBounds).
+//  points는 상위에서 메모이즈되어 마커 집합이 바뀔 때만 갱신됨 → 카드 클릭엔 재실행 안 됨.
 function FitBounds({ points }) {
   const map = useMap();
+  const first = useRef(true);
   useEffect(() => {
     if (!points.length) return;
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const instant = first.current || reduce;
+    first.current = false;
     if (points.length === 1) {
-      map.setView(points[0], 11);
+      if (instant) map.setView(points[0], 12);
+      else map.flyTo(points[0], 12, { duration: 0.5 });
       return;
     }
-    map.fitBounds(points, { padding: [40, 40], maxZoom: 12 });
+    if (instant) map.fitBounds(points, { padding: [40, 40], maxZoom: 12 });
+    else map.flyToBounds(points, { padding: [40, 40], maxZoom: 12, duration: 0.5 });
   }, [points, map]);
   return null;
 }
@@ -149,7 +160,11 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
     (f) => Number.isFinite(f.lat) && Number.isFinite(f.lng)
   );
   const shown = withCoords.slice(0, MARKER_CAP);
-  const points = shown.map((f) => [f.lat, f.lng]);
+  // 마커 집합(id)이 실제로 바뀔 때만 points 참조가 바뀌도록 메모이즈.
+  //  → 카드 클릭(포커스)처럼 마커가 그대로면 FitBounds가 재실행되지 않음(부드러운 줌이 튀지 않게).
+  const pointsKey = shown.map((f) => f.id).join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const points = useMemo(() => shown.map((f) => [f.lat, f.lng]), [pointsKey]);
   const markerRefs = useRef({}); // 축제 id → 마커 인스턴스(팝업 열기용)
 
   return (

@@ -19,24 +19,27 @@ const TAB_EMOJI = { festival: "🔥", performance: "🎭", exhibition: "🖼️"
 const MIN_CARDS = 3; // 이 미만이면 해당 탭 숨김(빈 캐러셀 방지)
 
 // 메인 배너 캐러셀 — 유형별 탭(인기 축제 / 다가오는 공연 / 다가오는 전시)으로 전환.
-export default function HeroCarousel({ carousels = {}, tabLabels = {}, onPick, onReset }) {
+//  activeType(지도 유형 필터)과 양방향 동기화: 탭 클릭→onSelectType(지도 필터+줌),
+//  지도 칩 클릭→activeType 변경→이 탭이 따라옴.
+export default function HeroCarousel({ carousels = {}, tabLabels = {}, activeType = null, onSelectType, onPick, onReset }) {
   const { t, locale, href } = useI18n();
   const detailLabel = DETAIL[locale] || DETAIL.en;
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
   const [expanded, setExpanded] = useState(null); // 클릭한 카드의 확장 팝업
-  const [tab, setTab] = useState("festival");
   const scroller = useRef(null);
   const activeRef = useRef(0);
 
   // 카드 3개 이상인 유형만 탭으로 노출
   const visibleTabs = TYPE_ORDER.filter((k) => (carousels[k]?.length || 0) >= MIN_CARDS);
-  // 저장된 탭이 안 보이면 축제 우선, 없으면 첫 노출 탭으로 자동 대체
-  const activeTab = visibleTabs.includes(tab)
-    ? tab
-    : visibleTabs.includes("festival")
-    ? "festival"
-    : visibleTabs[0];
+  // 활성 탭 = 지도 유형 필터(activeType). 그 유형 탭이 노출 중일 때만 반영,
+  //  아니면(전체=null 또는 3개 미만) 축제 우선 → 첫 노출 탭.
+  const activeTab =
+    activeType && visibleTabs.includes(activeType)
+      ? activeType
+      : visibleTabs.includes("festival")
+      ? "festival"
+      : visibleTabs[0];
   const festivals = (activeTab && carousels[activeTab]) || [];
   const n = festivals.length;
 
@@ -106,7 +109,7 @@ export default function HeroCarousel({ carousels = {}, tabLabels = {}, onPick, o
               aria-selected={k === activeTab}
               className={`hero-tab ${k === activeTab ? "active" : ""}`}
               style={{ "--tab": TYPES[k].color }}
-              onClick={() => setTab(k)}
+              onClick={() => onSelectType && onSelectType(k)}
             >
               {TAB_EMOJI[k]} {tabLabels[k] || TYPES[k].label}
             </button>
