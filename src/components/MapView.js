@@ -61,9 +61,23 @@ function FitBounds({ points }) {
 }
 
 // 마커 팝업 열림/닫힘을 상위(HomeClient)에 알림 → 필터 접힘 연동.
+//  또한 팝업이 상단 필터/요약 영역에 가리지 않게, 상단부 마커면 지도를 안전하게 살짝 아래로.
+//  (Leaflet 기본 autoPan은 maxBounds+viscosity와 충돌해 무한재귀 크래시 → 끄고 단일 panBy 사용)
 function PopupEvents({ onOpen, onClose }) {
+  const map = useMap();
   useMapEvents({
-    popupopen: () => onOpen && onOpen(),
+    popupopen: (e) => {
+      onOpen && onOpen();
+      try {
+        const ll = e.popup && e.popup.getLatLng && e.popup.getLatLng();
+        if (!ll) return;
+        const y = map.latLngToContainerPoint(ll).y;
+        const RESERVE = 150; // 상단 필터/요약 + 팝업 높이 여유
+        if (y < RESERVE) map.panBy([0, y - RESERVE], { animate: true, duration: 0.4 });
+      } catch {
+        /* 팝업 위치 보정 실패는 무시 */
+      }
+    },
     popupclose: () => onClose && onClose(),
   });
   return null;
@@ -217,12 +231,7 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
               if (m) markerRefs.current[f.id] = m;
             }}
           >
-            <Popup
-              autoPan
-              keepInView
-              autoPanPaddingTopLeft={[16, 120]}
-              autoPanPaddingBottomRight={[16, 28]}
-            >
+            <Popup autoPan={false}>
               <strong>{f.displayName || f.name}</strong>
               <br />
               <span>{formatPeriod(f.startDate, f.endDate)}</span>
