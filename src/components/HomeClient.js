@@ -8,7 +8,7 @@ import { matchSido } from "@/lib/regionsKr";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
-import { getTypeLabels, getCarouselTabs } from "@/lib/i18n";
+import { getTypeLabels, getCarouselTabs, getHeroButtonLabel } from "@/lib/i18n";
 import MapFilters from "./MapFilters";
 import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
@@ -24,23 +24,6 @@ import ReportLink from "./ReportLink";
 import AboutLink from "./AboutLink";
 import BrandLogo from "./BrandLogo";
 import BrandTagline from "./BrandTagline";
-
-// 상단 배지 문구 (13개 언어). today=오늘 진행중 / week=이번 주 진행 축제(작은 숫자 방지용)
-const TODAY = {
-  ko: { today: (n) => `오늘 진행중 축제 ${n}개 · 지금 바로 보기`, week: (n) => `이번 주 진행 축제 ${n}개 · 지금 보기` },
-  en: { today: (n) => `${n} festivals today · see now`, week: (n) => `${n} festivals this week · see now` },
-  ja: { today: (n) => `本日開催中の祭り ${n}件 · 今すぐ見る`, week: (n) => `今週のお祭り ${n}件 · 見る` },
-  zh: { today: (n) => `今日进行中庆典 ${n}个 · 立即查看`, week: (n) => `本周庆典 ${n}个 · 查看` },
-  "zh-TW": { today: (n) => `今日進行中慶典 ${n}個 · 立即查看`, week: (n) => `本週慶典 ${n}個 · 查看` },
-  es: { today: (n) => `${n} festivales hoy · ver ahora`, week: (n) => `${n} festivales esta semana · ver` },
-  fr: { today: (n) => `${n} festivals aujourd'hui · voir`, week: (n) => `${n} festivals cette semaine · voir` },
-  ru: { today: (n) => `Фестивалей сегодня: ${n} · смотреть`, week: (n) => `Фестивалей на неделе: ${n} · смотреть` },
-  de: { today: (n) => `Heute ${n} Feste live · ansehen`, week: (n) => `Diese Woche ${n} Feste · ansehen` },
-  ar: { today: (n) => `${n} مهرجانات اليوم · شاهد الآن`, week: (n) => `${n} مهرجانات هذا الأسبوع · شاهد` },
-  vi: { today: (n) => `${n} lễ hội hôm nay · xem ngay`, week: (n) => `${n} lễ hội tuần này · xem` },
-  id: { today: (n) => `${n} festival hari ini · lihat`, week: (n) => `${n} festival minggu ini · lihat` },
-  th: { today: (n) => `เทศกาลวันนี้ ${n} · ดูเลย`, week: (n) => `เทศกาลสัปดาห์นี้ ${n} · ดู` },
-};
 
 // 지도는 브라우저에서만 그려질 수 있어 ssr:false 로 불러옵니다.
 const MapView = dynamic(() => import("./MapView"), {
@@ -245,17 +228,21 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     }
   }, []);
 
-  // 오늘(현재 계절) 진행중인 '축제' 수 — 히어로 문구가 "축제"라 축제만 카운트.
-  const todayOngoing = useMemo(() => {
+  // 오늘(현재 계절) 진행중인 건수를 '유형별'로 — 히어로 바로가기 버튼 3개의 숫자.
+  //  클릭 시 목록도 (그 유형 + 현재 계절 + 진행중)으로 필터되므로 목록 카운트와 정확히 일치.
+  const todayByType = useMemo(() => {
     const now = new Date();
     const cs = currentSeason();
-    return withSido.filter(
-      (f) =>
-        f.type === "festival" &&
-        f.season === cs &&
-        getStatusInfo(f.startDate, f.endDate, now).key === "ongoing"
-    ).length;
+    const cnt = (ty) =>
+      withSido.filter(
+        (f) =>
+          f.type === ty &&
+          f.season === cs &&
+          getStatusInfo(f.startDate, f.endDate, now).key === "ongoing"
+      ).length;
+    return { festival: cnt("festival"), performance: cnt("performance"), exhibition: cnt("exhibition") };
   }, [withSido]);
+  const todayOngoing = todayByType.festival; // 축제 버튼 · 배지 폴백 판단용
 
   // 이번 주말에 열리는(겹치는) '축제' 수 — 진행중이 적을 때 배지 대체용
   const weekendCount = useMemo(() => {
@@ -265,8 +252,9 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     ).length;
   }, [withSido]);
 
-  // 배지 클릭 → 진행중 '축제'만 보기 (현재 계절, 전국). 유형=축제로 맞춰 문구와 일치.
-  const showOngoing = () => {
+  // 히어로 버튼 클릭 → 그 유형의 진행중만 보기 (현재 계절, 전국).
+  //  유형·계절·상태 필터를 한꺼번에 맞춰 지도·캐러셀·목록 탭이 모두 그 유형으로 동기화됨.
+  const showOngoingType = (ty) => {
     setQuery("");
     setPeriod(null);
     setShowFavorites(false);
@@ -274,7 +262,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     setSigungu(null);
     setMonth(null);
     setSeason(currentSeason());
-    setType("festival");
+    setType(ty);
     setStatusFilter("ongoing");
     scrollToList();
   };
@@ -292,16 +280,32 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     scrollToList();
   };
 
-  // 상단 배지: 진행중 3개 이상이면 '오늘 진행중', 그 미만이면 '이번 주 진행 축제'
-  const badgeT = TODAY[locale] || TODAY.ko;
-  const badge =
-    todayOngoing >= 3
-      ? { text: badgeT.today(todayOngoing), onClick: showOngoing }
-      : weekendCount >= 1
-      ? { text: badgeT.week(weekendCount), onClick: showThisWeek }
-      : todayOngoing >= 1
-      ? { text: badgeT.today(todayOngoing), onClick: showOngoing }
-      : null;
+  // 히어로 유형별 바로가기 버튼 3개 (축제=주인공, 공연·전시=반 톤). 0개인 유형은 숨김.
+  //  · 축제: 오늘 진행중이 있으면 그 수, 없으면 이번 주말 진행 축제로 폴백(축제 우선 — 항상 노출)
+  //  · 공연·전시: 오늘(현재 계절) 진행중 건수 (0이면 버튼 자체를 숨김)
+  const heroButtons = [];
+  if (todayByType.festival >= 1) {
+    heroButtons.push({
+      key: "festival", primary: true, emoji: TYPES.festival.emoji,
+      label: getHeroButtonLabel("festival", todayByType.festival, locale),
+      onClick: () => showOngoingType("festival"),
+    });
+  } else if (weekendCount >= 1) {
+    heroButtons.push({
+      key: "festival", primary: true, emoji: TYPES.festival.emoji,
+      label: getHeroButtonLabel("festivalWeek", weekendCount, locale),
+      onClick: showThisWeek,
+    });
+  }
+  ["performance", "exhibition"].forEach((ty) => {
+    if (todayByType[ty] >= 1) {
+      heroButtons.push({
+        key: ty, primary: false, emoji: TYPES[ty].emoji, accent: TYPES[ty].color,
+        label: getHeroButtonLabel(ty, todayByType[ty], locale),
+        onClick: () => showOngoingType(ty),
+      });
+    }
+  });
 
   // 시도를 바꾸면 시군구 선택 초기화 + 지도로 스크롤
   const pickSido = (key) => {
@@ -637,16 +641,22 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
               {t.hero.titleB}
             </h1>
 
-            {badge && (
-              <button
-                className="today-badge"
-                onClick={badge.onClick}
-                suppressHydrationWarning
-              >
-                <span className="today-dot" aria-hidden="true" />
-                {badge.text}
-                <span className="today-arrow" aria-hidden="true"> →</span>
-              </button>
+            {heroButtons.length > 0 && (
+              <div className="hero-cta-row" suppressHydrationWarning>
+                {heroButtons.map((b) => (
+                  <button
+                    key={b.key}
+                    type="button"
+                    className={`hero-cta ${b.primary ? "primary" : "sub"}`}
+                    style={b.accent ? { "--cta": b.accent } : undefined}
+                    onClick={b.onClick}
+                  >
+                    <span className="hero-cta-emoji" aria-hidden="true">{b.emoji}</span>
+                    <span className="hero-cta-text">{b.label}</span>
+                    <span className="hero-cta-arrow" aria-hidden="true">→</span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 

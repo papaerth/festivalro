@@ -2889,40 +2889,87 @@ h3 {
 /* ═══════════ 추천 루프 (오늘 배지 · 최근 본 축제) ═══════════ */
 
 /* 오늘 진행중 배지 (히어로 상단) */
-.today-badge {
+/* ── 히어로 유형별 바로가기 버튼 (축제=주인공, 공연·전시=반 톤) ── */
+.hero-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+.hero-cta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 16px;
-  padding: 10px 18px;
+  gap: 7px;
   border-radius: var(--radius-pill);
   background: var(--surface);
-  border: 1.5px solid var(--accent);
-  color: var(--accent);
-  font-size: var(--fs-body);
+  border: 1.5px solid var(--cta, var(--accent));
+  color: var(--cta, var(--accent));
   font-weight: 700;
-  box-shadow: var(--shadow);
   cursor: pointer;
+  white-space: nowrap;
   transition: transform var(--t-fast), background var(--t-fast),
     color var(--t-fast);
 }
-.today-badge:hover {
+.hero-cta:hover {
   transform: translateY(-2px);
-  background: var(--accent);
+  background: var(--cta, var(--accent));
   color: #fff;
 }
-.today-badge:hover .today-dot {
-  background: #fff;
-}
-.today-badge:active {
+.hero-cta:active {
   transform: translateY(0) scale(0.99);
 }
-.today-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: #e5484d;
-  flex: 0 0 auto;
+.hero-cta-arrow {
+  transition: transform var(--t-fast);
+}
+.hero-cta:hover .hero-cta-arrow {
+  transform: translateX(2px);
+}
+/* 축제: 크게(주인공) */
+.hero-cta.primary {
+  padding: 11px 20px;
+  font-size: var(--fs-body);
+  box-shadow: var(--shadow);
+}
+.hero-cta.primary .hero-cta-emoji {
+  font-size: 1.12em;
+}
+/* 공연·전시: 반 톤 작게 */
+.hero-cta.sub {
+  padding: 8px 15px;
+  font-size: calc(var(--fs-body) - 1px);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+/* 모바일: 축제 크게 위 한 줄 · 공연·전시 작게 아래 나란히 (좁게 구겨지지 않게) */
+@media (max-width: 520px) {
+  .hero-cta-row {
+    gap: 8px;
+  }
+  .hero-cta.primary {
+    flex: 1 0 100%;
+    justify-content: center;
+  }
+  .hero-cta.sub {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    padding: 8px 10px;
+    gap: 5px;
+    font-size: 12.5px;
+  }
+  /* 좁은 화면에선 화살표를 생략해 유형명+숫자가 잘리지 않게 (핵심 정보 우선) */
+  .hero-cta.sub .hero-cta-arrow {
+    display: none;
+  }
+  .hero-cta.sub .hero-cta-emoji {
+    font-size: 0.95em;
+  }
+  .hero-cta.sub .hero-cta-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 /* 최근 본 축제 — 가로 스크롤 줄 */

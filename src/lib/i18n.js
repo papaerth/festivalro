@@ -457,6 +457,42 @@ export function getCarouselTabs(locale) {
   return out;
 }
 
+// ── 히어로 유형별 바로가기 버튼 문구 (13개 언어). n=오늘 진행중 건수 ──
+//  festival=오늘 진행중 축제 / festivalWeek=진행 축제 적을 때 이번 주말 폴백(축제 우선)
+//  performance·exhibition=오늘 진행중 공연/전시 건수. 클릭 시 해당 유형+진행중 목록으로 이동.
+const HERO_BTN = {
+  festival: {
+    ko: (n) => `오늘 진행중 축제 ${n}개`, en: (n) => `${n} festivals today`, ja: (n) => `本日開催中の祭り ${n}件`,
+    zh: (n) => `今日进行中庆典 ${n}个`, "zh-TW": (n) => `今日進行中慶典 ${n}個`, es: (n) => `${n} festivales hoy`,
+    fr: (n) => `${n} festivals aujourd'hui`, ru: (n) => `Фестивалей сегодня: ${n}`, de: (n) => `Heute ${n} Feste`,
+    ar: (n) => `${n} مهرجانات اليوم`, vi: (n) => `${n} lễ hội hôm nay`, id: (n) => `${n} festival hari ini`, th: (n) => `เทศกาลวันนี้ ${n}`,
+  },
+  festivalWeek: {
+    ko: (n) => `이번 주 진행 축제 ${n}개`, en: (n) => `${n} festivals this week`, ja: (n) => `今週のお祭り ${n}件`,
+    zh: (n) => `本周庆典 ${n}个`, "zh-TW": (n) => `本週慶典 ${n}個`, es: (n) => `${n} festivales esta semana`,
+    fr: (n) => `${n} festivals cette semaine`, ru: (n) => `Фестивалей на неделе: ${n}`, de: (n) => `Diese Woche ${n} Feste`,
+    ar: (n) => `${n} مهرجانات هذا الأسبوع`, vi: (n) => `${n} lễ hội tuần này`, id: (n) => `${n} festival minggu ini`, th: (n) => `เทศกาลสัปดาห์นี้ ${n}`,
+  },
+  performance: {
+    ko: (n) => `공연 ${n}개`, en: (n) => `${n} performances`, ja: (n) => `公演 ${n}件`,
+    zh: (n) => `演出 ${n}个`, "zh-TW": (n) => `演出 ${n}個`, es: (n) => `${n} espectáculos`,
+    fr: (n) => `${n} spectacles`, ru: (n) => `Спектаклей: ${n}`, de: (n) => `${n} Aufführungen`,
+    ar: (n) => `${n} عروض`, vi: (n) => `${n} biểu diễn`, id: (n) => `${n} pertunjukan`, th: (n) => `การแสดง ${n}`,
+  },
+  exhibition: {
+    ko: (n) => `전시·박람회 ${n}개`, en: (n) => `${n} exhibitions`, ja: (n) => `展示・博覧会 ${n}件`,
+    zh: (n) => `展览 ${n}个`, "zh-TW": (n) => `展覽 ${n}個`, es: (n) => `${n} exposiciones`,
+    fr: (n) => `${n} expositions`, ru: (n) => `Выставок: ${n}`, de: (n) => `${n} Ausstellungen`,
+    ar: (n) => `${n} معارض`, vi: (n) => `${n} triển lãm`, id: (n) => `${n} pameran`, th: (n) => `นิทรรศการ ${n}`,
+  },
+};
+// 히어로 버튼 문구 — (kind, n, locale). kind: festival|festivalWeek|performance|exhibition
+export function getHeroButtonLabel(kind, n, locale) {
+  const row = HERO_BTN[kind];
+  if (!row) return String(n);
+  return (row[locale] || row.en)(n);
+}
+
 // 상세페이지 확장 섹션 제목·라벨 (13개 언어). 내용(축제 데이터)은 번역 안 함.
 const SECTION_LABELS = {
   "ko": {
