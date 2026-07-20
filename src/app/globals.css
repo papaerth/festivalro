@@ -1176,12 +1176,46 @@ h3 {
 }
 
 /* ── 상태별 개수 요약 (클릭 필터) ── */
+/* 목록 유형 탭 (전체/축제/전시·박람회/공연) — 지도 칩·캐러셀 탭과 상태 공유 */
+.list-type-tabs {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 20px 2px 0;
+  padding-bottom: 2px;
+}
+.list-type-tabs::-webkit-scrollbar { display: none; }
+.ltab {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-soft);
+  font-weight: 700;
+  font-size: var(--fs-body);
+  padding: 7px 15px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+.ltab:hover {
+  border-color: var(--tab, var(--accent));
+  color: var(--tab, var(--accent));
+}
+.ltab.active {
+  background: var(--tab, var(--accent));
+  border-color: var(--tab, var(--accent));
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(24, 27, 34, 0.18);
+}
+
 .status-summary {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  margin: 16px 2px 12px;
+  margin: 12px 2px 12px;
 }
 .status-pill {
   display: inline-flex;
