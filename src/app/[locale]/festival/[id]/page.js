@@ -13,6 +13,7 @@ import PrivacyLink from "@/components/PrivacyLink";
 import BrandTagline from "@/components/BrandTagline";
 import { SEASONS, typeTheme } from "@/lib/seasons";
 import { TAG_DEFS } from "@/lib/tags";
+import { getSeasonBadge, seasonBadgeLabel } from "@/lib/season";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import {
   LOCALES,
@@ -22,6 +23,7 @@ import {
   getSections,
   getTypeLabel,
   getTagLabel,
+  getSeasonText,
   localeHref,
   HTML_LANG,
   SITE_URL,
@@ -185,6 +187,8 @@ export default async function FestivalDetailPage({ params }) {
 
   const ty = typeTheme(festival.type);
   const typeLabel = getTypeLabel(festival.type || "festival", loc);
+  const seasonBadge = getSeasonBadge(festival);
+  const seasonLabel = seasonBadge ? seasonBadgeLabel(seasonBadge, getSeasonText(loc)) : null;
   const theme = SEASONS[festival.season] || SEASONS.spring;
   const status = getStatusInfo(festival.startDate, festival.endDate);
   const statusLabel =
@@ -283,6 +287,11 @@ export default async function FestivalDetailPage({ params }) {
                     {TAG_DEFS[k].emoji} {getTagLabel(k, loc)}
                   </span>
                 ) : null
+              )}
+              {seasonLabel && (
+                <span className={`badge season-badge-inline ${seasonBadge.kind} ${seasonBadge.phase}`}>
+                  {seasonLabel}
+                </span>
               )}
             </div>
             <h1>

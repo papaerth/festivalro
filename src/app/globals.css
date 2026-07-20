@@ -1494,6 +1494,52 @@ h3 {
   font-weight: 700;
 }
 
+/* ── 개화(봄)·단풍(가을) 시즌 배지/배너 ── */
+.season-badge {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.season-badge.bloom { background: #fce4ef; color: #c2266b; }
+.season-badge.foliage { background: #fdece0; color: #c1621f; }
+/* '절정'은 색을 꽉 채워 강조 */
+.season-badge.bloom.peak { background: #e0479a; color: #fff; }
+.season-badge.foliage.peak { background: #e07a2a; color: #fff; }
+/* 상세페이지 인라인 배지(유형·태그 배지 옆) */
+.season-badge-inline.bloom { background: #fce4ef; color: #c2266b; }
+.season-badge-inline.foliage { background: #fdece0; color: #c1621f; }
+.season-badge-inline.bloom.peak { background: #e0479a; color: #fff; }
+.season-badge-inline.foliage.peak { background: #e07a2a; color: #fff; }
+
+/* 메인 상단 시즌 배너 (한 줄) */
+.season-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+}
+.season-banner.bloom { background: linear-gradient(90deg, #fde3ef, #fbeef5); color: #a51f5f; }
+.season-banner.foliage { background: linear-gradient(90deg, #fde8d6, #fdf1e6); color: #a8531a; }
+.season-banner-emoji { font-size: 1.3em; }
+.season-banner-title { font-weight: 800; }
+.season-banner-regions { font-weight: 700; }
+.season-banner-note {
+  margin-left: auto;
+  font-size: var(--fs-caption);
+  opacity: 0.72;
+  font-weight: 500;
+}
+@media (max-width: 520px) {
+  .season-banner-note { margin-left: 0; width: 100%; }
+}
+
 /* ── 상태 배지 ── */
 .badge {
   display: inline-flex;

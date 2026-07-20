@@ -1,0 +1,13 @@
+{
+  "year": 2025,
+  "note": "2025년 산림청 산림단풍 예측지도 기준(권역 대표값). 2026년 예측은 10월 초 발표 후 갱신. 실제와 다를 수 있음.",
+  "regions": {
+    "gangwon":     { "peakStart": "2025-10-17", "peakEnd": "2025-10-26" },
+    "chungcheong": { "peakStart": "2025-10-24", "peakEnd": "2025-11-02" },
+    "seoul":       { "peakStart": "2025-10-26", "peakEnd": "2025-11-04" },
+    "gyeonggi":    { "peakStart": "2025-10-26", "peakEnd": "2025-11-04" },
+    "gyeongsang":  { "peakStart": "2025-10-25", "peakEnd": "2025-11-05" },
+    "jeolla":      { "peakStart": "2025-10-30", "peakEnd": "2025-11-11" },
+    "jeju":        { "peakStart": "2025-11-05", "peakEnd": "2025-11-15" }
+  }
+}

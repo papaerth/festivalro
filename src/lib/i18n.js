@@ -476,6 +476,38 @@ export function getTagLabels(locale) {
   return out;
 }
 
+// ── 개화·단풍 시즌 배지/배너 문구 (13개 언어) ──
+const SEASON_I18N = {
+  ko: { bBefore: "개화 예상", bPeak: "지금 절정", bWane: "개화 끝물", fBefore: "단풍 예상", fPeak: "지금 단풍 절정", fWane: "단풍 끝물", bnBloom: "지금 벚꽃 절정", bnFoliage: "지금 단풍 절정", note: "예상일 기준 · 실제와 다를 수 있음" },
+  en: { bBefore: "Bloom est.", bPeak: "In full bloom", bWane: "Bloom fading", fBefore: "Foliage est.", fPeak: "Peak foliage now", fWane: "Foliage fading", bnBloom: "Cherry blossoms peaking now", bnFoliage: "Autumn foliage peaking now", note: "Estimated dates · may differ from actual" },
+  ja: { bBefore: "開花予想", bPeak: "今が見頃", bWane: "散り始め", fBefore: "紅葉予想", fPeak: "今が紅葉の見頃", fWane: "紅葉終盤", bnBloom: "今が桜の見頃", bnFoliage: "今が紅葉の見頃", note: "予想日基準・実際と異なる場合あり" },
+  zh: { bBefore: "预计开花", bPeak: "正值盛放", bWane: "花期将尽", fBefore: "预计红叶", fPeak: "红叶正盛", fWane: "红叶将尽", bnBloom: "樱花正盛地区", bnFoliage: "红叶正盛地区", note: "预计日期 · 或与实际不同" },
+  "zh-TW": { bBefore: "預計開花", bPeak: "正值盛放", bWane: "花期將盡", fBefore: "預計紅葉", fPeak: "紅葉正盛", fWane: "紅葉將盡", bnBloom: "櫻花正盛地區", bnFoliage: "紅葉正盛地區", note: "預計日期 · 或與實際不同" },
+  es: { bBefore: "Floración est.", bPeak: "En plena flor", bWane: "Floración acabando", fBefore: "Follaje est.", fPeak: "Follaje en su punto", fWane: "Follaje acabando", bnBloom: "Cerezos en flor ahora", bnFoliage: "Follaje otoñal en su punto", note: "Fechas estimadas · pueden variar" },
+  fr: { bBefore: "Floraison prévue", bPeak: "En pleine floraison", bWane: "Floraison en fin", fBefore: "Feuillage prévu", fPeak: "Feuillage à son apogée", fWane: "Feuillage en fin", bnBloom: "Cerisiers en fleurs", bnFoliage: "Feuillage d'automne à son apogée", note: "Dates estimées · peuvent varier" },
+  ru: { bBefore: "Цветение ~", bPeak: "Пик цветения", bWane: "Цветение спадает", fBefore: "Листва ~", fPeak: "Пик листвы", fWane: "Листва увядает", bnBloom: "Сакура в разгаре цветения", bnFoliage: "Пик осенней листвы", note: "Ориентировочно · может отличаться" },
+  de: { bBefore: "Blüte vsl.", bPeak: "In voller Blüte", bWane: "Blüte klingt ab", fBefore: "Laub vsl.", fPeak: "Laub am Höhepunkt", fWane: "Laub klingt ab", bnBloom: "Kirschblüte am Höhepunkt", bnFoliage: "Herbstlaub am Höhepunkt", note: "Schätzung · kann abweichen" },
+  ar: { bBefore: "الإزهار المتوقع", bPeak: "في أوج الإزهار", bWane: "الإزهار يتلاشى", fBefore: "أوراق الخريف المتوقعة", fPeak: "ذروة أوراق الخريف", fWane: "الأوراق تتلاشى", bnBloom: "أزهار الكرز في ذروتها", bnFoliage: "أوراق الخريف في ذروتها", note: "تواريخ تقديرية · قد تختلف" },
+  vi: { bBefore: "Dự kiến nở", bPeak: "Đang nở rộ", bWane: "Hoa đang tàn", fBefore: "Dự kiến lá đỏ", fPeak: "Lá thu đỉnh điểm", fWane: "Lá đang tàn", bnBloom: "Hoa anh đào đang nở rộ", bnFoliage: "Lá thu đang đỉnh điểm", note: "Ngày dự kiến · có thể khác thực tế" },
+  id: { bBefore: "Perkiraan mekar", bPeak: "Sedang mekar penuh", bWane: "Mekar memudar", fBefore: "Perkiraan daun", fPeak: "Puncak dedaunan", fWane: "Dedaunan memudar", bnBloom: "Sakura sedang puncak mekar", bnFoliage: "Dedaunan musim gugur puncak", note: "Perkiraan tanggal · bisa berbeda" },
+  th: { bBefore: "คาดว่าบาน", bPeak: "กำลังบานเต็มที่", bWane: "ดอกใกล้โรย", fBefore: "คาดว่าใบเปลี่ยนสี", fPeak: "ใบไม้เปลี่ยนสีเต็มที่", fWane: "ใบใกล้ร่วง", bnBloom: "ซากุระกำลังบานเต็มที่", bnFoliage: "ใบไม้เปลี่ยนสีเต็มที่", note: "วันที่โดยประมาณ · อาจต่างจากจริง" },
+};
+// 시즌 문구 묶음(현재 언어). 컴포넌트에서 이모지와 조합해 씁니다.
+export function getSeasonText(locale) {
+  const L = SEASON_I18N[locale] || SEASON_I18N.en;
+  return {
+    bloomBefore: (d) => `${L.bBefore} ${d}`,
+    bloomPeak: L.bPeak,
+    bloomWaning: L.bWane,
+    foliageBefore: (r) => `${L.fBefore} ${r}`,
+    foliagePeak: L.fPeak,
+    foliageWaning: L.fWane,
+    bannerBloom: L.bnBloom,
+    bannerFoliage: L.bnFoliage,
+    note: L.note,
+  };
+}
+
 // ── 히어로 유형별 바로가기 버튼 문구 (13개 언어). n=오늘 진행중 건수 ──
 //  festival=오늘 진행중 축제 / festivalWeek=진행 축제 적을 때 이번 주말 폴백(축제 우선)
 //  performance·exhibition=오늘 진행중 공연/전시 건수. 클릭 시 해당 유형+진행중 목록으로 이동.

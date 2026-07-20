@@ -8,7 +8,8 @@ import { matchSido } from "@/lib/regionsKr";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
-import { getTypeLabels, getCarouselTabs, getHeroButtonLabel, getTagLabels } from "@/lib/i18n";
+import { getTypeLabels, getCarouselTabs, getHeroButtonLabel, getTagLabels, getSeasonText } from "@/lib/i18n";
+import { getSeasonBanner } from "@/lib/season";
 import MapFilters from "./MapFilters";
 import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
@@ -104,6 +105,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const [selected, setSelected] = useState(null); // 블로그·영상 섹션 연동 대상(축제) — null=인기축제 종합
   const [flashSignal, setFlashSignal] = useState(0); // 선택 시마다 +1 → 섹션 하이라이트
   const [resetSignal, setResetSignal] = useState(0); // 선택 해제 시 +1 → 지도 줌아웃 + 마커 팝업 닫기
+  const [mounted, setMounted] = useState(false); // 시즌 배너: 날짜 기반이라 마운트 후에만(SSR 불일치 방지)
   const theme = SEASONS[season];
   const mapRef = useRef(null); // 카드뉴스 클릭 시 스크롤할 지도 영역
   const listRef = useRef(null); // 배지 CTA에서 스크롤할 축제 목록 영역
@@ -229,6 +231,11 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       setQuery(q.trim());
     }
   }, []);
+
+  useEffect(() => setMounted(true), []);
+  // 메인 상단 시즌 배너: 지금 개화/단풍 '절정'인 권역이 있으면 표시, 없으면 숨김.
+  const seasonBanner = mounted ? getSeasonBanner() : null;
+  const seasonText = getSeasonText(locale);
 
   // 오늘(현재 계절) 진행중인 건수를 '유형별'로 — 히어로 바로가기 버튼 3개의 숫자.
   //  클릭 시 목록도 (그 유형 + 현재 계절 + 진행중)으로 필터되므로 목록 카운트와 정확히 일치.
@@ -568,6 +575,22 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
       />
 
       <main className="home-main">
+        {/* 시즌 배너: 지금 벚꽃/단풍 절정인 권역 (시즌 아니면 자동 숨김) */}
+        {seasonBanner && (
+          <div className={`season-banner ${seasonBanner.kind}`}>
+            <span className="season-banner-emoji" aria-hidden="true">
+              {seasonBanner.kind === "bloom" ? "🌸" : "🍁"}
+            </span>
+            <strong className="season-banner-title">
+              {seasonBanner.kind === "bloom" ? seasonText.bannerBloom : seasonText.bannerFoliage}
+            </strong>
+            <span className="season-banner-regions">
+              {seasonBanner.regions.map((r) => t.regions[r] || r).join(" · ")}
+            </span>
+            <span className="season-banner-note">{seasonText.note}</span>
+          </div>
+        )}
+
         {/* ① 다가오는 인기 축제 카드뉴스 + 세로 지도 (최상단) */}
         <div className="carousel-map-row">
           <div className="cmr-carousel">
