@@ -444,6 +444,19 @@ export function getMonthLabel(month, locale) {
   return arr[month - 1] || String(month);
 }
 
+// ── 메인 캐러셀 유형 탭 라벨 (인기 축제 / 다가오는 공연 / 다가오는 전시) ──
+const CAROUSEL_TABS = {
+  festival: { ko: "인기 축제", en: "Popular festivals", ja: "人気の祭り", zh: "热门庆典", "zh-TW": "熱門慶典", es: "Festivales populares", fr: "Festivals populaires", ru: "Популярные фестивали", de: "Beliebte Feste", ar: "مهرجانات رائجة", vi: "Lễ hội nổi bật", id: "Festival populer", th: "เทศกาลยอดนิยม" },
+  performance: { ko: "다가오는 공연", en: "Upcoming performances", ja: "近日の公演", zh: "即将上演", "zh-TW": "即將上演", es: "Próximos espectáculos", fr: "Spectacles à venir", ru: "Скоро: спектакли", de: "Kommende Aufführungen", ar: "عروض قادمة", vi: "Biểu diễn sắp tới", id: "Pertunjukan mendatang", th: "การแสดงเร็วๆ นี้" },
+  exhibition: { ko: "다가오는 전시", en: "Upcoming exhibitions", ja: "近日の展示", zh: "即将展出", "zh-TW": "即將展出", es: "Próximas exposiciones", fr: "Expositions à venir", ru: "Скоро: выставки", de: "Kommende Ausstellungen", ar: "معارض قادمة", vi: "Triển lãm sắp tới", id: "Pameran mendatang", th: "นิทรรศการเร็วๆ นี้" },
+};
+// 해당 언어의 캐러셀 탭 라벨 맵 { festival, performance, exhibition }
+export function getCarouselTabs(locale) {
+  const out = {};
+  for (const k of Object.keys(CAROUSEL_TABS)) out[k] = CAROUSEL_TABS[k][locale] || CAROUSEL_TABS[k].en;
+  return out;
+}
+
 // 상세페이지 확장 섹션 제목·라벨 (13개 언어). 내용(축제 데이터)은 번역 안 함.
 const SECTION_LABELS = {
   "ko": {

@@ -8,7 +8,7 @@ import { matchSido } from "@/lib/regionsKr";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
-import { getTypeLabels } from "@/lib/i18n";
+import { getTypeLabels, getCarouselTabs } from "@/lib/i18n";
 import MapFilters from "./MapFilters";
 import FestivalCard from "./FestivalCard";
 import FavoriteAlerts from "./FavoriteAlerts";
@@ -127,6 +127,7 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
   const ratings = useReviewStats();
   const { t, locale } = useI18n();
   const typeLabels = getTypeLabels(locale); // { all, festival, exhibition, performance }
+  const carouselTabs = getCarouselTabs(locale); // { festival, performance, exhibition }
 
   // 축제마다 시도 key(_sido)를 한 번만 계산해 필터를 가볍게 유지
   const withSido = useMemo(
@@ -372,30 +373,37 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
     return [...set].sort((a, b) => a.localeCompare(b, "ko"));
   }, [withSido, sido]);
 
-  // 히어로 캐러셀: 현재 계절/시도/시군구 필터에 맞는 '다가오는 인기 축제' 상위 10개
-  const carousel = useMemo(() => {
+  // 히어로 캐러셀: 현재 계절/월/지역 필터에 맞는 상위 목록을 '유형별'로 산출.
+  //  선정 기준은 모두 동일(진행중 우선 → 개막 임박 순), 유형만 다름. 탭 UI가 이걸 전환.
+  const carousels = useMemo(() => {
     const now = new Date();
-    const scored = withSido
+    const base = withSido
       .filter((f) => (month ? overlapsMonth(f.startDate, f.endDate, month) : f.season === season))
-      // 메인 카드뉴스는 축제 우선: 유형 미선택 시 축제만, 선택 시 그 유형
-      .filter((f) => (type ? f.type === type : f.type === "festival"))
       .filter((f) => (sido ? f._sido === sido : true))
-      .filter((f) => (sigungu ? f.sigungu === sigungu : true))
-      .map((f) => ({ f, st: getStatusInfo(f.startDate, f.endDate, now) }))
-      .filter((x) => x.st.key !== "ended")
-      .map(({ f, st }) => {
-        const ongoing = st.key === "ongoing";
-        const dday = ongoing ? 0 : st.dday;
-        const cheap =
-          (f.image ? 2 : 0) +
-          (f.source === "tour" ? 1 : 0) +
-          (ongoing ? 3 : Math.max(0, (90 - dday) / 90) * 2);
-        const recency = ongoing ? 1 : Math.max(0, (30 - dday) / 30);
-        return { f, score: (popScoreById[f.id] ?? cheap) + recency };
-      });
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, 10).map((x) => x.f);
-  }, [withSido, season, month, type, sido, sigungu, popScoreById]);
+      .filter((f) => (sigungu ? f.sigungu === sigungu : true));
+    const scoreTop = (list) => {
+      const scored = list
+        .map((f) => ({ f, st: getStatusInfo(f.startDate, f.endDate, now) }))
+        .filter((x) => x.st.key !== "ended") // 진행중/예정만
+        .map(({ f, st }) => {
+          const ongoing = st.key === "ongoing";
+          const dday = ongoing ? 0 : st.dday;
+          const cheap =
+            (f.image ? 2 : 0) +
+            (f.source === "tour" ? 1 : 0) +
+            (ongoing ? 3 : Math.max(0, (90 - dday) / 90) * 2);
+          const recency = ongoing ? 1 : Math.max(0, (30 - dday) / 30);
+          return { f, score: (popScoreById[f.id] ?? cheap) + recency };
+        });
+      scored.sort((a, b) => b.score - a.score);
+      return scored.slice(0, 10).map((x) => x.f);
+    };
+    return {
+      festival: scoreTop(base.filter((f) => f.type === "festival")),
+      performance: scoreTop(base.filter((f) => f.type === "performance")),
+      exhibition: scoreTop(base.filter((f) => f.type === "exhibition")),
+    };
+  }, [withSido, season, month, sido, sigungu, popScoreById]);
 
   // 블로그·영상 종합용 '메인 축제 후보' — 전국 인기+임박 순 상위.
   //  축제 우선: 유형 미선택 시 축제만 노출(메인 구성 유지), 유형 선택 시 그 유형.
@@ -522,7 +530,8 @@ export default function HomeClient({ festivals, usingSample, popScoreById = {} }
         <div className="carousel-map-row">
           <div className="cmr-carousel">
             <HeroCarousel
-              festivals={carousel}
+              carousels={carousels}
+              tabLabels={carouselTabs}
               onPick={handleHeroPick}
               onReset={resetSelection}
             />

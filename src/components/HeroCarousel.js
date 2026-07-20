@@ -2,10 +2,9 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { SEASONS } from "@/lib/seasons";
+import { SEASONS, TYPES, TYPE_ORDER } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
-import { getUiExtra } from "@/lib/i18n";
 import CoverImage from "./CoverImage";
 import MapDirections from "./MapDirections";
 
@@ -15,17 +14,30 @@ const DETAIL = {
   es: "Ver", fr: "Voir", ru: "Подробнее", de: "Ansehen", ar: "عرض",
   vi: "Xem", id: "Lihat", th: "ดู",
 };
+// 탭 이모지 (유형 배지 색은 TYPES에서, 이모지는 탭 성격에 맞춰)
+const TAB_EMOJI = { festival: "🔥", performance: "🎭", exhibition: "🖼️" };
+const MIN_CARDS = 3; // 이 미만이면 해당 탭 숨김(빈 캐러셀 방지)
 
-// 대한민국 구석구석 메인 배너 스타일 — 사진이 꽉 찬 대형 카드 캐러셀 (독립 섹션).
-export default function HeroCarousel({ festivals = [], onPick, onReset }) {
+// 메인 배너 캐러셀 — 유형별 탭(인기 축제 / 다가오는 공연 / 다가오는 전시)으로 전환.
+export default function HeroCarousel({ carousels = {}, tabLabels = {}, onPick, onReset }) {
   const { t, locale, href } = useI18n();
-  const ux = getUiExtra(locale);
   const detailLabel = DETAIL[locale] || DETAIL.en;
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
   const [expanded, setExpanded] = useState(null); // 클릭한 카드의 확장 팝업
+  const [tab, setTab] = useState("festival");
   const scroller = useRef(null);
   const activeRef = useRef(0);
+
+  // 카드 3개 이상인 유형만 탭으로 노출
+  const visibleTabs = TYPE_ORDER.filter((k) => (carousels[k]?.length || 0) >= MIN_CARDS);
+  // 저장된 탭이 안 보이면 축제 우선, 없으면 첫 노출 탭으로 자동 대체
+  const activeTab = visibleTabs.includes(tab)
+    ? tab
+    : visibleTabs.includes("festival")
+    ? "festival"
+    : visibleTabs[0];
+  const festivals = (activeTab && carousels[activeTab]) || [];
   const n = festivals.length;
 
   useEffect(() => {
@@ -78,7 +90,7 @@ export default function HeroCarousel({ festivals = [], onPick, onReset }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [n, festivals]);
 
-  if (n === 0) return null;
+  if (visibleTabs.length === 0) return null;
 
   const prev = () => scrollToIndex(Math.max(0, active - 1));
   const next = () => scrollToIndex(Math.min(n - 1, active + 1));
@@ -86,7 +98,20 @@ export default function HeroCarousel({ festivals = [], onPick, onReset }) {
   return (
     <section className="hero-carousel">
       <div className="hero-bar">
-        <span className="hero-title">{ux.trending}</span>
+        <div className="hero-tabs" role="tablist">
+          {visibleTabs.map((k) => (
+            <button
+              key={k}
+              role="tab"
+              aria-selected={k === activeTab}
+              className={`hero-tab ${k === activeTab ? "active" : ""}`}
+              style={{ "--tab": TYPES[k].color }}
+              onClick={() => setTab(k)}
+            >
+              {TAB_EMOJI[k]} {tabLabels[k] || TYPES[k].label}
+            </button>
+          ))}
+        </div>
         {n > 1 && (
           <div className="hero-bar-right">
             <span className="hero-count">
@@ -109,7 +134,8 @@ export default function HeroCarousel({ festivals = [], onPick, onReset }) {
             ‹
           </button>
         )}
-        <div className="hero-scroller" ref={scroller} onScroll={onScroll}>
+        {/* key={activeTab}: 탭 전환 시 리마운트되며 은은한 페이드 */}
+        <div key={activeTab} className="hero-scroller" ref={scroller} onScroll={onScroll}>
           {festivals.map((f) => {
             const season = SEASONS[f.season] || SEASONS.spring;
             const st = getStatusInfo(f.startDate, f.endDate);

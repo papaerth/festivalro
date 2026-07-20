@@ -4258,6 +4258,48 @@ h3 {
   font-size: var(--fs-heading);
   color: var(--text);
 }
+/* 유형별 캐러셀 탭 (인기 축제/공연/전시) — 좁으면 가로 스크롤 */
+.hero-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.hero-tabs::-webkit-scrollbar { display: none; }
+.hero-tab {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-soft);
+  font-weight: 800;
+  font-size: var(--fs-body);
+  padding: 6px 13px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+.hero-tab:hover {
+  border-color: var(--tab);
+  color: var(--tab);
+}
+.hero-tab.active {
+  background: var(--tab);
+  border-color: var(--tab);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(24, 27, 34, 0.18);
+}
+/* 탭 전환 시(scroller가 key로 리마운트) 은은한 페이드 */
+@keyframes heroTabFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.hero-scroller { animation: heroTabFade 0.32s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-scroller { animation: none; }
+}
 .hero-bar-right {
   display: flex;
   align-items: center;
