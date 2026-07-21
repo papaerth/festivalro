@@ -1,0 +1,11 @@
+{
+  "note": "상설(수시) 불꽃놀이 명소 — 테마파크 등 정기적으로 불꽃놀이를 하는 곳. 기간이 정해진 불꽃축제와 달리 '상설' 배지로 표시되고 불꽃놀이 탭 맨 뒤에 나옵니다. scheduleText=운영 요일/시즌 안내(자유 문구). 추가·수정은 이 배열에 한 줄씩.",
+  "spots": [
+    { "id": "fw-everland", "name": "에버랜드", "sido": "경기도", "sigungu": "용인시 처인구", "region": "gyeonggi", "lat": 37.2940, "lng": 127.2027, "scheduleText": "야간 개장 시 상설 불꽃·멀티미디어쇼 (시즌·기상 따라 변동)", "homepage": "https://www.everland.com", "addr": "경기도 용인시 처인구 포곡읍" },
+    { "id": "fw-seoulland", "name": "서울랜드", "sido": "경기도", "sigungu": "과천시", "region": "gyeonggi", "lat": 37.4349, "lng": 127.0176, "scheduleText": "주말·성수기 야간 불꽃 (시즌별 진행)", "homepage": "https://www.seoulland.co.kr", "addr": "경기도 과천시 광명로" },
+    { "id": "fw-lotteworld", "name": "롯데월드 어드벤처(서울)", "sido": "서울특별시", "sigungu": "송파구", "region": "seoul", "lat": 37.5111, "lng": 127.0980, "scheduleText": "불꽃·레이저 야간쇼 (일정 홈페이지 확인)", "homepage": "https://adventure.lotteworld.com", "addr": "서울특별시 송파구 올림픽로 240" },
+    { "id": "fw-gyeongjuworld", "name": "경주월드", "sido": "경상북도", "sigungu": "경주시", "region": "gyeongsang", "lat": 35.8210, "lng": 129.2790, "scheduleText": "주말·성수기 야간 불꽃 (시즌별 진행)", "homepage": "https://www.gyeongjuworld.com", "addr": "경상북도 경주시 보문로" },
+    { "id": "fw-busanlotteworld", "name": "롯데월드 어드벤처 부산", "sido": "부산광역시", "sigungu": "기장군", "region": "gyeongsang", "lat": 35.1930, "lng": 129.2160, "scheduleText": "야간 개장 시 불꽃·쇼 (시즌·일정별 진행)", "homepage": "https://adventurebusan.lotteworld.com", "addr": "부산광역시 기장군 기장읍 동부산관광로" },
+    { "id": "fw-eworld", "name": "이월드(83타워)", "sido": "대구광역시", "sigungu": "달서구", "region": "gyeongsang", "lat": 35.8530, "lng": 128.5650, "scheduleText": "주말·시즌 야간 불꽃·별빛축제 (일정 홈페이지 확인)", "homepage": "https://www.eworld.kr", "addr": "대구광역시 달서구 두류공원로" }
+  ]
+}

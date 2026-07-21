@@ -8,11 +8,12 @@ import { matchSido } from "@/lib/regionsKr";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
-import { getTypeLabels, getCarouselTabs, getHeroButtonLabel, getTagLabels, getSeasonText, getMarketText } from "@/lib/i18n";
+import { getTypeLabels, getCarouselTabs, getHeroButtonLabel, getTagLabels, getSeasonText, getMarketText, getFireworksText } from "@/lib/i18n";
 import { getSeasonBanner } from "@/lib/season";
 import MapFilters from "./MapFilters";
 import FestivalCard from "./FestivalCard";
 import MarketCard from "./MarketCard";
+import FireworksSpotCard from "./FireworksSpotCard";
 import FavoriteAlerts from "./FavoriteAlerts";
 import AccountMenu from "./AccountMenu";
 import LangSwitcher from "./LangSwitcher";
@@ -89,7 +90,7 @@ function overlapsMonth(startDate, endDate, month) {
   return false;
 }
 
-export default function HomeClient({ festivals, markets = [], usingSample, popScoreById = {} }) {
+export default function HomeClient({ festivals, markets = [], fireworksSpots = [], usingSample, popScoreById = {} }) {
   const [season, setSeason] = useState(currentSeason());
   const [month, setMonth] = useState(null); // null = 계절 전체 / 1~12 = 그 달에 걸치는 행사만
   const [type, setType] = useState(null); // null = 전체 유형(축제+전시+공연)
@@ -118,6 +119,7 @@ export default function HomeClient({ festivals, markets = [], usingSample, popSc
   const typeLabels = getTypeLabels(locale); // { all, festival, exhibition, performance }
   const tagLabels = getTagLabels(locale); // { fireworks, night, water }
   const marketText = getMarketText(locale);
+  const fireworksText = getFireworksText(locale);
   const carouselTabs = getCarouselTabs(locale); // { festival, performance, exhibition }
 
   // 축제마다 시도 key(_sido)를 한 번만 계산해 필터를 가볍게 유지
@@ -129,6 +131,11 @@ export default function HomeClient({ festivals, markets = [], usingSample, popSc
   const marketsWithSido = useMemo(
     () => markets.map((m) => ({ ...m, _sido: matchSido(m.sido || "") })),
     [markets]
+  );
+  // 상설 불꽃놀이 명소에도 _sido 부여
+  const spotsWithSido = useMemo(
+    () => fireworksSpots.map((s) => ({ ...s, _sido: matchSido(s.sido || "") })),
+    [fireworksSpots]
   );
 
   // 축제 목록으로 부드럽게 스크롤 (배지 CTA에서만 — 필터가 목록 바로 위라
@@ -372,6 +379,22 @@ export default function HomeClient({ festivals, markets = [], usingSample, popSc
       return true;
     });
   }, [showMarkets, marketsWithSido, sido, sigungu, query]);
+
+  // 🎆 불꽃놀이 태그가 켜지면(유형·시장 모드 아닐 때) 상설 명소를 목록/지도 맨 뒤에 붙임.
+  const showSpots = tags.includes("fireworks") && !type && !showMarkets;
+  const spotFiltered = useMemo(() => {
+    if (!showSpots) return [];
+    const qq = query.trim().toLowerCase();
+    return spotsWithSido.filter((s) => {
+      if (sido && s._sido !== sido) return false;
+      if (sigungu && s.sigungu !== sigungu) return false;
+      if (qq) {
+        const hay = `${s.name} ${s.displayName || ""} ${s.sigungu || ""}`.toLowerCase();
+        if (!hay.includes(qq)) return false;
+      }
+      return true;
+    });
+  }, [showSpots, spotsWithSido, sido, sigungu, query]);
   // 캐러셀 탭 선택 → 지도 유형 필터를 그 유형으로 '설정'(토글 아님).
   //  → 지도 마커 집합이 그 유형으로 바뀌며 부드럽게 줌 조정됨(지역·계절·월 필터는 유지).
   const selectType = (key) => setType(key);
@@ -576,16 +599,18 @@ export default function HomeClient({ festivals, markets = [], usingSample, popSc
   //  (+ 검색으로 고른 축제가 필터 밖이면 그 축제도 포함해 마커/팝업이 항상 뜨게)
   const mapFestivals = useMemo(() => {
     if (showMarkets) return marketFiltered;
+    // 🎆 상설 명소를 지도에도 함께(불꽃 태그 시)
+    const withSpots = showSpots ? [...filtered, ...spotFiltered] : filtered;
     if (
       selected &&
       Number.isFinite(selected.lat) &&
       Number.isFinite(selected.lng) &&
-      !filtered.some((f) => f.id === selected.id)
+      !withSpots.some((f) => f.id === selected.id)
     ) {
-      return [...filtered, selected];
+      return [...withSpots, selected];
     }
-    return filtered;
-  }, [showMarkets, marketFiltered, filtered, selected]);
+    return withSpots;
+  }, [showMarkets, marketFiltered, showSpots, spotFiltered, filtered, selected]);
 
   // 블로그·영상 섹션 소스: 선택 축제가 있으면 그 축제, 없으면 인기축제 종합
   const feedSource = selected ? [selected] : mainShorts;
@@ -856,6 +881,20 @@ export default function HomeClient({ festivals, markets = [], usingSample, popSc
             {t.list.loadMore}{" "}
             <span>{t.list.remain(filtered.length - visibleCount)}</span>
           </button>
+        )}
+
+        {/* 🎆 상설 불꽃놀이 명소 — 기간 있는 불꽃축제 뒤, 별도 섹션 */}
+        {showSpots && spotFiltered.length > 0 && (
+          <>
+            <div className="spot-section-head">
+              🎆 {fireworksText.spotsTitle} · {spotFiltered.length}
+            </div>
+            <div className="card-grid">
+              {spotFiltered.map((s) => (
+                <FireworksSpotCard key={s.id} spot={s} />
+              ))}
+            </div>
+          </>
         )}
           </>
         )}

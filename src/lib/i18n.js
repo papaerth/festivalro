@@ -476,6 +476,26 @@ export function getTagLabels(locale) {
   return out;
 }
 
+// ── 상설(수시) 불꽃놀이 명소 문구 (13개 언어) ──
+const FIREWORKS_I18N = {
+  ko: { permanent: "상설", spotsTitle: "상설 불꽃놀이 명소" },
+  en: { permanent: "Year-round", spotsTitle: "Year-round fireworks spots" },
+  ja: { permanent: "常設", spotsTitle: "常設の花火スポット" },
+  zh: { permanent: "常设", spotsTitle: "常设烟花景点" },
+  "zh-TW": { permanent: "常設", spotsTitle: "常設煙火景點" },
+  es: { permanent: "Todo el año", spotsTitle: "Lugares de fuegos todo el año" },
+  fr: { permanent: "Toute l'année", spotsTitle: "Sites de feux toute l'année" },
+  ru: { permanent: "Круглый год", spotsTitle: "Фейерверки круглый год" },
+  de: { permanent: "Ganzjährig", spotsTitle: "Ganzjährige Feuerwerks-Orte" },
+  ar: { permanent: "على مدار العام", spotsTitle: "مواقع الألعاب النارية الدائمة" },
+  vi: { permanent: "Quanh năm", spotsTitle: "Điểm pháo hoa quanh năm" },
+  id: { permanent: "Sepanjang tahun", spotsTitle: "Lokasi kembang api sepanjang tahun" },
+  th: { permanent: "ตลอดปี", spotsTitle: "จุดชมพลุตลอดปี" },
+};
+export function getFireworksText(locale) {
+  return FIREWORKS_I18N[locale] || FIREWORKS_I18N.en;
+}
+
 // ── 예매·신청 바로가기 버튼 문구 (공연·전시·박람회, 13개 언어) ──
 const BOOKING_I18N = {
   ko: { site: "예매·신청 사이트 바로가기", search: "예매·정보 검색" },

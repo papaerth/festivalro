@@ -1589,6 +1589,39 @@ h3 {
 .market-nearby { margin-top: 26px; }
 .market-nearby-title { font-size: var(--fs-heading); font-weight: 800; margin: 0 0 12px; }
 
+/* ── 상설 불꽃놀이 명소 ── */
+/* '상설' 배지 — 진행중(빨강)과 다른 보라색으로 구분 */
+.permanent-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: #7c4dbe;
+  color: #fff;
+  font-weight: 800;
+}
+.spot-cover {
+  background: linear-gradient(135deg, #f3e9fb, #efe4f6);
+  color: #7c4dbe;
+}
+.spot-section-head {
+  margin: 26px 0 12px;
+  font-size: var(--fs-heading);
+  font-weight: 800;
+  padding-top: 18px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.spot-home-link {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  text-decoration: none;
+  font-weight: 700;
+}
+
 /* ── 예매·신청 바로가기 CTA (공연·전시·박람회 상세) ── */
 .booking-cta {
   display: flex;

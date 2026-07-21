@@ -8,7 +8,7 @@ import { useEffect, useRef, useMemo } from "react";
 import { markerColor, typeTheme } from "@/lib/seasons";
 import { formatPeriod } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
-import { MAP_GESTURE_TEXT, getMarketText } from "@/lib/i18n";
+import { MAP_GESTURE_TEXT, getMarketText, getFireworksText } from "@/lib/i18n";
 import { nextMarketDay, formatMarketDate } from "@/lib/marketDay";
 import { isTouchDevice } from "@/lib/mapGesture";
 import MapDirections from "./MapDirections";
@@ -197,6 +197,20 @@ function MarketPopup({ f, locale, href, viewDetail }) {
   );
 }
 
+// 상설 불꽃놀이 명소 팝업 — 기간 대신 '상설' + 운영 안내.
+function SpotPopup({ f, locale }) {
+  const fw = getFireworksText(locale);
+  const name = f.displayName || f.name;
+  return (
+    <>
+      <strong>🎆 {name}</strong>
+      <br />
+      <span>[{fw.permanent}] {f.scheduleText || ""}</span>
+      <MapDirections name={name} lat={f.lat} lng={f.lng} compact />
+    </>
+  );
+}
+
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
@@ -242,12 +256,13 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
       />
       <KoreaLock />
       {shown.map((f) => {
-        const color = markerColor(f);
-        // 전시·공연·시장만 작은 글리프 표시 (축제는 기존처럼 색만)
-        const glyph =
-          f.type === "exhibition" || f.type === "performance" || f.type === "market"
-            ? typeTheme(f.type).emoji
-            : "";
+        // 상설 불꽃놀이 명소는 전용 색·🎆 글리프로 구분
+        const color = f.permanent ? "#B5427A" : markerColor(f);
+        const glyph = f.permanent
+          ? "🎆"
+          : f.type === "exhibition" || f.type === "performance" || f.type === "market"
+          ? typeTheme(f.type).emoji
+          : "";
         const r = ratings[f.id];
         return (
           <Marker
@@ -262,7 +277,9 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
             }}
           >
             <Popup autoPan={false}>
-              {f.type === "market" ? (
+              {f.permanent ? (
+                <SpotPopup f={f} locale={locale} />
+              ) : f.type === "market" ? (
                 <MarketPopup f={f} locale={locale} href={href} viewDetail={viewDetail} />
               ) : (
                 <>

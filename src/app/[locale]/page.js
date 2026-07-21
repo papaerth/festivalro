@@ -1,6 +1,7 @@
 import HomeClient from "@/components/HomeClient";
 import { getFestivals, localizeFestivals, isUsingSampleData } from "@/lib/festivals";
 import { getMarkets } from "@/lib/markets";
+import { getFireworksSpots } from "@/lib/fireworksSpots";
 import { getPopularFestivals } from "@/lib/popular";
 import { isLocale, DEFAULT_LOCALE, SITE_URL } from "@/lib/i18n";
 
@@ -63,6 +64,8 @@ export default async function HomePage({ params }) {
 
   // 전통시장(장터·야시장) — 지도 필터 토글에서만 노출(메인 추천 X). 현재 언어로 이름 번역.
   const markets = await localizeFestivals(await getMarkets(), loc);
+  // 상설 불꽃놀이 명소 — 🎆 태그 목록 맨 뒤에 '상설' 배지로. 별도 prop(캐러셀·카운트 미포함).
+  const fireworksSpots = await localizeFestivals(await getFireworksSpots(), loc);
 
   return (
     <>
@@ -73,6 +76,7 @@ export default async function HomePage({ params }) {
       <HomeClient
         festivals={localized}
         markets={markets}
+        fireworksSpots={fireworksSpots}
         usingSample={usingSample}
         popScoreById={popScoreById}
       />
