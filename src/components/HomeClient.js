@@ -441,8 +441,11 @@ export default function HomeClient({ festivals, markets = [], usingSample, popSc
       list = withSido.filter((f) => favorites.includes(f.id));
     } else {
       list = withSido
-        // 월 선택 시: 그 달에 걸치는 행사만(계절 분류 무관). 미선택 시: 계절 전체.
-        .filter((f) => (month ? overlapsMonth(f.startDate, f.endDate, month) : f.season === season))
+        // 월 선택 시: 그 달에 걸치는 행사만. 태그 선택 시: 계절 제한 해제(전 계절에서 찾기 —
+        //  예: 불꽃축제는 대부분 가을이라 여름 화면에서도 보이도록). 둘 다 없으면 현재 계절.
+        .filter((f) =>
+          month ? overlapsMonth(f.startDate, f.endDate, month) : tags.length ? true : f.season === season
+        )
         .filter((f) => (sido ? f._sido === sido : true))
         .filter((f) => (sigungu ? f.sigungu === sigungu : true));
     }
