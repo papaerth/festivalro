@@ -27,6 +27,7 @@ export default function MapFilters({
   tags = [],
   onToggleTag,
   tagLabels = {},
+  filterVis = { tags: true, season: true, period: true },
   showMarkets = false,
   onToggleMarkets,
   marketChipLabel = "장터·야시장",
@@ -169,8 +170,14 @@ export default function MapFilters({
         </button>
       </div>
 
-      {/* 0.5줄: 세부 태그 (🎆 불꽃놀이 · 🌙 야간 · 💧 물놀이) — 다중 선택, 유형과 조합 */}
-      <div className="mf-row mf-tag-row" role="group" aria-label={t.filters.tags || "태그"}>
+      {/* 0.5줄: 세부 태그 (🎆 불꽃놀이 · 🌙 야간 · 💧 물놀이) — 축제 속성이라 전체·축제에서만.
+          카테고리 설정(filterVis.tags)이 false면 부드럽게 접혀 사라짐(선택 상태는 상위에서 해제). */}
+      <div
+        className={`mf-row mf-tag-row ${filterVis.tags ? "" : "mf-row-collapsed"}`}
+        role="group"
+        aria-label={t.filters.tags || "태그"}
+        aria-hidden={!filterVis.tags}
+      >
         {TAG_ORDER.map((k) => (
           <button
             key={k}

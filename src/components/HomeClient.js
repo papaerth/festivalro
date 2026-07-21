@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { SEASONS, TYPES, TYPE_ORDER } from "@/lib/seasons";
 import { getStatusInfo, STATUS_ORDER } from "@/lib/format";
 import { matchSido, SIDO_CENTER } from "@/lib/regionsKr";
+import { currentCategory, categoryFilters } from "@/lib/filterConfig";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
@@ -366,10 +367,20 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     }
   };
 
+  // 카테고리 전환 시, 그 카테고리에서 '유효하지 않은' 하위 필터의 선택을 정리(설정 객체 기준).
+  //  → 무효 필터가 상태에 남아 마커 필터링/요청에 계속 적용되는 일 방지.
+  const clearInvalidFilters = (catKey) => {
+    const vis = categoryFilters(catKey);
+    if (!vis.tags && tags.length) setTags([]); // 예: 공연·전시로 가면 테마 태그 해제
+    // (향후 season/period 등도 여기서 vis 기준으로 정리)
+  };
+
   // 유형 칩 토글 (다시 누르면 전체). 계절·지역 선택은 유지(직교 필터).
   const pickType = (key) => {
     leaveMarketMode();
-    setType((prev) => (prev === key ? null : key));
+    const next = type === key ? null : key;
+    setType(next);
+    clearInvalidFilters(next || "all");
   };
   // 세부 태그 칩 토글 (다시 누르면 해제). 다중 선택 가능.
   const toggleTag = (key) => {
@@ -432,6 +443,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const selectType = (key) => {
     leaveMarketMode();
     setType(key);
+    clearInvalidFilters(key || "all");
   };
 
   // 목록 유형 탭 클릭: 유형 변경으로 목록 길이가 바뀌어 화면이 위로 튀지 않도록,
@@ -571,6 +583,8 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const hasCarousel = TYPE_ORDER.some((k) => (carousels[k]?.length || 0) >= 3);
   // 선택한 지역의 중심 좌표 — 지도에서 마커가 없을 때 이 좌표로 이동(fallback).
   const regionCenter = sido ? SIDO_CENTER[sido] || null : null;
+  // 현재 카테고리에서 보여줄 하위 필터 (설정 객체 기준) — MapFilters에 전달해 무효 필터 칩 숨김.
+  const filterVis = categoryFilters(currentCategory({ showMarkets, type }));
 
   // 블로그·영상 종합용 '메인 축제 후보' — 전국 인기+임박 순 상위.
   //  축제 우선: 유형 미선택 시 축제만 노출(메인 구성 유지), 유형 선택 시 그 유형.
@@ -739,6 +753,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               tags={tags}
               onToggleTag={toggleTag}
               tagLabels={tagLabels}
+              filterVis={filterVis}
               showMarkets={showMarkets}
               onToggleMarkets={toggleMarkets}
               marketChipLabel={marketText.chip}

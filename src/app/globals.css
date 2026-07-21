@@ -3454,6 +3454,20 @@ h3 {
 .map-filters .mf-month-row {
   padding-left: 8px;
 }
+/* 테마 태그 줄 — 카테고리에 따라 부드럽게 접힘/펼침 (공연·전시 등에선 숨김) */
+.map-filters .mf-tag-row {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-height: 44px;
+  transition: max-height 0.28s var(--ease, ease), opacity 0.22s ease,
+    margin-top 0.28s var(--ease, ease);
+}
+.map-filters .mf-tag-row.mf-row-collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-top: -5px; /* 부모 flex gap(5px) 상쇄 → 접히면 자리도 사라짐 */
+  pointer-events: none;
+}
 .mf-chip.mf-month {
   height: 27px;
   font-size: 12px;
