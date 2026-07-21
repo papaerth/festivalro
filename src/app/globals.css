@@ -3305,6 +3305,16 @@ h3 {
   align-items: stretch;
   margin: 16px 0 8px; /* 좌측 정렬 — 아래 피드·축제 그리드와 좌우선 맞춤 */
   max-width: 1600px; /* 피드와 동일 폭으로 확대 */
+  /* 카드뉴스가 비어도(예: 특정 지역 축제 3개 미만) 지도가 붕괴하지 않도록 최소 높이 확보.
+     지도 .map은 height:100%라 이 높이가 없으면 세로가 0으로 접힘(→ 필터 오버레이가 아래로 넘침). */
+  min-height: clamp(440px, 54vh, 580px);
+}
+/* 카드뉴스(캐러셀)가 없을 땐 지도가 가로 전체를 쓰게 */
+.carousel-map-row.no-carousel .cmr-carousel {
+  display: none;
+}
+.carousel-map-row.no-carousel .cmr-map {
+  flex: 1 1 100%;
 }
 .cmr-carousel {
   flex: 1 1 58%;
@@ -3524,6 +3534,7 @@ h3 {
     flex-direction: column;
     gap: 12px;
     max-width: none;
+    min-height: 0; /* 모바일은 지도 높이가 60vh로 고정이라 최소높이 불필요 */
   }
   .cmr-carousel,
   .cmr-map {

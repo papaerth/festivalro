@@ -551,6 +551,9 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
       exhibition: scoreTop(base.filter((f) => f.type === "exhibition")),
     };
   }, [withSido, season, month, sido, sigungu, popScoreById]);
+  // 카드뉴스(캐러셀)가 실제로 뜨는지 — HeroCarousel과 동일 기준(유형당 3개 이상).
+  //  없으면 .no-carousel 클래스로 지도가 가로 전체를 쓰게(레이아웃 붕괴 방지 + 빈 공간 제거).
+  const hasCarousel = TYPE_ORDER.some((k) => (carousels[k]?.length || 0) >= 3);
 
   // 블로그·영상 종합용 '메인 축제 후보' — 전국 인기+임박 순 상위.
   //  축제 우선: 유형 미선택 시 축제만 노출(메인 구성 유지), 유형 선택 시 그 유형.
@@ -695,7 +698,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
         )}
 
         {/* ① 다가오는 인기 축제 카드뉴스 + 세로 지도 (최상단) */}
-        <div className="carousel-map-row">
+        <div className={`carousel-map-row ${hasCarousel ? "" : "no-carousel"}`}>
           <div className="cmr-carousel">
             <HeroCarousel
               carousels={carousels}
