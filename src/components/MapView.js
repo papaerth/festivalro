@@ -273,7 +273,9 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
               click: () => onSelect && onSelect(f),
             }}
             ref={(m) => {
+              // 마커 언마운트(카테고리 전환 등) 시 참조를 지워 stale 참조·메모리 누적 방지
               if (m) markerRefs.current[f.id] = m;
+              else delete markerRefs.current[f.id];
             }}
           >
             <Popup autoPan={false}>

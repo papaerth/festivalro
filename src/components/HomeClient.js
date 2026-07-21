@@ -343,23 +343,46 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   };
   const periodLabel = period === "weekend" ? t.filters.weekend : t.filters.month;
 
+  // 카테고리(유형/태그/계절 등) 전환 시 지도가 깨끗이 리셋되도록 공통 정리:
+  //  ① 시장 모드 종료  ② 열린 팝업 닫힘 상태 해제  ③ 이전에 고른 항목(마커/선택) 제거
+  //  → mapFestivals 참조가 새 카테고리로 바뀌어 FitBounds가 범위를 재조정하고,
+  //    이전 카테고리 마커(특히 selected로 덧붙던 마커)가 지도에 남지 않음.
+  const leaveMarketMode = () => {
+    if (showMarkets) setShowMarkets(false);
+    if (popupOpen) setPopupOpen(false);
+    if (selected || mapFocus) {
+      setSelected(null);
+      setMapFocus(null);
+      setFlashSignal((n) => n + 1);
+    }
+  };
+
   // 유형 칩 토글 (다시 누르면 전체). 계절·지역 선택은 유지(직교 필터).
-  const pickType = (key) => setType((prev) => (prev === key ? null : key));
+  const pickType = (key) => {
+    leaveMarketMode();
+    setType((prev) => (prev === key ? null : key));
+  };
   // 세부 태그 칩 토글 (다시 누르면 해제). 다중 선택 가능.
-  const toggleTag = (key) =>
+  const toggleTag = (key) => {
+    leaveMarketMode();
     setTags((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  };
 
   // 🏪 장터·야시장 토글: 켜면 지도·목록을 시장으로 전환. 축제용 유형/기간/즐겨찾기 필터는 초기화(혼동 방지).
   const toggleMarkets = () => {
     setShowMarkets((v) => {
       const next = !v;
+      // 켜든 끄든 이전 마커·팝업·선택을 정리해 지도가 새 상태로 깨끗이 다시 그려지게
+      setPopupOpen(false);
+      setSelected(null);
+      setMapFocus(null);
+      setFlashSignal((n) => n + 1);
       if (next) {
         setType(null);
         setTags([]);
         setPeriod(null);
         setShowFavorites(false);
         setStatusFilter(null);
-        setMapFocus(null);
       }
       return next;
     });
@@ -397,14 +420,19 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   }, [showSpots, spotsWithSido, sido, sigungu, query]);
   // 캐러셀 탭 선택 → 지도 유형 필터를 그 유형으로 '설정'(토글 아님).
   //  → 지도 마커 집합이 그 유형으로 바뀌며 부드럽게 줌 조정됨(지역·계절·월 필터는 유지).
-  const selectType = (key) => setType(key);
+  const selectType = (key) => {
+    leaveMarketMode();
+    setType(key);
+  };
 
   // 목록 유형 탭 클릭: 유형 변경으로 목록 길이가 바뀌어 화면이 위로 튀지 않도록,
   //  목록 탭(listRef)의 화면상 위치를 변경 전후로 유지(스크롤 보정).
   const changeListType = (key) => {
     const before = listRef.current ? listRef.current.getBoundingClientRect().top : null;
-    if (key === null) setType(null);
-    else selectType(key);
+    if (key === null) {
+      leaveMarketMode();
+      setType(null);
+    } else selectType(key);
     if (before != null) {
       requestAnimationFrame(() => {
         const after = listRef.current ? listRef.current.getBoundingClientRect().top : null;
@@ -418,11 +446,15 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
 
   // 계절을 바꾸면 월 선택 초기화 (계절 안 월 칩이 새 계절 기준으로 다시 펼쳐지게)
   const pickSeason = (key) => {
+    leaveMarketMode();
     setSeason(key);
     setMonth(null);
   };
   // 월 칩 토글 (다시 누르면 계절 전체로). 계절/지역/유형 선택은 유지.
-  const pickMonth = (m) => setMonth((prev) => (prev === m ? null : m));
+  const pickMonth = (m) => {
+    leaveMarketMode();
+    setMonth((prev) => (prev === m ? null : m));
+  };
 
   // 지도 오버레이 필터 상태 — 부가필터(월/유형/지역/기간/즐겨찾기)가 하나라도 켜졌는지
   const filtersActive = !!(month || type || tags.length || sido || sigungu || period || showFavorites || showMarkets);
@@ -547,6 +579,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
 
   // 기간 바로가기 토글 (다시 누르면 해제). 다른 모드와는 상호배타적.
   const togglePeriod = (key) => {
+    leaveMarketMode();
     setPeriod((prev) => (prev === key ? null : key));
     setQuery("");
     setShowFavorites(false);
@@ -554,6 +587,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
 
   // 즐겨찾기만 보기 토글
   const toggleFavorites = () => {
+    leaveMarketMode();
     setShowFavorites((prev) => !prev);
     setQuery("");
     setPeriod(null);
