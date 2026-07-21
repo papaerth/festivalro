@@ -36,20 +36,42 @@ function makePin(color, glyph = "") {
   });
 }
 
+// 좌표 안전검사: 한국 범위(위도33~39, 경도124~132) 안이면 그대로, 위경도가 뒤바뀌었으면 교정,
+//  범위 밖(0,0·깨진 값 등)이면 null → 지도에서 제외(엉뚱한 좌표가 fitBounds를 끌어당기지 않게).
+function safeLatLng(f) {
+  const a = Number(f.lat);
+  const b = Number(f.lng);
+  const ok = (lat, lng) => lat >= 33 && lat <= 39 && lng >= 124 && lng <= 132;
+  if (ok(a, b)) return [a, b];
+  if (ok(b, a)) return [b, a]; // 위/경도 뒤바뀜 교정
+  return null;
+}
+
 // 마커들이 모두 보이도록 지도 범위를 자동으로 맞춥니다.
 //  첫 렌더는 즉시, 이후(유형/지역/계절 전환 등 마커 집합 변경)는 부드럽게(flyToBounds).
 //  points는 상위에서 메모이즈되어 마커 집합이 바뀔 때만 갱신됨 → 카드 클릭엔 재실행 안 됨.
-function FitBounds({ points }) {
+//  regionCenter: 지역 선택 시 그 지역 중심([위도,경도]) — 마커가 없을 때 이 좌표로 이동.
+function FitBounds({ points, regionCenter }) {
   const map = useMap();
   const first = useRef(true);
   useEffect(() => {
-    if (!points.length) return;
+    // 컨테이너 크기 변화(카드뉴스 유무로 지도 폭이 40%↔100% 바뀜 등)를 Leaflet에 먼저 반영.
+    //  → 바뀐 크기 기준으로 bounds를 계산해야 중심이 틀어지지 않고, 오른쪽 절반 회색(타일 미로딩) 방지.
+    map.invalidateSize({ animate: false });
     const reduce =
       typeof window !== "undefined" &&
       window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const instant = first.current || reduce;
     first.current = false;
+    // 마커가 없으면 빈 bounds로 fitBounds하지 않고, 지역 중심으로 이동(있을 때만).
+    if (!points.length) {
+      if (regionCenter) {
+        if (instant) map.setView(regionCenter, 11);
+        else map.flyTo(regionCenter, 11, { duration: 0.5 });
+      }
+      return;
+    }
     if (points.length === 1) {
       if (instant) map.setView(points[0], 12);
       else map.flyTo(points[0], 12, { duration: 0.5 });
@@ -57,7 +79,29 @@ function FitBounds({ points }) {
     }
     if (instant) map.fitBounds(points, { padding: [40, 40], maxZoom: 12 });
     else map.flyToBounds(points, { padding: [40, 40], maxZoom: 12, duration: 0.5 });
-  }, [points, map]);
+  }, [points, regionCenter, map]);
+  return null;
+}
+
+// 지도 컨테이너 크기가 바뀌면(카드뉴스 유무로 지도 폭 변화, 창 크기 등) Leaflet에 알려
+//  타일을 다시 그리게 함(오른쪽 절반 회색 방지). Leaflet 자체 resize 이벤트는 '창' 리사이즈만
+//  잡으므로, 컨테이너 자체 크기 변화는 ResizeObserver로 직접 감지.
+function InvalidateOnResize() {
+  const map = useMap();
+  useEffect(() => {
+    const el = map.getContainer();
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => map.invalidateSize({ animate: false }));
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [map]);
   return null;
 }
 
@@ -214,22 +258,23 @@ function SpotPopup({ f, locale }) {
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
-export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null }) {
+export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null }) {
   const { locale, href } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 터치 기기에서만 제스처 핸들링 활성화 (한 손가락 스크롤 / 두 손가락 지도 조작 + 안내)
   const touch = isTouchDevice();
   const gestureMsg = MAP_GESTURE_TEXT[locale] || MAP_GESTURE_TEXT.en;
-  // 좌표가 있는 축제만 마커로 (좌표 없는 축제는 목록에만 표시)
-  const withCoords = festivals.filter(
-    (f) => Number.isFinite(f.lat) && Number.isFinite(f.lng)
-  );
+  // 좌표가 '한국 범위 안'으로 유효한 축제만 마커로. 뒤바뀐 좌표는 교정, 범위 밖은 제외.
+  //  (좌표 없는/이상한 축제는 목록에만 표시 — 엉뚱한 좌표가 지도 중심을 끌어당기지 않게)
+  const withCoords = festivals
+    .map((f) => ({ ...f, _ll: safeLatLng(f) }))
+    .filter((f) => f._ll);
   const shown = withCoords.slice(0, MARKER_CAP);
   // 마커 집합(id)이 실제로 바뀔 때만 points 참조가 바뀌도록 메모이즈.
   //  → 카드 클릭(포커스)처럼 마커가 그대로면 FitBounds가 재실행되지 않음(부드러운 줌이 튀지 않게).
   const pointsKey = shown.map((f) => f.id).join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const points = useMemo(() => shown.map((f) => [f.lat, f.lng]), [pointsKey]);
+  const points = useMemo(() => shown.map((f) => f._ll), [pointsKey]);
   const markerRefs = useRef({}); // 축제 id → 마커 인스턴스(팝업 열기용)
 
   return (
@@ -267,7 +312,7 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
         return (
           <Marker
             key={f.id}
-            position={[f.lat, f.lng]}
+            position={f._ll}
             icon={makePin(color, glyph)}
             eventHandlers={{
               click: () => onSelect && onSelect(f),
@@ -307,10 +352,11 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
           </Marker>
         );
       })}
-      <FitBounds points={points} />
+      <FitBounds points={points} regionCenter={regionCenter} />
       <FocusFly focus={focus} markerRefs={markerRefs} />
       <ResetView signal={resetSignal} points={points} />
       <PopupEvents onOpen={onPopupOpen} onClose={onPopupClose} />
+      <InvalidateOnResize />
     </MapContainer>
   );
 }

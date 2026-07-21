@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { SEASONS, TYPES, TYPE_ORDER } from "@/lib/seasons";
 import { getStatusInfo, STATUS_ORDER } from "@/lib/format";
-import { matchSido } from "@/lib/regionsKr";
+import { matchSido, SIDO_CENTER } from "@/lib/regionsKr";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
 import { useI18n } from "@/lib/I18nProvider";
@@ -554,6 +554,8 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   // 카드뉴스(캐러셀)가 실제로 뜨는지 — HeroCarousel과 동일 기준(유형당 3개 이상).
   //  없으면 .no-carousel 클래스로 지도가 가로 전체를 쓰게(레이아웃 붕괴 방지 + 빈 공간 제거).
   const hasCarousel = TYPE_ORDER.some((k) => (carousels[k]?.length || 0) >= 3);
+  // 선택한 지역의 중심 좌표 — 지도에서 마커가 없을 때 이 좌표로 이동(fallback).
+  const regionCenter = sido ? SIDO_CENTER[sido] || null : null;
 
   // 블로그·영상 종합용 '메인 축제 후보' — 전국 인기+임박 순 상위.
   //  축제 우선: 유형 미선택 시 축제만 노출(메인 구성 유지), 유형 선택 시 그 유형.
@@ -749,6 +751,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               resetSignal={resetSignal}
               onPopupOpen={() => setPopupOpen(true)}
               onPopupClose={() => setPopupOpen(false)}
+              regionCenter={regionCenter}
             />
           </div>
         </div>

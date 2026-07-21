@@ -27,6 +27,27 @@ export const SIDO = [
 
 export const SIDO_ORDER = SIDO.map((s) => s.key);
 
+// 시도별 대략 중심 좌표 [위도, 경도] — 지역 선택 시 마커가 없으면 이 좌표로 지도 이동(fallback).
+export const SIDO_CENTER = {
+  seoul: [37.5665, 126.978],
+  busan: [35.1796, 129.0756],
+  daegu: [35.8714, 128.6014],
+  incheon: [37.4563, 126.7052],
+  gwangju: [35.1595, 126.8526],
+  daejeon: [36.3504, 127.3845],
+  ulsan: [35.5384, 129.3114],
+  sejong: [36.48, 127.289], // 세종시청 기준
+  gyeonggi: [37.4138, 127.5183],
+  gangwon: [37.8228, 128.1555],
+  chungbuk: [36.6357, 127.4917],
+  chungnam: [36.6588, 126.6728],
+  jeonbuk: [35.7175, 127.153],
+  jeonnam: [34.8161, 126.463],
+  gyeongbuk: [36.576, 128.5056],
+  gyeongnam: [35.4606, 128.2132],
+  jeju: [33.4996, 126.5312],
+};
+
 // 축제의 시도 문자열(예 "서울특별시")을 17개 시도 key로 변환. 못 찾으면 null.
 export function matchSido(sidoStr = "") {
   const s = String(sidoStr);
