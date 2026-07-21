@@ -24,6 +24,7 @@ import {
   getTypeLabel,
   getTagLabel,
   getSeasonText,
+  getBookingText,
   localeHref,
   HTML_LANG,
   SITE_URL,
@@ -189,6 +190,19 @@ export default async function FestivalDetailPage({ params }) {
   const typeLabel = getTypeLabel(festival.type || "festival", loc);
   const seasonBadge = getSeasonBadge(festival);
   const seasonLabel = seasonBadge ? seasonBadgeLabel(seasonBadge, getSeasonText(loc)) : null;
+
+  // 공연·전시·박람회: 예매·신청 사이트 바로가기.
+  //  homepage(서울 HMPG_ADDR·KCISA URL 등)에서 URL만 추출, 없으면 이름으로 예매·정보 검색 폴백.
+  const bookingText = getBookingText(loc);
+  const isBookable = festival.type === "exhibition" || festival.type === "performance";
+  const homeUrlMatch = String(festival.homepage || "").match(/https?:\/\/[^\s"'<>]+/);
+  const bookingUrl = isBookable && homeUrlMatch ? homeUrlMatch[0] : "";
+  const bookingSearch =
+    isBookable && !bookingUrl
+      ? `https://search.naver.com/search.naver?query=${encodeURIComponent(
+          `${festival.name} 예매`
+        )}`
+      : "";
   const theme = SEASONS[festival.season] || SEASONS.spring;
   const status = getStatusInfo(festival.startDate, festival.endDate);
   const statusLabel =
@@ -306,6 +320,29 @@ export default async function FestivalDetailPage({ params }) {
             </p>
           </div>
         </section>
+
+        {/* 공연·전시·박람회: 예매·신청 사이트 바로가기 (눈에 띄게) */}
+        {bookingUrl && (
+          <a
+            className="booking-cta"
+            href={bookingUrl}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            style={{ background: ty.color }}
+          >
+            🎟️ {bookingText.site} ↗
+          </a>
+        )}
+        {bookingSearch && (
+          <a
+            className="booking-cta booking-cta-search"
+            href={bookingSearch}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+          >
+            🔎 {bookingText.search} ↗
+          </a>
+        )}
 
         {/* 즐겨찾기 + 방문기록 + 공유 */}
         <div className="detail-actions">

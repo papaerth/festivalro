@@ -476,6 +476,26 @@ export function getTagLabels(locale) {
   return out;
 }
 
+// ── 예매·신청 바로가기 버튼 문구 (공연·전시·박람회, 13개 언어) ──
+const BOOKING_I18N = {
+  ko: { site: "예매·신청 사이트 바로가기", search: "예매·정보 검색" },
+  en: { site: "Tickets & registration", search: "Search tickets & info" },
+  ja: { site: "予約・申込サイトへ", search: "予約・情報を検索" },
+  zh: { site: "购票·报名网站", search: "搜索购票·信息" },
+  "zh-TW": { site: "購票·報名網站", search: "搜尋購票·資訊" },
+  es: { site: "Entradas e inscripción", search: "Buscar entradas e info" },
+  fr: { site: "Billets et inscription", search: "Rechercher billets et infos" },
+  ru: { site: "Билеты и регистрация", search: "Поиск билетов и информации" },
+  de: { site: "Tickets & Anmeldung", search: "Tickets & Infos suchen" },
+  ar: { site: "التذاكر والتسجيل", search: "بحث عن التذاكر والمعلومات" },
+  vi: { site: "Đặt vé & đăng ký", search: "Tìm vé & thông tin" },
+  id: { site: "Tiket & pendaftaran", search: "Cari tiket & info" },
+  th: { site: "จองตั๋ว·ลงทะเบียน", search: "ค้นหาตั๋ว·ข้อมูล" },
+};
+export function getBookingText(locale) {
+  return BOOKING_I18N[locale] || BOOKING_I18N.en;
+}
+
 // ── 전통시장(장터·야시장) 문구 (13개 언어) ──
 const MARKET_I18N = {
   ko: { chip: "장터·야시장", fiveday: "5일장", night: "야시장", today: "오늘 장서는 날!", next: "다음 장날", section: "전통시장", intl: "ko" },

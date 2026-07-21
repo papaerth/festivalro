@@ -1589,6 +1589,33 @@ h3 {
 .market-nearby { margin-top: 26px; }
 .market-nearby-title { font-size: var(--fs-heading); font-weight: 800; margin: 0 0 12px; }
 
+/* ── 예매·신청 바로가기 CTA (공연·전시·박람회 상세) ── */
+.booking-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 14px 0 6px;
+  padding: 14px 20px;
+  border-radius: var(--radius-pill);
+  color: #fff;
+  font-weight: 800;
+  font-size: var(--fs-body);
+  text-decoration: none;
+  box-shadow: var(--shadow);
+  transition: transform var(--t-fast), filter var(--t-fast);
+}
+.booking-cta:hover { transform: translateY(-2px); filter: brightness(1.06); }
+.booking-cta:active { transform: translateY(0) scale(0.99); }
+/* homepage 없을 때: 검색 폴백은 살짝 눌러서 구분 */
+.booking-cta-search {
+  background: var(--surface);
+  color: var(--text);
+  border: 1.5px solid rgba(0, 0, 0, 0.16);
+  box-shadow: var(--shadow-sm);
+  font-weight: 700;
+}
+
 /* ── 상태 배지 ── */
 .badge {
   display: inline-flex;
