@@ -47,13 +47,19 @@ function safeLatLng(f) {
   return null;
 }
 
+// 지도 초기(전국) 뷰 — 남한 전체가 보이는 기본 center/zoom. 지역 해제 시 이 값으로 복귀.
+export const DEFAULT_CENTER = [36.5, 127.8];
+export const DEFAULT_ZOOM = 7;
+
 // 마커들이 모두 보이도록 지도 범위를 자동으로 맞춥니다.
 //  첫 렌더는 즉시, 이후(유형/지역/계절 전환 등 마커 집합 변경)는 부드럽게(flyToBounds).
 //  points는 상위에서 메모이즈되어 마커 집합이 바뀔 때만 갱신됨 → 카드 클릭엔 재실행 안 됨.
 //  regionCenter: 지역 선택 시 그 지역 중심([위도,경도]) — 마커가 없을 때 이 좌표로 이동.
-function FitBounds({ points, regionCenter }) {
+//  homeSignal: 지역 필터 해제 시 +1 → 마커 fit 대신 기본 전국 뷰로 flyTo(부드럽게).
+function FitBounds({ points, regionCenter, homeSignal = 0 }) {
   const map = useMap();
   const first = useRef(true);
+  const prevHome = useRef(homeSignal);
   useEffect(() => {
     // 컨테이너 크기 변화(카드뉴스 유무로 지도 폭이 40%↔100% 바뀜 등)를 Leaflet에 먼저 반영.
     //  → 바뀐 크기 기준으로 bounds를 계산해야 중심이 틀어지지 않고, 오른쪽 절반 회색(타일 미로딩) 방지.
@@ -62,6 +68,14 @@ function FitBounds({ points, regionCenter }) {
       typeof window !== "undefined" &&
       window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // 지역 해제 신호가 올라오면: 마커 fit보다 우선해서 기본 전국 뷰로 복귀(flyTo).
+    if (homeSignal !== prevHome.current) {
+      prevHome.current = homeSignal;
+      first.current = false;
+      if (reduce) map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+      else map.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, { duration: 0.6 });
+      return;
+    }
     const instant = first.current || reduce;
     first.current = false;
     // 마커가 없으면 빈 bounds로 fitBounds하지 않고, 지역 중심으로 이동(있을 때만).
@@ -79,7 +93,7 @@ function FitBounds({ points, regionCenter }) {
     }
     if (instant) map.fitBounds(points, { padding: [40, 40], maxZoom: 12 });
     else map.flyToBounds(points, { padding: [40, 40], maxZoom: 12, duration: 0.5 });
-  }, [points, regionCenter, map]);
+  }, [points, regionCenter, homeSignal, map]);
   return null;
 }
 
@@ -258,7 +272,7 @@ function SpotPopup({ f, locale }) {
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
-export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null }) {
+export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null, homeSignal = 0 }) {
   const { locale, href } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 터치 기기에서만 제스처 핸들링 활성화 (한 손가락 스크롤 / 두 손가락 지도 조작 + 안내)
@@ -279,8 +293,8 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
 
   return (
     <MapContainer
-      center={[36.5, 127.8]}
-      zoom={7}
+      center={DEFAULT_CENTER}
+      zoom={DEFAULT_ZOOM}
       scrollWheelZoom={false}
       zoomControl={false}
       gestureHandling={touch}
@@ -352,7 +366,7 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
           </Marker>
         );
       })}
-      <FitBounds points={points} regionCenter={regionCenter} />
+      <FitBounds points={points} regionCenter={regionCenter} homeSignal={homeSignal} />
       <FocusFly focus={focus} markerRefs={markerRefs} />
       <ResetView signal={resetSignal} points={points} />
       <PopupEvents onOpen={onPopupOpen} onClose={onPopupClose} />

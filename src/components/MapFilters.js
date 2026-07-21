@@ -250,6 +250,27 @@ export default function MapFilters({
           onClick={() => setRegionOpen((v) => !v)}
         >
           {regionLabel}
+          {sido && (
+            <span
+              className="mf-chip-x"
+              role="button"
+              tabIndex={0}
+              aria-label={t.regions.all}
+              onClick={(e) => {
+                e.stopPropagation();
+                chooseRegionAll(); // 지역 해제 → 전국 뷰 (패널도 닫힘)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  chooseRegionAll();
+                }
+              }}
+            >
+              {" ✕"}
+            </span>
+          )}
         </button>
       </div>
 

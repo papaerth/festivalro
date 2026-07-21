@@ -108,6 +108,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const [selected, setSelected] = useState(null); // 블로그·영상 섹션 연동 대상(축제) — null=인기축제 종합
   const [flashSignal, setFlashSignal] = useState(0); // 선택 시마다 +1 → 섹션 하이라이트
   const [resetSignal, setResetSignal] = useState(0); // 선택 해제 시 +1 → 지도 줌아웃 + 마커 팝업 닫기
+  const [homeSignal, setHomeSignal] = useState(0); // 지역 필터 해제 시 +1 → 지도 전국 기본 뷰로 복귀
   const [mounted, setMounted] = useState(false); // 시즌 배너: 날짜 기반이라 마운트 후에만(SSR 불일치 방지)
   const theme = SEASONS[season];
   const mapRef = useRef(null); // 카드뉴스 클릭 시 스크롤할 지도 영역
@@ -331,15 +332,23 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     }
   });
 
-  // 시도를 바꾸면 시군구 선택 초기화 + 지도로 스크롤
+  // 시도를 바꾸면 시군구 선택 초기화. 같은 지역 다시 누르면(해제) 전국 뷰로 복귀.
   const pickSido = (key) => {
-    setSido((prev) => (prev === key ? null : key));
-    setSigungu(null);
+    if (sido === key) {
+      setSido(null);
+      setSigungu(null);
+      setHomeSignal((n) => n + 1); // 지역 해제 → 전국 기본 뷰
+    } else {
+      setSido(key);
+      setSigungu(null);
+    }
   };
   const pickSigungu = (sg) => setSigungu((prev) => (prev === sg ? null : sg));
+  // 지역 해제(전국 선택·지역 칩 X·지역 팝업 '전국') → 전국 기본 뷰로 복귀. 카테고리 필터는 유지.
   const clearRegion = () => {
     setSido(null);
     setSigungu(null);
+    setHomeSignal((n) => n + 1);
   };
   const periodLabel = period === "weekend" ? t.filters.weekend : t.filters.month;
 
@@ -458,7 +467,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
 
   // 지도 오버레이 필터 상태 — 부가필터(월/유형/지역/기간/즐겨찾기)가 하나라도 켜졌는지
   const filtersActive = !!(month || type || tags.length || sido || sigungu || period || showFavorites || showMarkets);
-  // 지도 위 '전체' 칩 — 선택·지도·부가필터·검색 초기화 (계절 선택은 유지)
+  // 지도 위 '전체 보기 X' 칩 — 모든 부가필터·검색·선택 초기화 후 지도는 전국 기본 뷰로 복귀.
   const resetFilters = () => {
     setMonth(null);
     setType(null);
@@ -471,7 +480,13 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     setStatusFilter(null);
     setQuery("");
     setSearchText("");
-    resetSelection();
+    // 선택(블로그·영상 연동)·지도 포커스·팝업 정리
+    setSelected(null);
+    setMapFocus(null);
+    setFlashSignal((n) => n + 1);
+    setPopupOpen(false);
+    // 지도 → 전국 기본 뷰 (마커 fit 대신 고정 center/zoom)
+    setHomeSignal((n) => n + 1);
   };
 
   const q = query.trim().toLowerCase();
@@ -752,6 +767,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               onPopupOpen={() => setPopupOpen(true)}
               onPopupClose={() => setPopupOpen(false)}
               regionCenter={regionCenter}
+              homeSignal={homeSignal}
             />
           </div>
         </div>
