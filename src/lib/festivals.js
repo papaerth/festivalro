@@ -18,6 +18,7 @@ import { fetchFromKintex } from "./kintex";
 import { fetchFromCulture } from "./culture";
 import { fetchFromSeoul } from "./seoul";
 import { fetchFromKcisa } from "./kcisa";
+import { fetchFromKopis } from "./kopis";
 import { computeTags } from "./tags";
 import { TAG_CURATION } from "./tagCuration";
 import { matchSido } from "./regionsKr";
@@ -559,7 +560,7 @@ export async function getFestivals() {
 
   const standardEnabled = process.env.STANDARD_API_ENABLED !== "false";
 
-  const [tourRes, stdRes, seoulRes, kcisaRes, cultureRes, eventsRes, kintexRes] = await Promise.allSettled([
+  const [tourRes, stdRes, seoulRes, kcisaRes, cultureRes, eventsRes, kintexRes, kopisRes] = await Promise.allSettled([
     fetchFromTourApi(apiKey),
     standardEnabled ? fetchFromStandardApi() : Promise.resolve([]),
     fetchFromSeoul(), // 서울 공연·전시(키 없으면 빈 배열) — 전시 보강 주력
@@ -567,6 +568,7 @@ export async function getFestivals() {
     fetchFromCulture(), // 문화포털 전시·공연(기본 OFF)
     EVENTS_ENABLED ? fetchFromEventsApi() : Promise.resolve([]), // (선택) TourAPI 기반
     fetchFromKintex(), // 경기데이터드림 킨텍스(키 없으면 조용히 빈 배열)
+    fetchFromKopis(), // 전국 공연(KOPIS) — 키 없으면 조용히 빈 배열. 서울 밖 공연 보강 주력
   ]);
 
   const tourList = tourRes.status === "fulfilled" ? tourRes.value : [];
@@ -576,6 +578,9 @@ export async function getFestivals() {
   const cultureList = cultureRes.status === "fulfilled" ? cultureRes.value : [];
   const eventsList = eventsRes.status === "fulfilled" ? eventsRes.value : [];
   const kintexList = kintexRes.status === "fulfilled" ? kintexRes.value : [];
+  const kopisList = kopisRes.status === "fulfilled" ? kopisRes.value : [];
+  if (kopisRes.status === "rejected")
+    console.warn("[축제로] KOPIS 실패:", kopisRes.reason?.message);
   if (tourRes.status === "rejected")
     console.warn("[축제로] TourAPI 실패:", tourRes.reason?.message);
   if (stdRes.status === "rejected")
@@ -592,7 +597,7 @@ export async function getFestivals() {
   //  이렇게 하면 서울 축제가 TourAPI 축제와 겹쳐도 하나만 남습니다.
   const idSeen = new Set(merged.map((f) => f.id));
   const nameSeen = new Set(merged.filter((f) => normName(f.name).length > 1).map(dedupKey));
-  for (const f of [...seoulList, ...kcisaList, ...cultureList, ...eventsList, ...kintexList]) {
+  for (const f of [...seoulList, ...kcisaList, ...cultureList, ...eventsList, ...kintexList, ...kopisList]) {
     if (idSeen.has(f.id)) continue;
     const k = dedupKey(f);
     if (normName(f.name).length > 1 && nameSeen.has(k)) continue; // 이름+지역 중복
