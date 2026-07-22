@@ -543,10 +543,13 @@ function mergeFestivals(tourList, stdList) {
 // [공개] 전체 축제 목록 가져오기 (서버 컴포넌트에서 사용)
 //  - TourAPI + 표준데이터를 병렬로 불러와 합칩니다.
 //  - 한쪽이 실패해도 다른 쪽 데이터로 동작하고, 둘 다 실패하면 샘플로 대체합니다.
-// 각 축제에 세부 유형 태그(불꽃놀이/야간/물놀이)를 붙입니다.
-//  · 제목·소개 키워드 자동감지 + tagCuration.js 수동 교정 반영.
+// 각 축제에 세부 유형 태그(불꽃놀이/야간/물놀이)를 붙이고, 제목의 HTML 태그(<br/> 등)를 정리합니다.
+//  · 원본 데이터(전시 등)에 <br/>·&amp; 같은 게 섞여 제목에 글자로 노출되는 것 방지.
 function withTags(list) {
-  return list.map((f) => ({ ...f, tags: computeTags(f, TAG_CURATION[f.id]) }));
+  return list.map((f) => {
+    const name = cleanTitle(f.name);
+    return { ...f, name, tags: computeTags({ ...f, name }, TAG_CURATION[f.id]) };
+  });
 }
 
 export async function getFestivals() {
@@ -657,13 +660,14 @@ export async function localizeFestivals(festivals, locale = "ko") {
   const sgMap = {};
   uniqSigungu.forEach((sg, i) => (sgMap[sg] = sgTr[i]));
 
-  // 3) 표시명 조립
+  // 3) 표시명 조립 (번역 제목에도 HTML 태그가 섞여 올 수 있어 정리)
   return festivals.map((f) => {
     let displayName = tourMap[f.id];
     if (!displayName) {
       const g = nameMap[f.name];
       displayName = g && g !== f.name ? g : f.name ? `${f.name} (${romanize(f.name)})` : f.name;
     }
+    displayName = cleanTitle(displayName);
     let displaySigungu = "";
     if (f.sigungu) {
       const gs = sgMap[f.sigungu];
@@ -671,6 +675,12 @@ export async function localizeFestivals(festivals, locale = "ko") {
     }
     return { ...f, displayName, displaySigungu };
   });
+}
+
+// 제목(한 줄) 전용 정리: HTML 태그·엔티티 제거 + 줄바꿈/연속공백을 한 칸으로.
+//  예: "«한국근현대미술 II» <br/> (임시 휴관)" → "«한국근현대미술 II» (임시 휴관)"
+function cleanTitle(s = "") {
+  return cleanHtml(s).replace(/\s+/g, " ").trim();
 }
 
 // HTML 태그/특수문자를 사람이 읽기 좋은 순수 텍스트로 정리
@@ -866,8 +876,9 @@ export async function getFestivalById(id, locale = "ko") {
   if (locale !== "ko") {
     const tr = LANG_SERVICE[locale] ? await getTranslation(festival.id, locale) : null;
 
-    const name =
-      tr?.title || (await translateText(festival.name, locale)) || festival.name;
+    const name = cleanTitle(
+      tr?.title || (await translateText(festival.name, locale)) || festival.name
+    );
 
     const koOverview =
       (await safeOverview(festival.id, apiKey)) || festival.description;
