@@ -353,10 +353,11 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   };
   const periodLabel = period === "weekend" ? t.filters.weekend : t.filters.month;
 
-  // 카테고리(유형/태그/계절 등) 전환 시 지도가 깨끗이 리셋되도록 공통 정리:
+  // 카테고리(유형) 전환 시에만 호출 — 지도가 깨끗이 리셋되도록 공통 정리:
   //  ① 시장 모드 종료  ② 열린 팝업 닫힘 상태 해제  ③ 이전에 고른 항목(마커/선택) 제거
   //  → mapFestivals 참조가 새 카테고리로 바뀌어 FitBounds가 범위를 재조정하고,
   //    이전 카테고리 마커(특히 selected로 덧붙던 마커)가 지도에 남지 않음.
+  //  ※ 계절/월/기간/즐겨찾기/지역은 '독립 축'이라 여기서 절대 호출하지 않음(카테고리 유지).
   const leaveMarketMode = () => {
     if (showMarkets) setShowMarkets(false);
     if (popupOpen) setPopupOpen(false);
@@ -382,9 +383,8 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     setType(next);
     clearInvalidFilters(next || "all");
   };
-  // 세부 태그 칩 토글 (다시 누르면 해제). 다중 선택 가능.
+  // 세부 태그 칩 토글 (다시 누르면 해제). 다중 선택 가능. (테마 태그는 축제 카테고리에서만 노출)
   const toggleTag = (key) => {
-    leaveMarketMode();
     setTags((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   };
 
@@ -465,15 +465,14 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     }
   };
 
-  // 계절을 바꾸면 월 선택 초기화 (계절 안 월 칩이 새 계절 기준으로 다시 펼쳐지게)
+  // 계절을 바꾸면 월 선택 초기화 (계절 안 월 칩이 새 계절 기준으로 다시 펼쳐지게).
+  //  ※ 독립 축이라 카테고리(유형/장터·야시장)·지역 선택은 건드리지 않음.
   const pickSeason = (key) => {
-    leaveMarketMode();
     setSeason(key);
     setMonth(null);
   };
-  // 월 칩 토글 (다시 누르면 계절 전체로). 계절/지역/유형 선택은 유지.
+  // 월 칩 토글 (다시 누르면 계절 전체로). 계절/지역/유형·카테고리 선택은 유지(독립 축).
   const pickMonth = (m) => {
-    leaveMarketMode();
     setMonth((prev) => (prev === m ? null : m));
   };
 
@@ -611,17 +610,16 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     return scored.slice(0, 10).map((x) => x.f);
   }, [withSido, type, popScoreById]);
 
-  // 기간 바로가기 토글 (다시 누르면 해제). 다른 모드와는 상호배타적.
+  // 기간 바로가기 토글 (다시 누르면 해제). 검색·즐겨찾기와는 상호배타적(같은 결과영역).
+  //  ※ 카테고리(유형/장터·야시장)·계절·지역은 독립 축이라 유지.
   const togglePeriod = (key) => {
-    leaveMarketMode();
     setPeriod((prev) => (prev === key ? null : key));
     setQuery("");
     setShowFavorites(false);
   };
 
-  // 즐겨찾기만 보기 토글
+  // 즐겨찾기만 보기 토글 (카테고리·계절·지역 유지)
   const toggleFavorites = () => {
-    leaveMarketMode();
     setShowFavorites((prev) => !prev);
     setQuery("");
     setPeriod(null);
