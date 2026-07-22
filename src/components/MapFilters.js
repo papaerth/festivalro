@@ -53,6 +53,12 @@ export default function MapFilters({
   const [userExpanded, setUserExpanded] = useState(false); // 접힘 중 사용자가 다시 펼침
   const rootRef = useRef(null);
 
+  // 카테고리(유형/장터·야시장)가 바뀌면 지역 선택 팝업을 자동으로 닫아 전환 후 화면을 정리.
+  //  (지역 팝업이 열린 채 카테고리를 바꿔도 다른 조작에 영향 없이 깔끔하게 전환되도록)
+  useEffect(() => {
+    setRegionOpen(false);
+  }, [type, showMarkets]);
+
   // 팝업이 닫히면(collapsed=false) 사용자 펼침 상태 초기화 → 원래대로 펼쳐짐
   useEffect(() => {
     if (!collapsed) setUserExpanded(false);
