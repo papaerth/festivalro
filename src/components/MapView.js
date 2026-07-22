@@ -312,7 +312,7 @@ function SpotPopup({ f, locale }) {
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
-export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null, homeSignal = 0 }) {
+export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, onHover = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null, homeSignal = 0 }) {
   const { locale, href } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 터치 기기에서만 제스처 핸들링 활성화 (한 손가락 스크롤 / 두 손가락 지도 조작 + 안내)
@@ -370,6 +370,8 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
             icon={makePin(color, glyph)}
             eventHandlers={{
               click: () => onSelect && onSelect(f),
+              mouseover: () => onHover && onHover(f.id),
+              mouseout: () => onHover && onHover(null),
             }}
             ref={(m) => {
               // 마커 언마운트(카테고리 전환 등) 시 참조를 지워 stale 참조·메모리 누적 방지

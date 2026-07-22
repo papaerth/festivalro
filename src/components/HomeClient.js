@@ -111,6 +111,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const [resetSignal, setResetSignal] = useState(0); // 선택 해제 시 +1 → 지도 줌아웃 + 마커 팝업 닫기
   const [homeSignal, setHomeSignal] = useState(0); // 지역 필터 해제 시 +1 → 지도 전국 기본 뷰로 복귀
   const [mounted, setMounted] = useState(false); // 시즌 배너: 날짜 기반이라 마운트 후에만(SSR 불일치 방지)
+  const [hoverId, setHoverId] = useState(null); // 지도 마커에 마우스 올린 대상 → 목록 카드 하이라이트
   const theme = SEASONS[season];
   const mapRef = useRef(null); // 카드뉴스 클릭 시 스크롤할 지도 영역
   const listRef = useRef(null); // 배지 CTA에서 스크롤할 축제 목록 영역
@@ -776,6 +777,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               ratings={ratings}
               focus={mapFocus}
               onSelect={handleMapSelect}
+              onHover={setHoverId}
               resetSignal={resetSignal}
               onPopupOpen={() => setPopupOpen(true)}
               onPopupClose={() => setPopupOpen(false)}
@@ -865,7 +867,9 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               {marketFiltered.length === 0 ? (
                 <div className="empty">{t.list.emptyDefault}</div>
               ) : (
-                marketFiltered.map((m) => <MarketCard key={m.id} market={m} />)
+                marketFiltered.map((m) => (
+                  <MarketCard key={m.id} market={m} highlight={hoverId === m.id} />
+                ))
               )}
             </div>
           </>
@@ -937,7 +941,12 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
             </div>
           ) : (
             visible.map((f) => (
-              <FestivalCard key={f.id} festival={f} rating={ratings[f.id]} />
+              <FestivalCard
+                key={f.id}
+                festival={f}
+                rating={ratings[f.id]}
+                highlight={hoverId === f.id}
+              />
             ))
           )}
         </div>
@@ -960,7 +969,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
             </div>
             <div className="card-grid">
               {spotFiltered.map((s) => (
-                <FireworksSpotCard key={s.id} spot={s} />
+                <FireworksSpotCard key={s.id} spot={s} highlight={hoverId === s.id} />
               ))}
             </div>
           </>

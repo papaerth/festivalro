@@ -12,7 +12,7 @@ import CoverImage from "./CoverImage";
 import FavoriteButton from "./FavoriteButton";
 
 // 축제 하나를 카드 형태로 보여줍니다. (상단 대표 이미지 + 정보)
-export default function FestivalCard({ festival, rating }) {
+export default function FestivalCard({ festival, rating, highlight = false }) {
   const { t, href, locale } = useI18n();
   const { open: openCardNews } = useCardNews();
 
@@ -40,7 +40,7 @@ export default function FestivalCard({ festival, rating }) {
     <Link
       href={href(`/festival/${festival.id}`)}
       onClick={handleClick}
-      className={`card card-${status.key}`}
+      className={`card card-${status.key}${highlight ? " card-highlight" : ""}`}
     >
       <CoverImage
         className="card-cover"

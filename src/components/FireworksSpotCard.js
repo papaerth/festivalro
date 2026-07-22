@@ -5,7 +5,7 @@ import { getFireworksText } from "@/lib/i18n";
 import MapDirections from "./MapDirections";
 
 // 상설(수시) 불꽃놀이 명소 카드 — 기간/상태 대신 '상설' 배지 + 운영 안내(scheduleText).
-export default function FireworksSpotCard({ spot }) {
+export default function FireworksSpotCard({ spot, highlight = false }) {
   const { locale } = useI18n();
   const fw = getFireworksText(locale);
   const name = spot.displayName || spot.name;
@@ -13,7 +13,7 @@ export default function FireworksSpotCard({ spot }) {
   const homeUrl = String(spot.homepage || "").match(/https?:\/\/[^\s"'<>]+/);
 
   return (
-    <div className="card card-spot">
+    <div className={`card card-spot${highlight ? " card-highlight" : ""}`}>
       <div className="market-cover spot-cover">
         <span className="market-cover-emoji">🎆</span>
         <span className="badge permanent-badge">{fw.permanent}</span>

@@ -8,7 +8,7 @@ import { nextMarketDay, formatMarketDate } from "@/lib/marketDay";
 import MapDirections from "./MapDirections";
 
 // 전통시장(장터·야시장) 카드 — 축제 카드와 달리 기간 대신 '장날/운영시간'을 보여줍니다.
-export default function MarketCard({ market }) {
+export default function MarketCard({ market, highlight = false }) {
   const { locale, href } = useI18n();
   const mt = getMarketText(locale);
   const theme = TYPES.market;
@@ -20,7 +20,10 @@ export default function MarketCard({ market }) {
   const isNight = market.marketType === "야시장";
 
   return (
-    <Link href={href(`/market/${market.id}`)} className="card card-market">
+    <Link
+      href={href(`/market/${market.id}`)}
+      className={`card card-market${highlight ? " card-highlight" : ""}`}
+    >
       <div className="market-cover" style={{ background: theme.soft, color: theme.color }}>
         <span className="market-cover-emoji">{isNight ? "🌙" : "🏪"}</span>
         {nd && nd.isToday && (

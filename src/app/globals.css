@@ -1346,6 +1346,15 @@ h3 {
 .card-ongoing:hover {
   box-shadow: 0 0 0 3px var(--accent-soft), 0 14px 30px rgba(30, 32, 40, 0.16);
 }
+/* 지도 마커에 마우스 올렸을 때: 해당 카드 강조(진한 계절색 링 + 살짝 띄움) */
+.card-highlight {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent), 0 12px 28px rgba(30, 32, 40, 0.18);
+  transform: translateY(-3px);
+}
+.card-highlight.card-ended {
+  opacity: 1; /* 종료 카드도 강조 시엔 선명하게 */
+}
 /* 종료 카드: 존재감 낮춤(흐리게 + 이미지 채도↓) */
 .card-ended {
   opacity: 0.72;
