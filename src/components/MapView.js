@@ -119,13 +119,32 @@ function InvalidateOnResize() {
   return null;
 }
 
-// 마커 팝업 열림/닫힘을 상위(HomeClient)에 알림 → 필터 접힘 연동.
-//  또한 팝업이 상단 필터/요약 영역에 가리지 않게, 상단부 마커면 지도를 안전하게 살짝 아래로.
-//  (Leaflet 기본 autoPan은 maxBounds+viscosity와 충돌해 무한재귀 크래시 → 끄고 단일 panBy 사용)
+// 마커 팝업 열림/닫힘 처리:
+//  ① 상위(HomeClient)에 알림 → 필터 접힘 연동
+//  ② 상단부 마커면 지도를 살짝 아래로(팝업이 필터에 안 가리게). Leaflet 기본 autoPan은
+//     maxBounds+viscosity와 충돌해 무한재귀 크래시 → 끄고 단일 panBy 사용.
+//  ③ 팝업 '열기 직전' 지도 뷰(중심+줌)를 저장 → 팝업이 닫히면(X·빈곳 클릭·ESC 등) 그 뷰로 복귀.
+//     · 팝업 열린 채 사용자가 직접 드래그/줌하면 복귀하지 않고 현재 위치 유지.
+//     · 마커를 연달아 클릭해도 '최초 열기 직전' 뷰를 유지(중간 마커로 덮어쓰지 않음).
 function PopupEvents({ onOpen, onClose }) {
   const map = useMap();
+  const saved = useRef(null); // 팝업 열기 직전 { center, zoom }
+  const active = useRef(false); // 팝업 세션 진행 중(하나라도 열려 있음)
+  const openCount = useRef(0); // 열린 팝업 수(마커 전환 시 close→open 연달아 대비)
+  const userMoved = useRef(false); // 세션 중 사용자가 직접 이동/줌했는지
+  const flyingUntil = useRef(0); // 이 시각 이전의 줌 변화는 프로그램(마커 flyTo)로 간주
+
   useMapEvents({
     popupopen: (e) => {
+      openCount.current += 1;
+      // 마커 클릭 뒤엔 그 마커로 flyTo(프로그램 이동)가 따라오므로, 그 구간의 줌은 사용자조작으로 안 침.
+      flyingUntil.current = Date.now() + 900;
+      if (!active.current) {
+        // 첫 팝업: 지금이 '열기 직전' 뷰(아직 마커로 안 날아감) → 저장. 이후 마커 전환에선 덮어쓰지 않음.
+        saved.current = { center: map.getCenter(), zoom: map.getZoom() };
+        userMoved.current = false;
+        active.current = true;
+      }
       onOpen && onOpen();
       try {
         const ll = e.popup && e.popup.getLatLng && e.popup.getLatLng();
@@ -137,7 +156,28 @@ function PopupEvents({ onOpen, onClose }) {
         /* 팝업 위치 보정 실패는 무시 */
       }
     },
-    popupclose: () => onClose && onClose(),
+    // 드래그는 항상 사용자(프로그램 이동은 dragstart 없음). 줌은 flyTo 구간만 제외.
+    dragstart: () => {
+      if (active.current) userMoved.current = true;
+    },
+    zoomstart: () => {
+      if (active.current && Date.now() > flyingUntil.current) userMoved.current = true;
+    },
+    popupclose: () => {
+      openCount.current = Math.max(0, openCount.current - 1);
+      onClose && onClose();
+      // 다른 마커로 전환하면 close 직후 open이 오므로, 다음 프레임에 '정말 다 닫혔는지' 확인.
+      requestAnimationFrame(() => {
+        if (openCount.current > 0 || !active.current) return; // 다른 팝업 열림 → 세션 유지
+        const target = saved.current;
+        const shouldReturn = target && !userMoved.current;
+        active.current = false;
+        saved.current = null;
+        userMoved.current = false;
+        // 사용자가 직접 안 움직였으면 '열기 직전' 뷰로 부드럽게 복귀
+        if (shouldReturn) map.flyTo(target.center, target.zoom, { duration: 0.5 });
+      });
+    },
   });
   return null;
 }
