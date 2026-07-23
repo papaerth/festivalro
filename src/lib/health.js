@@ -11,7 +11,6 @@ import "server-only";
 //  · api_health 테이블이 없으면 추적/알림은 건너뛰고 라이브 점검만 동작(무해).
 // ────────────────────────────────────────────────────────────────
 import { getAdmin } from "./supabaseAdmin";
-import { fetchFromCulture } from "./culture";
 
 const DAY = 24 * 60 * 60 * 1000;
 const ALERT_COOLDOWN = 3 * DAY; // 같은 장애로 3일 안엔 재알림 안 함
@@ -101,10 +100,7 @@ const CHECKS = [
       const text = await r.text();
       // 정상: 레코드(<item>)/필드가 있고 인증 에러가 아님
       const ok = r.ok && (text.includes("<item") || text.includes("<perforList") || text.includes("<title>"));
-      // (임시 진단) 실제 커넥터가 몇 건 수집하는지
-      let cnt = -1;
-      try { cnt = (await fetchFromCulture()).length; } catch { cnt = -2; }
-      return ok ? { ok: true, detail: `수집 ${cnt}건` } : { ok: false, detail: `HTTP ${r.status} · 수집 ${cnt}건` };
+      return ok ? { ok: true } : { ok: false, detail: `HTTP ${r.status}` };
     },
   },
   {
