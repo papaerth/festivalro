@@ -31,7 +31,7 @@ const serviceKey = encodeURIComponent(decoded);
 
 const BASE =
   readEnv("CULTURE_API_BASE") ||
-  "https://apis.data.go.kr/B553457/nopenapi/rest/publicperformancedisplays/period";
+  "https://apis.data.go.kr/B553457/cultureinfo/period2";
 
 // ── XML 파싱 헬퍼 (앱 culture.js 와 동일 규칙) ──
 const unescapeXml = (s = "") =>
@@ -103,7 +103,8 @@ function mapItem(block) {
   }
   const text = await res.text();
 
-  if (!text.includes("<perforList")) {
+  const WRAP = text.includes("<perforList>") ? "perforList" : text.includes("<item>") ? "item" : null;
+  if (!WRAP) {
     console.error(`❌ 정상 데이터가 아닙니다 (HTTP ${res.status}).`);
     const msg = (text.match(/<returnAuthMsg>([^<]+)</) || text.match(/<errMsg>([^<]+)</) || text.match(/<message>([^<]+)</) || text.match(/<cmmMsgHeader>[\s\S]*?<returnReasonCode>([^<]+)</) || [])[1];
     if (msg) console.error("   서버 메시지:", msg);
@@ -121,7 +122,7 @@ function mapItem(block) {
     process.exit(1);
   }
 
-  const blocks = text.split("<perforList>").slice(1).map((b) => b.split("</perforList>")[0]);
+  const blocks = text.split(`<${WRAP}>`).slice(1).map((b) => b.split(`</${WRAP}>`)[0]);
   const items = blocks.map(mapItem).filter(Boolean);
   console.log(`✅ 정상 응답 — 이번 페이지에서 ${blocks.length}건 수신, 매핑 성공 ${items.length}건\n`);
 

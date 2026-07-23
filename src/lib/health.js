@@ -92,12 +92,14 @@ const CHECKS = [
       ((process.env.CULTURE_API_ENABLED || "").trim().toLowerCase() === "true" &&
         isSet(process.env.TOUR_API_KEY)),
     async check() {
-      const base = process.env.CULTURE_API_BASE || "https://apis.data.go.kr/B553457/nopenapi/rest/publicperformancedisplays/period";
+      const base = process.env.CULTURE_API_BASE || "https://apis.data.go.kr/B553457/cultureinfo/period2";
       // 앱과 동일하게 키 인코딩 정규화(디코딩 후 1회 인코딩)
       const key = encodeURIComponent(decodeKey(env("CULTURE_API_KEY") || env("TOUR_API_KEY")));
       const r = await ping(`${base}?serviceKey=${key}&from=20260101&to=20261231&cPage=1&rows=1&sortStdr=1`);
       const text = await r.text();
-      return text.includes("<perforList") ? { ok: true } : { ok: false, detail: `HTTP ${r.status}` };
+      // 정상: 레코드/필드가 있고 인증 에러가 아님
+      const ok = r.ok && (text.includes("<perforList") || text.includes("<item") || text.includes("<title>"));
+      return ok ? { ok: true } : { ok: false, detail: `HTTP ${r.status}` };
     },
   },
   {
