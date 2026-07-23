@@ -26,24 +26,30 @@ export async function GET(req) {
     const from = ymd(new Date(now.getTime() - 3 * 365 * 86400000));
     const to = ymd(new Date(now.getTime() + 365 * 86400000));
     const base = process.env.CULTURE_API_BASE || "https://apis.data.go.kr/B553457/cultureinfo/period2";
-    const r = await fetch(`${base}?serviceKey=${key}&from=${from}&to=${to}&cPage=1&rows=100&sortStdr=1`, { signal: AbortSignal.timeout(25000) });
-    const t = await r.text();
-    totalCount = (t.match(/<totalCount>(\d+)<\/totalCount>/) || [])[1] || `(없음) ${t.slice(0, 80)}`;
-    const wrap = t.includes("<perforList>") ? "perforList" : t.includes("<item>") ? "item" : null;
-    let blocks = [];
-    if (wrap) blocks = t.split(`<${wrap}>`).slice(1).map((b) => b.split(`</${wrap}>`)[0]);
+    const today = ymd(now);
     const g = (b, n) => (b.match(new RegExp(`<${n}>([\\s\\S]*?)</${n}>`, "i")) || [])[1] || "";
+    const countBlocks = (t) => (t.includes("<item>") ? t.split("<item>").length - 1 : 0);
+    const probe = async (qs) => {
+      const rr = await fetch(`${base}?serviceKey=${key}&${qs}`, { signal: AbortSignal.timeout(25000) });
+      const tt = await rr.text();
+      return { tc: (tt.match(/<totalCount>(\d+)<\/totalCount>/) || [])[1] || null, n: countBlocks(tt), t: tt };
+    };
+    // A) 오늘 이후 창(종료 이벤트 API단 제외) + 페이지크기 파라미터명 비교
+    const pFrom = await probe(`from=${today}&to=${to}&cPage=1&rows=100&sortStdr=1`);
+    const pNum = await probe(`from=${today}&to=${to}&pageNo=1&numOfRows=100&sortStdr=1`);
+    totalCount = pFrom.tc || `(없음) ${pFrom.t.slice(0, 80)}`;
+    const blocks = pFrom.t.split("<item>").slice(1).map((b) => b.split("</item>")[0]);
     diag = {
-      wrap,
-      blockCount: blocks.length,
-      rowsParam: (t.match(/<rows>(\d+)<\/rows>/) || [])[1] || null,
+      fromToday: today,
+      totalCount_fromToday: pFrom.tc,
+      blocks_rows100: pFrom.n,
+      blocks_numOfRows100: pNum.n,
       sampleDates: blocks.slice(0, 5).map((b) => ({
-        title: g(b, "title").slice(0, 20),
+        title: g(b, "title").slice(0, 18),
         start: g(b, "startDate"),
         end: g(b, "endDate"),
         realm: g(b, "realmName"),
       })),
-      tagNames: (blocks[0] || "").match(/<([a-zA-Z]+)>/g)?.slice(0, 30) || [],
     };
   } catch (e) { totalCount = `err:${e.message}`; }
 
