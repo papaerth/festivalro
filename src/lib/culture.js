@@ -143,12 +143,15 @@ async function fetchCultureRaw() {
   const serviceKey = encodeURIComponent(decoded);
 
   const today = new Date();
-  const from = ymd(new Date(today.getTime() - 30 * 86400000)); // 30일 전
+  // from은 넉넉히 과거로 — 오래전 시작해 지금도 진행 중인 상설 전시/공연까지 포함.
+  //  (아래에서 endDate >= 오늘 로 걸러 '현재 진행중/예정'만 남김)
+  const from = ymd(new Date(today.getTime() - 3 * 365 * 86400000)); // 3년 전
   const to = ymd(new Date(today.getTime() + 365 * 86400000)); // 1년 후
   const todayStr = today.toISOString().slice(0, 10);
 
   const all = [];
-  for (let page = 1; page <= 4; page++) {
+  const MAX = Number(process.env.CULTURE_MAX_PAGES || 20); // 100건×페이지
+  for (let page = 1; page <= MAX; page++) {
     const url = `${CULTURE_BASE}?serviceKey=${serviceKey}&from=${from}&to=${to}&cPage=${page}&rows=100&sortStdr=1`;
     const res = await fetchWithTimeout(url);
     if (!res.ok) break;
@@ -172,7 +175,7 @@ async function fetchCultureRaw() {
   return upcoming;
 }
 
-const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v2"], {
+const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v3"], {
   revalidate: 60 * 60 * 12,
 });
 
