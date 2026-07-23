@@ -1,6 +1,7 @@
 import Link from "next/link";
 import BrandLogo from "@/components/BrandLogo";
 import BrandTagline from "@/components/BrandTagline";
+import DataSources from "@/components/DataSources";
 import PrivacyLink from "@/components/PrivacyLink";
 import { localeHref, isLocale, DEFAULT_LOCALE, SITE_URL } from "@/lib/i18n";
 
@@ -77,6 +78,7 @@ export default async function AboutPage({ params }) {
       <footer className="site-footer">
         <div className="container">
           <BrandTagline />
+          <DataSources locale={loc} collectedAt={Date.now()} />
           축제로 · Chukjero · <PrivacyLink />
         </div>
       </footer>

@@ -5,6 +5,7 @@ import { SEASONS, typeTheme } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
 import { getTypeLabel, getTagLabel, getSeasonText } from "@/lib/i18n";
+import { shortSourceLabel } from "@/lib/dataSources";
 import { TAG_DEFS } from "@/lib/tags";
 import { getSeasonBadge, seasonBadgeLabel } from "@/lib/season";
 import { useCardNews } from "./CardNewsProvider";
@@ -35,6 +36,8 @@ export default function FestivalCard({ festival, rating, highlight = false }) {
   // 개화·단풍 시즌 배지(시즌 아니면 null). 날짜 기반이라 SSR/CSR 차이 대비 suppressHydrationWarning.
   const seasonBadge = getSeasonBadge(festival);
   const seasonLabel = seasonBadge ? seasonBadgeLabel(seasonBadge, getSeasonText(locale)) : null;
+  // KOPIS·문화정보 등 출처 표기가 필요한 소스면 카드 하단에 작게 표기(그 외 null)
+  const sourceCredit = shortSourceLabel(festival.source, locale);
 
   return (
     <Link
@@ -91,6 +94,7 @@ export default function FestivalCard({ festival, rating, highlight = false }) {
             )}
           </div>
         )}
+        {sourceCredit && <p className="card-source">{sourceCredit}</p>}
       </div>
     </Link>
   );

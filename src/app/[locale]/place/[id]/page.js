@@ -23,6 +23,7 @@ import RelatedFestivals from "@/components/RelatedFestivals";
 import AccountMenu from "@/components/AccountMenu";
 import LangSwitcher from "@/components/LangSwitcher";
 import PrivacyLink from "@/components/PrivacyLink";
+import DataSources from "@/components/DataSources";
 
 export async function generateMetadata({ params, searchParams }) {
   const { id, locale } = await params;
@@ -174,6 +175,7 @@ export default async function PlaceDetailPage({ params, searchParams }) {
 
       <footer className="site-footer">
         <div className="container">
+          <DataSources locale={loc} collectedAt={Date.now()} />
           {dict.footer} · <PrivacyLink />
         </div>
       </footer>

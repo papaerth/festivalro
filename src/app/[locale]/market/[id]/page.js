@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
 import BrandTagline from "@/components/BrandTagline";
+import DataSources from "@/components/DataSources";
 import LangSwitcher from "@/components/LangSwitcher";
 import AccountMenu from "@/components/AccountMenu";
 import PrivacyLink from "@/components/PrivacyLink";
@@ -139,6 +140,7 @@ export default async function MarketPage({ params }) {
       <footer className="site-footer">
         <div className="container">
           <BrandTagline />
+          <DataSources locale={loc} collectedAt={Date.now()} />
           {dict.footer} · <PrivacyLink />
         </div>
       </footer>

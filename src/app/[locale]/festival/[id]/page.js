@@ -11,6 +11,7 @@ import RelatedFestivals from "@/components/RelatedFestivals";
 import RecordView from "@/components/RecordView";
 import PrivacyLink from "@/components/PrivacyLink";
 import BrandTagline from "@/components/BrandTagline";
+import DataSources from "@/components/DataSources";
 import { SEASONS, typeTheme } from "@/lib/seasons";
 import { TAG_DEFS } from "@/lib/tags";
 import { getSeasonBadge, seasonBadgeLabel } from "@/lib/season";
@@ -68,6 +69,18 @@ const SOURCE = {
     en: "National Festival Standard Data (MOIS)",
     ja: "全国文化祭り標準データ(行政安全部)",
     zh: "全国文化庆典标准数据（行政安全部）",
+  },
+  kopis: {
+    ko: "공연예술통합전산망(KOPIS) · (재)예술경영지원센터",
+    en: "KOPIS · Korea Arts Management Service",
+    ja: "公演芸術統合電算網(KOPIS)",
+    zh: "演出艺术综合信息系统(KOPIS)",
+  },
+  culture: {
+    ko: "한국문화정보원 문화공공데이터광장",
+    en: "KCISA Culture Public Data",
+    ja: "韓国文化情報院",
+    zh: "韩国文化信息院",
   },
   kintex: {
     ko: "킨텍스(KINTEX) · 경기데이터드림",
@@ -503,6 +516,7 @@ export default async function FestivalDetailPage({ params }) {
       <footer className="site-footer">
         <div className="container">
           <BrandTagline />
+          <DataSources locale={loc} collectedAt={Date.now()} />
           {dict.footer} · <PrivacyLink />
         </div>
       </footer>

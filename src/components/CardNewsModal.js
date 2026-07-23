@@ -7,6 +7,7 @@ import { SEASONS } from "@/lib/seasons";
 import { formatPeriod, getStatusInfo } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
 import { getUiExtra } from "@/lib/i18n";
+import { shortSourceLabel } from "@/lib/dataSources";
 import CoverImage from "./CoverImage";
 import MapDirections from "./MapDirections";
 
@@ -125,6 +126,9 @@ export default function CardNewsModal({ festival, onClose }) {
             <button className="lcm-cta" onClick={goDetail}>
               {ux.detailCta} →
             </button>
+            {shortSourceLabel(festival.source, locale) && (
+              <p className="lcm-source">{shortSourceLabel(festival.source, locale)}</p>
+            )}
           </div>
         </div>
 

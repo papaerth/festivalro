@@ -28,6 +28,7 @@ import ReportLink from "./ReportLink";
 import AboutLink from "./AboutLink";
 import BrandLogo from "./BrandLogo";
 import BrandTagline from "./BrandTagline";
+import DataSources from "./DataSources";
 
 // 지도는 브라우저에서만 그려질 수 있어 ssr:false 로 불러옵니다.
 const MapView = dynamic(() => import("./MapView"), {
@@ -91,7 +92,7 @@ function overlapsMonth(startDate, endDate, month) {
   return false;
 }
 
-export default function HomeClient({ festivals, markets = [], fireworksSpots = [], usingSample, popScoreById = {} }) {
+export default function HomeClient({ festivals, markets = [], fireworksSpots = [], usingSample, popScoreById = {}, collectedAt }) {
   const [season, setSeason] = useState(currentSeason());
   const [month, setMonth] = useState(null); // null = 계절 전체 / 1~12 = 그 달에 걸치는 행사만
   const [type, setType] = useState(null); // null = 전체 유형(축제+전시+공연)
@@ -981,6 +982,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
       <footer className="site-footer">
         <div className="container">
           <BrandTagline />
+          <DataSources locale={locale} collectedAt={collectedAt} />
           {t.footer} · <AboutLink /> · <PrivacyLink /> · <ReportLink />
         </div>
       </footer>

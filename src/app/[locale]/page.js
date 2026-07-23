@@ -79,6 +79,7 @@ export default async function HomePage({ params }) {
         fireworksSpots={fireworksSpots}
         usingSample={usingSample}
         popScoreById={popScoreById}
+        collectedAt={Date.now()}
       />
     </>
   );
