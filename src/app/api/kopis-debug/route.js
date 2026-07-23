@@ -10,9 +10,17 @@ export async function GET(req) {
   if (process.env.CRON_SECRET && key !== process.env.CRON_SECRET) {
     return Response.json({ error: "forbidden" }, { status: 403 });
   }
+  // 진단: KOPIS/문화 관련 환경변수 '이름'만 노출(값은 노출 안 함) — 오타·스코프 확인용
+  const envKeys = Object.keys(process.env)
+    .filter((k) => /KOPIS|CULTURE|TOUR/i.test(k))
+    .sort();
+  const kopisKeyLen = (process.env.KOPIS_API_KEY || "").length; // 길이만(값 노출 X). 정상=32
+
   try {
     const items = await fetchFromKopis();
     return Response.json({
+      envKeys,
+      kopisKeyLen,
       hasKey: !!process.env.KOPIS_API_KEY,
       count: items.length,
       uniqueIds: new Set(items.map((x) => x.id)).size,
@@ -21,6 +29,6 @@ export async function GET(req) {
       sample: items.slice(0, 3).map((x) => ({ name: x.name, sido: x.sido, start: x.startDate, end: x.endDate })),
     });
   } catch (e) {
-    return Response.json({ hasKey: !!process.env.KOPIS_API_KEY, error: String(e && e.message) });
+    return Response.json({ envKeys, kopisKeyLen, hasKey: !!process.env.KOPIS_API_KEY, error: String(e && e.message) });
   }
 }
