@@ -100,7 +100,9 @@ const CHECKS = [
       const text = await r.text();
       // 정상: 레코드/필드가 있고 인증 에러가 아님
       const ok = r.ok && (text.includes("<perforList") || text.includes("<item") || text.includes("<title>"));
-      return ok ? { ok: true } : { ok: false, detail: `HTTP ${r.status}` };
+      // (임시 진단) 응답 태그 구조 노출 — 레코드 래퍼 확인용
+      const tagHint = (text.match(/<[a-zA-Z_][\w]*>/g) || []).slice(0, 16).join(" ").slice(0, 140);
+      return ok ? { ok: true, detail: tagHint } : { ok: false, detail: `HTTP ${r.status} ${tagHint}` };
     },
   },
   {
