@@ -18,10 +18,12 @@ import { unstable_cache } from "next/cache";
 //  (예전엔 TOUR_API_KEY 공용키로 쓰고 CULTURE_API_ENABLED=true 로만 켰음 — 하위호환 유지)
 //  · 전용 키는 문화공공데이터광장/공공데이터포털에서 "한눈에보는문화정보조회서비스"(15138937)
 //    활용신청 후 받은 인증키. 없으면 TOUR_API_KEY로 폴백.
-const CULTURE_KEY_RAW = process.env.CULTURE_API_KEY || process.env.TOUR_API_KEY || "";
-const HAS_CULTURE_KEY =
-  !!process.env.CULTURE_API_KEY && !process.env.CULTURE_API_KEY.startsWith("여기에");
-const CULTURE_ENABLED = HAS_CULTURE_KEY || process.env.CULTURE_API_ENABLED === "true";
+const CULTURE_KEY_RAW = (process.env.CULTURE_API_KEY || process.env.TOUR_API_KEY || "").trim();
+const CULTURE_KEY_TRIM = (process.env.CULTURE_API_KEY || "").trim();
+const HAS_CULTURE_KEY = !!CULTURE_KEY_TRIM && !CULTURE_KEY_TRIM.startsWith("여기에");
+// ※ Vercel 붙여넣기 시 끝 공백/줄바꿈이 흔해서 trim + 소문자로 관대하게 판정(=== "true" 강비교 금지)
+const CULTURE_ENABLED =
+  HAS_CULTURE_KEY || (process.env.CULTURE_API_ENABLED || "").trim().toLowerCase() === "true";
 // data.go.kr 게이트웨이 경유 엔드포인트(활용신청 대상 15138937 · 기관코드 B553457).
 //  ※ 혹시 기관에서 경로를 바꾸면 .env의 CULTURE_API_BASE로 덮어쓸 수 있습니다.
 const CULTURE_BASE =

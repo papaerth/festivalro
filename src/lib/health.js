@@ -86,9 +86,11 @@ const CHECKS = [
     key: "culture",
     label: "문화공공데이터광장 (전시·공연)",
     // 전용 키(CULTURE_API_KEY)를 넣으면 감시 대상. (예전 CULTURE_API_ENABLED=true+TOUR_API_KEY도 인정)
+    //  ※ Vercel 값의 끝 공백/줄바꿈·대소문자에 관대하게(trim+소문자) — 강비교(=== "true") 금지
     configured: () =>
       isSet(process.env.CULTURE_API_KEY) ||
-      (process.env.CULTURE_API_ENABLED === "true" && isSet(process.env.TOUR_API_KEY)),
+      ((process.env.CULTURE_API_ENABLED || "").trim().toLowerCase() === "true" &&
+        isSet(process.env.TOUR_API_KEY)),
     async check() {
       const base = process.env.CULTURE_API_BASE || "https://apis.data.go.kr/B553457/nopenapi/rest/publicperformancedisplays/period";
       // 앱과 동일하게 키 인코딩 정규화(디코딩 후 1회 인코딩)
