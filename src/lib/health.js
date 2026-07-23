@@ -104,6 +104,22 @@ const CHECKS = [
     },
   },
   {
+    key: "kopis",
+    label: "KOPIS 공연예술통합전산망 (전국 공연)",
+    configured: () => isSet(process.env.KOPIS_API_KEY),
+    async check() {
+      const base = process.env.KOPIS_API_BASE || "http://www.kopis.or.kr/openApi/restful/pblprfr";
+      // KOPIS 키는 원문 그대로 service 파라미터에 사용(별도 인코딩 정규화 불필요, 안전하게 인코딩만)
+      const key = encodeURIComponent(env("KOPIS_API_KEY"));
+      const r = await ping(`${base}?service=${key}&stdate=20260101&eddate=20270101&cpage=1&rows=1`);
+      if (!r.ok) return { ok: false, detail: `HTTP ${r.status}` };
+      const text = await r.text();
+      // 정상: 공연 레코드(<db>)가 있고 인증 에러(<returnReasonCode>/<message>)가 아님
+      const ok = text.includes("<db>") && !/returnReasonCode|error|인증/i.test(text.slice(0, 200));
+      return ok ? { ok: true } : { ok: false, detail: text.replace(/\s+/g, " ").slice(0, 120) };
+    },
+  },
+  {
     key: "youtube",
     label: "유튜브 (영상 섹션)",
     configured: () => isSet(process.env.YOUTUBE_API_KEY),
