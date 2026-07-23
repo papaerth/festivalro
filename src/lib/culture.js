@@ -177,7 +177,7 @@ async function fetchCultureRaw() {
   const all = firstBlocks.map(mapItem).filter(Boolean);
 
   // 남은 페이지를 병렬 배치로 수집(콜드스타트 후엔 빠름). 상한은 CULTURE_MAX_PAGES.
-  const MAX = Number(process.env.CULTURE_MAX_PAGES || 120); // 전국 전체(~1200건)
+  const MAX = Number(process.env.CULTURE_MAX_PAGES || 70); // ~700건(게이트웨이 60초 내 안전)
   const lastPage = Math.min(Math.ceil(totalCount / PAGE_SIZE) || 1, MAX);
   const BATCH = 10;
   for (let start = 2; start <= lastPage; start += BATCH) {
