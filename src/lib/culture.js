@@ -151,10 +151,11 @@ async function fetchCultureRaw() {
   const to = ymd(new Date(today.getTime() + 365 * 86400000)); // 1년 후
   const todayStr = today.toISOString().slice(0, 10);
 
-  // period2는 페이지당 10건 고정(rows/numOfRows 무시). cPage로 페이징.
+  // ⚠️ period2 페이징은 대문자 'PageNo'만 먹힘(cPage·pageNo 소문자·rows·numOfRows 전부 무시).
+  //  페이지당 10건 고정. sortStdr=1(등록일순).
   const PAGE_SIZE = 10;
   const url = (page) =>
-    `${CULTURE_BASE}?serviceKey=${serviceKey}&from=${from}&to=${to}&cPage=${page}&rows=${PAGE_SIZE}&sortStdr=1`;
+    `${CULTURE_BASE}?serviceKey=${serviceKey}&from=${from}&to=${to}&PageNo=${page}&sortStdr=1`;
 
   const parseBlocks = (text) => {
     const wrap = text.includes("<perforList>")
@@ -207,7 +208,7 @@ async function fetchCultureRaw() {
   return upcoming;
 }
 
-const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v6"], {
+const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v7"], {
   revalidate: 60 * 60 * 12,
 });
 
