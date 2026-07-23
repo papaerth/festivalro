@@ -14,10 +14,14 @@ import "server-only";
 // ────────────────────────────────────────────────────────────────
 import { unstable_cache } from "next/cache";
 
-// 기본 OFF: data.go.kr 게이트웨이(B553457)가 현재 500 "Unexpected errors"로 불안정(백엔드 이슈).
-//  전시·공연 유형은 축제 피드 제목 분류(festivals.js classifyType)로 대체함.
-//  이 API가 정상화되면 CULTURE_API_ENABLED=true 로 켜서 추가 수집 가능.
-const CULTURE_ENABLED = process.env.CULTURE_API_ENABLED === "true";
+// 활성화: 이 API 전용 키(CULTURE_API_KEY)를 넣으면 자동으로 켜집니다.
+//  (예전엔 TOUR_API_KEY 공용키로 쓰고 CULTURE_API_ENABLED=true 로만 켰음 — 하위호환 유지)
+//  · 전용 키는 문화공공데이터광장/공공데이터포털에서 "한눈에보는문화정보조회서비스"(15138937)
+//    활용신청 후 받은 인증키. 없으면 TOUR_API_KEY로 폴백.
+const CULTURE_KEY_RAW = process.env.CULTURE_API_KEY || process.env.TOUR_API_KEY || "";
+const HAS_CULTURE_KEY =
+  !!process.env.CULTURE_API_KEY && !process.env.CULTURE_API_KEY.startsWith("여기에");
+const CULTURE_ENABLED = HAS_CULTURE_KEY || process.env.CULTURE_API_ENABLED === "true";
 // data.go.kr 게이트웨이 경유 엔드포인트(활용신청 대상 15138937 · 기관코드 B553457).
 //  ※ 혹시 기관에서 경로를 바꾸면 .env의 CULTURE_API_BASE로 덮어쓸 수 있습니다.
 const CULTURE_BASE =
@@ -124,11 +128,14 @@ async function fetchWithTimeout(url, ms = 12000) {
 }
 
 async function fetchCultureRaw() {
-  const apiKey = process.env.TOUR_API_KEY;
-  if (!apiKey || apiKey === "여기에_키를_붙여넣기") return [];
+  const apiKey = (CULTURE_KEY_RAW || "").trim();
+  if (!apiKey || apiKey.startsWith("여기에")) return [];
 
-  // 문화포털은 data.go.kr 인증키를 씁니다. 원문(Encoding) 키를 그대로 붙입니다(재인코딩 X).
-  const serviceKey = apiKey;
+  // 키 인코딩 정규화: data.go.kr 키는 Encoding(이미 %인코딩)/Decoding(원문) 두 형태로 발급됨.
+  //  어느 쪽을 넣어도 되도록 '디코딩 후 한 번만 인코딩'해 항상 올바른 단일 인코딩으로 맞춤.
+  let decoded = apiKey;
+  try { decoded = decodeURIComponent(apiKey); } catch { decoded = apiKey; }
+  const serviceKey = encodeURIComponent(decoded);
 
   const today = new Date();
   const from = ymd(new Date(today.getTime() - 30 * 86400000)); // 30일 전
