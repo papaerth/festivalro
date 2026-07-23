@@ -77,40 +77,52 @@ function mapItem(block) {
   };
 }
 
+const fetchText = async (url, ms = 20000) => {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: c.signal });
+    return { status: res.status, text: await res.text() };
+  } finally {
+    clearTimeout(t);
+  }
+};
+
 // ── 실행 ──
 (async () => {
   const today = new Date();
   const ymd = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
-  const from = ymd(new Date(today.getTime() - 30 * 86400000));
+  // ⚠️ from=오늘 → 이미 끝난 이벤트를 API가 제외(현재 진행중/예정만).
+  const from = ymd(today);
   const to = ymd(new Date(today.getTime() + 365 * 86400000));
-  const url = `${BASE}?serviceKey=${serviceKey}&from=${from}&to=${to}&cPage=1&rows=20&sortStdr=1`;
+  const todayStr = today.toISOString().slice(0, 10);
+  // ⚠️ 페이징은 대문자 'PageNo'만 동작(cPage·pageNo·rows·numOfRows 전부 무시됨). 페이지당 10건 고정.
+  const PAGES = Number(process.env.CULTURE_MAX_PAGES || 8); // 검증용 8페이지(~80건) 표본
+  const urlOf = (page) => `${BASE}?serviceKey=${serviceKey}&from=${from}&to=${to}&PageNo=${page}&sortStdr=1`;
 
   console.log("═══ 문화정보 API 검증 ═══");
   console.log("사용 키:", USING);
   console.log("키 형태:", wasEncoded ? "Encoding(이미 %인코딩) → 디코딩 후 재인코딩" : "Decoding(원문) → 인코딩");
   console.log("엔드포인트:", BASE);
-  console.log("요청:", `from=${from} to=${to} rows=20\n`);
+  console.log("요청:", `from=${from} to=${to} PageNo=1..${PAGES} (페이지당 10건 고정)\n`);
 
-  let res;
+  let first;
   try {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), 15000);
-    res = await fetch(url, { signal: c.signal });
-    clearTimeout(t);
+    first = await fetchText(urlOf(1));
   } catch (e) {
     console.error("❌ 요청 실패(타임아웃/네트워크):", e.name || e.message);
+    console.error("   (정부 게이트웨이 첫 호출은 콜드스타트로 ~15초 걸릴 수 있습니다. 다시 실행해 보세요.)");
     process.exit(1);
   }
-  const text = await res.text();
 
-  const WRAP = text.includes("<perforList>") ? "perforList" : text.includes("<item>") ? "item" : null;
+  const WRAP = first.text.includes("<perforList>") ? "perforList" : first.text.includes("<item>") ? "item" : null;
   if (!WRAP) {
-    console.error(`❌ 정상 데이터가 아닙니다 (HTTP ${res.status}).`);
-    const msg = (text.match(/<returnAuthMsg>([^<]+)</) || text.match(/<errMsg>([^<]+)</) || text.match(/<message>([^<]+)</) || text.match(/<cmmMsgHeader>[\s\S]*?<returnReasonCode>([^<]+)</) || [])[1];
+    console.error(`❌ 정상 데이터가 아닙니다 (HTTP ${first.status}).`);
+    const msg = (first.text.match(/<returnAuthMsg>([^<]+)</) || first.text.match(/<errMsg>([^<]+)</) || first.text.match(/<message>([^<]+)</) || first.text.match(/<cmmMsgHeader>[\s\S]*?<returnReasonCode>([^<]+)</) || [])[1];
     if (msg) console.error("   서버 메시지:", msg);
-    else console.error("   응답 앞부분:", text.replace(/\s+/g, " ").slice(0, 200));
+    else console.error("   응답 앞부분:", first.text.replace(/\s+/g, " ").slice(0, 200));
     console.error("");
-    if (res.status === 404 || /not found/i.test(text)) {
+    if (first.status === 404 || /not found/i.test(first.text)) {
       console.error("👉 404 'API not found' → ①키가 이 데이터셋에 미등록이거나 ②엔드포인트(요청주소)가 다를 수 있습니다.");
       console.error("   • 데이터셋 상세페이지(공공데이터포털 '한눈에보는문화정보조회서비스')의 '요청주소'를 확인하세요.");
       console.error("   • 주소가 현재와 다르면 .env.local 에 CULTURE_API_BASE=<그 주소> 를 넣으면 덮어씁니다.");
@@ -122,14 +134,49 @@ function mapItem(block) {
     process.exit(1);
   }
 
-  const blocks = text.split(`<${WRAP}>`).slice(1).map((b) => b.split(`</${WRAP}>`)[0]);
-  const items = blocks.map(mapItem).filter(Boolean);
-  console.log(`✅ 정상 응답 — 이번 페이지에서 ${blocks.length}건 수신, 매핑 성공 ${items.length}건\n`);
+  const totalCount = Number((first.text.match(/<totalCount>(\d+)<\/totalCount>/) || [])[1] || 0);
+  const parse = (text) => text.split(`<${WRAP}>`).slice(1).map((b) => b.split(`</${WRAP}>`)[0]);
 
+  // PageNo 1..PAGES 순회 + id(seq) 기준 중복 제거 → 페이징이 실제로 동작하는지도 검증
+  const seen = new Set();
+  const items = [];
+  const collect = (blocks) => {
+    for (const b of blocks) {
+      const it = mapItem(b);
+      if (!it) continue;
+      const sid = (b.match(/<seq>([\s\S]*?)<\/seq>/i) || [])[1] || `${it.name}|${it.startDate}`;
+      if (seen.has(sid)) continue;
+      seen.add(sid);
+      items.push(it);
+    }
+  };
+  collect(parse(first.text));
+  const firstSeq = (first.text.match(/<seq>([\s\S]*?)<\/seq>/i) || [])[1] || "";
+  let pagingWorks = false;
+  for (let p = 2; p <= PAGES; p++) {
+    try {
+      const { text } = await fetchText(urlOf(p));
+      if (p === 2) {
+        const s2 = (text.match(/<seq>([\s\S]*?)<\/seq>/i) || [])[1] || "";
+        pagingWorks = s2 && s2 !== firstSeq; // 2페이지 첫 항목이 1페이지와 다르면 페이징 정상
+      }
+      collect(parse(text));
+    } catch { /* 페이지 실패는 건너뜀 */ }
+  }
+
+  console.log(`✅ 정상 응답 — API 전체 ${totalCount}건 중 ${PAGES}페이지 표본 수집, 고유 ${items.length}건`);
+  console.log(`   페이징(PageNo) 동작: ${pagingWorks ? "✓ 정상(페이지마다 다른 데이터)" : "✗ 확인필요(2페이지가 1페이지와 동일)"}\n`);
+
+  const upcoming = items.filter((x) => x.endDate >= todayStr);
   const field = (v) => (v ? "✓" : "✗");
   const exCount = items.filter((x) => x.type === "exhibition").length;
   const pfCount = items.filter((x) => x.type === "performance").length;
-  console.log(`유형 분류: 전시 ${exCount} · 공연 ${pfCount} · 미분류/축제제외 ${items.length - exCount - pfCount}\n`);
+  console.log(`유형 분류: 전시 ${exCount} · 공연 ${pfCount} · 미분류/축제제외 ${items.length - exCount - pfCount}`);
+  console.log(`진행중/예정(endDate≥오늘): ${upcoming.length}건 (앱이 실제 반영하는 대상)`);
+  // 지역 분포(area 앞 2글자로 대략) — 전국 커버 확인용
+  const byArea = {};
+  for (const x of items) { const a = (x.area || "기타").slice(0, 2); byArea[a] = (byArea[a] || 0) + 1; }
+  console.log("지역 분포:", Object.entries(byArea).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(" · "), "\n");
 
   console.log("── 샘플(최대 6건) 필드 채움 ──");
   items.slice(0, 6).forEach((x, i) => {
