@@ -3541,6 +3541,55 @@ h3 {
   background: rgba(255, 255, 255, 0.72);
 }
 
+/* ═══ 단계형 필터: 카테고리 탭 → 하위필터 패널(슬라이드 다운) ═══ */
+/* 하위필터 패널: grid-template-rows 0fr↔1fr 트릭으로 높이 부드럽게 펼침/접힘 */
+.mf-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-top: -5px; /* 접힘 시 부모 flex gap(5px) 상쇄 → 자리 사라짐 */
+  pointer-events: none;
+  transition: grid-template-rows 0.28s var(--ease, ease), opacity 0.2s ease,
+    margin-top 0.28s var(--ease, ease);
+}
+.mf-panel.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  margin-top: 0;
+  /* pointer-events는 none 유지 — 실제 클릭은 내부 .mf-row/.mf-region(각각 auto)이 받고,
+     칩 사이 빈 영역은 지도 드래그가 통과(기존 동작 보존) */
+}
+.mf-panel-inner {
+  min-height: 0; /* grid 0fr에서 내용이 삐져나오지 않게(클립) */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+/* 패널 안 칩은 지도가 살짝 비치도록 반투명(선택 칩은 .active가 덮음) */
+.mf-panel .mf-chip {
+  background: rgba(255, 255, 255, 0.66);
+}
+.mf-panel .mf-chip.active {
+  background: var(--accent);
+}
+/* 접힘 상태 요약 칩 줄 */
+.mf-summary-chips {
+  align-items: center;
+}
+.mf-sumchip {
+  cursor: default;
+  height: 26px;
+  padding: 0 10px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.9);
+}
+.mf-sum-clear {
+  color: var(--text-soft);
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.7);
+}
+
 /* 지역 선택 패널 (지도 위에 떠서) */
 .mf-region {
   pointer-events: auto;
