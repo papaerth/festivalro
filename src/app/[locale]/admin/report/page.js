@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getHealthReport } from "@/lib/health";
+import { getRecentCronRuns } from "@/lib/cronLog";
 
 // ────────────────────────────────────────────────────────────────
 //  운영자용 API 상태 페이지  (/admin/report)
@@ -30,7 +31,7 @@ export default async function AdminReportPage({ searchParams }) {
   const secret = process.env.CRON_SECRET;
   if (secret && sp?.key !== secret) notFound(); // 잠금(선택)
 
-  const report = await getHealthReport();
+  const [report, cronRuns] = await Promise.all([getHealthReport(), getRecentCronRuns(10)]);
   const okN = report.filter((r) => r.status === "ok").length;
   const failN = report.filter((r) => r.status === "fail").length;
   // 경고 배너는 소스별 알림 임계값(기본 2일, 표준데이터 7일) 이상일 때만
@@ -93,6 +94,50 @@ export default async function AdminReportPage({ searchParams }) {
         🟢 정상 · 🔴 응답 없음(이틀 연속 시 메일 알림) · ⚪ 키 미설정. 자동 점검은 매일 1회(refresh 크론) 실행됩니다.
         어떤 API가 죽어도 사이트는 나머지 소스로 정상 동작합니다.
       </p>
+
+      {/* ── 최근 자동 갱신 이력 (refresh 크론) ── */}
+      <h2 style={{ fontSize: 18, margin: "30px 0 6px" }}>🔄 최근 자동 갱신 이력</h2>
+      {cronRuns == null ? (
+        <p style={{ color: "#94a3b8", fontSize: 13 }}>
+          이력 저장이 아직 설정되지 않았습니다. Supabase에 <code>cron_runs</code> 테이블을 만들면
+          (저장소 <b>supabase/schema.sql</b> 참고) 여기에 최근 갱신 결과가 표시됩니다.
+        </p>
+      ) : cronRuns.length === 0 ? (
+        <p style={{ color: "#94a3b8", fontSize: 13 }}>아직 기록된 갱신 이력이 없습니다. (다음 크론 실행 후 표시)</p>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ textAlign: "left", color: "#94a3b8", fontSize: 12 }}>
+              <th style={{ padding: "6px 8px" }}>실행 시각(KST)</th>
+              <th style={{ padding: "6px 8px" }}>소요</th>
+              <th style={{ padding: "6px 8px" }}>수집(성공/전체)</th>
+              <th style={{ padding: "6px 8px" }}>소스별 건수</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cronRuns.map((run, i) => {
+              const t = run.totals || {};
+              const srcs = Array.isArray(run.sources) ? run.sources : [];
+              const failed = srcs.filter((s) => !s.ok);
+              return (
+                <tr key={i} style={{ borderTop: "1px solid #f1f5f9", verticalAlign: "top" }}>
+                  <td style={{ padding: "8px" }}>{fmt(run.ran_at)}</td>
+                  <td style={{ padding: "8px", color: "#64748b" }}>{Math.round((run.duration_ms || 0) / 100) / 10}s</td>
+                  <td style={{ padding: "8px" }}>
+                    <b>{t.total_count ?? "-"}</b>건 · {t.ok_count ?? "-"}/{(t.ok_count || 0) + (t.fail_count || 0)} 소스
+                    {failed.length > 0 && (
+                      <span style={{ color: "#dc2626" }}> · 실패 {failed.map((s) => s.key).join(",")}</span>
+                    )}
+                  </td>
+                  <td style={{ padding: "8px", color: "#64748b", fontSize: 12 }}>
+                    {srcs.map((s) => `${s.key} ${s.ok ? s.count : "✗"}`).join(" · ")}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
     </main>
   );
 }

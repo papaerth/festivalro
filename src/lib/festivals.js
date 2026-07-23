@@ -214,6 +214,12 @@ async function fetchFromTourApi(apiKey) {
     serviceKey = apiKey;
   }
 
+  // ⚠️ 자동 최신화: 조회 시작일을 '올해 1월 1일'로 동적 계산(하드코딩 금지 — 해마다 수동 갱신 불필요).
+  //  연초 이전 시작해 지금도 진행 중인 축제까지 포함하도록 지지난달 1일을 하한으로 둠.
+  const now = new Date();
+  const back = new Date(now.getFullYear(), now.getMonth() - 2, 1); // 2개월 전 1일
+  const eventStartDate = `${back.getFullYear()}${String(back.getMonth() + 1).padStart(2, "0")}01`;
+
   const params = new URLSearchParams({
     serviceKey,
     MobileOS: "ETC",
@@ -222,12 +228,12 @@ async function fetchFromTourApi(apiKey) {
     arrange: "A", // 제목순 정렬
     numOfRows: "200",
     pageNo: "1",
-    eventStartDate: "20260101", // 이 날짜 이후 시작하는 축제
+    eventStartDate, // 이 날짜(≈2개월 전) 이후 시작하는 축제 — 진행중/예정 위주
   });
 
   const res = await fetchWithTimeout(`${TOUR_API_BASE}?${params.toString()}`, {
-    // 서버에서 하루(초 단위) 캐시 — 매 요청마다 외부 API를 부르지 않도록
-    next: { revalidate: 60 * 60 * 24 },
+    // 축제 데이터는 하루 2회면 충분 → 12시간 캐시(방문 시 자동 갱신 + 크론이 보장)
+    next: { revalidate: 60 * 60 * 12 },
   });
   if (!res.ok) throw new Error(`TourAPI 응답 오류: ${res.status}`);
 
@@ -350,9 +356,10 @@ async function fetchStandardRaw() {
     .filter((f) => f.name && f.startDate && f.endDate >= cutoff);
 }
 
-// 성공한 결과만 캐시(6시간). 캐시 키에 버전(v2)을 넣어 예전 오염 캐시를 무시.
+// 성공한 결과만 캐시. 표준데이터는 변경이 드물어 주 1회(7일)면 충분 → 외부 호출 최소화.
+//  (연 단위로 등록되는 지자체 축제 표준데이터 특성상 잦은 재조회 불필요)
 const fetchFromStandardApi = unstable_cache(fetchStandardRaw, ["standard-festivals-v2"], {
-  revalidate: 60 * 60 * 6,
+  revalidate: 60 * 60 * 24 * 7,
 });
 
 // ── TourAPI 전시·박람회·공연(행사) 조회 ──
@@ -865,6 +872,48 @@ async function safeOverview(contentId, apiKey) {
 // [공개] id로 축제 1건 가져오기 (상세 화면에서 사용)
 //  - TourAPI 축제(숫자 contentid): 소개문(overview)을 추가로 붙입니다.
 //  - 지원 언어면 이름·소개문을 TourAPI 다국어 번역으로 대체(실패 시 한국어 폴백).
+// [공개] 크론 전용: 모든 외부 소스를 한 번씩 호출해 캐시를 데우고 소스별 통계를 돌려줍니다.
+//  · getFestivals와 '같은' 캐시 함수를 호출하므로, 여기서 데워진 데이터를 이후 페이지 렌더가 재사용.
+//  · 소스별 TTL(축제·전시·공연 12h / 표준데이터 7d)이 곧 갱신 주기 → TTL 만료분만 실제 재조회.
+//  · 각 소스는 독립적으로 병렬 실행 + 실패 시 2초 후 1회 재시도. 한 소스가 죽어도 나머지는 정상.
+//  · 실패해도 unstable_cache가 '직전 성공 데이터'를 유지(하드 무효화하지 않음) → 목록에서 사라지지 않음.
+export async function refreshAllSources() {
+  const apiKey = process.env.TOUR_API_KEY;
+  const hasRealKey = apiKey && apiKey !== "여기에_키를_붙여넣기";
+  const standardEnabled = process.env.STANDARD_API_ENABLED !== "false";
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  const SOURCES = [
+    { key: "tour", label: "TourAPI(축제)", run: () => (hasRealKey ? fetchFromTourApi(apiKey) : []) },
+    { key: "standard", label: "전국문화축제표준데이터", run: () => (standardEnabled ? fetchFromStandardApi() : []) },
+    { key: "seoul", label: "서울 열린데이터(전시·공연)", run: () => fetchFromSeoul() },
+    { key: "kcisa", label: "국립 미술관·박물관(KCISA)", run: () => fetchFromKcisa() },
+    { key: "culture", label: "문화공공데이터광장(전시·공연)", run: () => fetchFromCulture() },
+    { key: "kopis", label: "KOPIS(전국 공연)", run: () => fetchFromKopis() },
+    { key: "kintex", label: "킨텍스", run: () => fetchFromKintex() },
+    ...(EVENTS_ENABLED ? [{ key: "events", label: "TourAPI 행사", run: () => fetchFromEventsApi() }] : []),
+  ];
+
+  return Promise.all(
+    SOURCES.map(async (s) => {
+      const t0 = Date.now();
+      let ok = false, count = 0, error = null;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const data = await s.run();
+          count = Array.isArray(data) ? data.length : 0;
+          ok = true;
+          break;
+        } catch (e) {
+          error = (e && e.message) || "error";
+          if (attempt < 2) await sleep(2000); // 일시적 실패 대비 2초 후 1회 재시도
+        }
+      }
+      return { key: s.key, label: s.label, count, ms: Date.now() - t0, ok, error };
+    })
+  );
+}
+
 export async function getFestivalById(id, locale = "ko") {
   const all = await getFestivals();
   const festival = all.find((f) => f.id === id);

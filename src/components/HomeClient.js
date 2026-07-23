@@ -126,11 +126,16 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const fireworksText = getFireworksText(locale);
   const carouselTabs = getCarouselTabs(locale); // { festival, performance, exhibition }
 
-  // 축제마다 시도 key(_sido)를 한 번만 계산해 필터를 가볍게 유지
-  const withSido = useMemo(
-    () => festivals.map((f) => ({ ...f, _sido: matchSido(f.sido || "") })),
-    [festivals]
-  );
+  // 축제마다 시도 key(_sido)를 한 번만 계산해 필터를 가볍게 유지.
+  //  ⚠️ 종료일이 지난 이벤트는 여기서 자동 제외 → 목록·지도·캐러셀이 항상 '진행중/예정'만 표시.
+  //     (상세페이지는 getFestivalById 별도 경로라 영향 없음 = 과거 행사 URL/SEO 유지.
+  //      endDate 없는 직접등록은 유지. 크론/방문 재렌더 때마다 오늘 기준으로 재평가됨.)
+  const withSido = useMemo(() => {
+    const today = ymd(new Date());
+    return festivals
+      .filter((f) => !f.endDate || f.endDate >= today)
+      .map((f) => ({ ...f, _sido: matchSido(f.sido || "") }));
+  }, [festivals]);
   // 전통시장에도 동일하게 _sido 부여 (지역 필터 재사용)
   const marketsWithSido = useMemo(
     () => markets.map((m) => ({ ...m, _sido: matchSido(m.sido || "") })),
