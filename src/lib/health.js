@@ -95,7 +95,8 @@ const CHECKS = [
       const base = process.env.CULTURE_API_BASE || "https://apis.data.go.kr/B553457/cultureinfo/period2";
       // 앱과 동일하게 키 인코딩 정규화(디코딩 후 1회 인코딩)
       const key = encodeURIComponent(decodeKey(env("CULTURE_API_KEY") || env("TOUR_API_KEY")));
-      const r = await ping(`${base}?serviceKey=${key}&from=20260101&to=20261231&cPage=1&rows=1&sortStdr=1`);
+      // 정부 게이트웨이 콜드스타트(첫 호출 ~15초) 대비 20초 허용
+      const r = await ping(`${base}?serviceKey=${key}&from=20260101&to=20261231&cPage=1&rows=1&sortStdr=1`, {}, 20000);
       const text = await r.text();
       // 정상: 레코드/필드가 있고 인증 에러가 아님
       const ok = r.ok && (text.includes("<perforList") || text.includes("<item") || text.includes("<title>"));

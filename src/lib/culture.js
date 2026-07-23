@@ -120,7 +120,9 @@ function mapItem(block) {
   };
 }
 
-async function fetchWithTimeout(url, ms = 12000) {
+// 정부 게이트웨이(B553457) 콜드스타트가 첫 호출 ~15초라 넉넉히 20초.
+//  결과는 unstable_cache로 12시간 캐시 → 실제 원격 호출은 드물어 성능 영향 미미.
+async function fetchWithTimeout(url, ms = 20000) {
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), ms);
   try {
