@@ -439,8 +439,9 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
       return true;
     });
   }, [showSpots, spotsWithSido, sido, sigungu, query]);
-  // 캐러셀 탭 선택 → 지도 유형 필터를 그 유형으로 '설정'(토글 아님).
+  // 목록 유형 탭 선택 → 지도 유형 필터를 그 유형으로 '설정'(토글 아님).
   //  → 지도 마커 집합이 그 유형으로 바뀌며 부드럽게 줌 조정됨(지역·계절·월 필터는 유지).
+  //  ※ 카드뉴스 캐러셀 탭과는 무관 — 캐러셀은 자체 내부 탭으로 독립 동작.
   const selectType = (key) => {
     leaveMarketMode();
     setType(key);
@@ -547,14 +548,12 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     return [...set].sort((a, b) => a.localeCompare(b, "ko"));
   }, [withSido, sido]);
 
-  // 히어로 캐러셀: 현재 계절/월/지역 필터에 맞는 상위 목록을 '유형별'로 산출.
-  //  선정 기준은 모두 동일(진행중 우선 → 개막 임박 순), 유형만 다름. 탭 UI가 이걸 전환.
+  // 히어로 캐러셀: '전국 전체' 데이터에서 유형별 상위 목록을 산출.
+  //  ⚠️ 지도 필터(계절/월/지역/시군구/유형)와 완전히 독립 — 지도에서 지역·유형을 골라도
+  //     캐러셀은 항상 전국 기준 '인기 축제 / 다가오는 공연 / 다가오는 전시'를 그대로 유지.
+  //  선정 기준은 유형별로 동일: 진행중 우선 → 개막 임박 순(+ 인기 점수). 유형만 다름.
   const carousels = useMemo(() => {
     const now = new Date();
-    const base = withSido
-      .filter((f) => (month ? overlapsMonth(f.startDate, f.endDate, month) : f.season === season))
-      .filter((f) => (sido ? f._sido === sido : true))
-      .filter((f) => (sigungu ? f.sigungu === sigungu : true));
     const scoreTop = (list) => {
       const scored = list
         .map((f) => ({ f, st: getStatusInfo(f.startDate, f.endDate, now) }))
@@ -573,11 +572,11 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
       return scored.slice(0, 10).map((x) => x.f);
     };
     return {
-      festival: scoreTop(base.filter((f) => f.type === "festival")),
-      performance: scoreTop(base.filter((f) => f.type === "performance")),
-      exhibition: scoreTop(base.filter((f) => f.type === "exhibition")),
+      festival: scoreTop(withSido.filter((f) => f.type === "festival")),
+      performance: scoreTop(withSido.filter((f) => f.type === "performance")),
+      exhibition: scoreTop(withSido.filter((f) => f.type === "exhibition")),
     };
-  }, [withSido, season, month, sido, sigungu, popScoreById]);
+  }, [withSido, popScoreById]);
   // 카드뉴스(캐러셀)가 실제로 뜨는지 — HeroCarousel과 동일 기준(유형당 3개 이상).
   //  없으면 .no-carousel 클래스로 지도가 가로 전체를 쓰게(레이아웃 붕괴 방지 + 빈 공간 제거).
   const hasCarousel = TYPE_ORDER.some((k) => (carousels[k]?.length || 0) >= 3);
@@ -733,8 +732,6 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
             <HeroCarousel
               carousels={carousels}
               tabLabels={carouselTabs}
-              activeType={type}
-              onSelectType={selectType}
               onPick={handleHeroPick}
               onReset={resetSelection}
             />
@@ -875,7 +872,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
           </>
         ) : (
           <>
-        {/* 유형 탭: 지도 유형 칩·캐러셀 탭과 같은 type 상태를 공유(양방향 동기화) */}
+        {/* 유형 탭: 지도 유형 칩과 같은 type 상태를 공유(양방향 동기화). 카드뉴스 캐러셀과는 무관. */}
         <div className="list-type-tabs" role="tablist" ref={listRef}>
           <button
             type="button"

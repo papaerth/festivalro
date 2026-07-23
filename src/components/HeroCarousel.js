@@ -19,11 +19,12 @@ const TAB_EMOJI = { festival: "🔥", performance: "🎭", exhibition: "🖼️"
 const MIN_CARDS = 3; // 이 미만이면 해당 탭 숨김(빈 캐러셀 방지)
 
 // 메인 배너 캐러셀 — 유형별 탭(인기 축제 / 다가오는 공연 / 다가오는 전시)으로 전환.
-//  activeType(지도 유형 필터)과 양방향 동기화: 탭 클릭→onSelectType(지도 필터+줌),
-//  지도 칩 클릭→activeType 변경→이 탭이 따라옴.
-export default function HeroCarousel({ carousels = {}, tabLabels = {}, activeType = null, onSelectType, onPick, onReset }) {
+//  ⚠️ 탭은 이 컴포넌트 '내부 상태'로 독립 — 지도 필터(유형/지역/계절 등)와 무관하게 동작하며,
+//     탭을 눌러도 지도 마커/필터에 영향을 주지 않음(순수 표시 전환).
+export default function HeroCarousel({ carousels = {}, tabLabels = {}, onPick, onReset }) {
   const { t, locale, href } = useI18n();
   const detailLabel = DETAIL[locale] || DETAIL.en;
+  const [tab, setTab] = useState(null); // 사용자가 고른 캐러셀 탭(null=기본: 축제 우선)
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
   const [expanded, setExpanded] = useState(null); // 클릭한 카드의 확장 팝업
@@ -32,11 +33,11 @@ export default function HeroCarousel({ carousels = {}, tabLabels = {}, activeTyp
 
   // 카드 3개 이상인 유형만 탭으로 노출
   const visibleTabs = TYPE_ORDER.filter((k) => (carousels[k]?.length || 0) >= MIN_CARDS);
-  // 활성 탭 = 지도 유형 필터(activeType). 그 유형 탭이 노출 중일 때만 반영,
-  //  아니면(전체=null 또는 3개 미만) 축제 우선 → 첫 노출 탭.
+  // 활성 탭 = 내가 고른 탭(노출 중일 때). 아직 안 골랐거나 그 탭이 사라졌으면
+  //  축제 우선 → 첫 노출 탭으로 폴백.
   const activeTab =
-    activeType && visibleTabs.includes(activeType)
-      ? activeType
+    tab && visibleTabs.includes(tab)
+      ? tab
       : visibleTabs.includes("festival")
       ? "festival"
       : visibleTabs[0];
@@ -119,7 +120,7 @@ export default function HeroCarousel({ carousels = {}, tabLabels = {}, activeTyp
               aria-selected={k === activeTab}
               className={`hero-tab ${k === activeTab ? "active" : ""}`}
               style={{ "--tab": TYPES[k].color }}
-              onClick={() => onSelectType && onSelectType(k)}
+              onClick={() => setTab(k)}
             >
               {TAB_EMOJI[k]} {tabLabels[k] || TYPES[k].label}
             </button>
