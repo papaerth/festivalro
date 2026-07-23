@@ -33,10 +33,11 @@ const CULTURE_BASE =
 
 // 시/도 이름 → 권역 코드 (festivals.js와 동일 규칙, 순환 import 방지용 최소 복제)
 function sidoToRegion(sido = "") {
+  // ⚠️ 문화포털 area는 축약형("충북","충남","전남","경북"…)으로 옴 → 축약형까지 매칭.
   if (sido.includes("서울")) return "seoul";
   if (sido.includes("경기") || sido.includes("인천")) return "gyeonggi";
   if (sido.includes("강원")) return "gangwon";
-  if (sido.includes("충청") || sido.includes("대전") || sido.includes("세종")) return "chungcheong";
+  if (sido.includes("충청") || sido.includes("충북") || sido.includes("충남") || sido.includes("대전") || sido.includes("세종")) return "chungcheong";
   if (sido.includes("전라") || sido.includes("전북") || sido.includes("전남") || sido.includes("광주")) return "jeolla";
   if (sido.includes("경상") || sido.includes("경북") || sido.includes("경남") || sido.includes("대구") || sido.includes("부산") || sido.includes("울산")) return "gyeongsang";
   if (sido.includes("제주")) return "jeju";
@@ -176,9 +177,9 @@ async function fetchCultureRaw() {
   const all = firstBlocks.map(mapItem).filter(Boolean);
 
   // 남은 페이지를 병렬 배치로 수집(콜드스타트 후엔 빠름). 상한은 CULTURE_MAX_PAGES.
-  const MAX = Number(process.env.CULTURE_MAX_PAGES || 60); // 최대 ~600건
+  const MAX = Number(process.env.CULTURE_MAX_PAGES || 120); // 전국 전체(~1200건)
   const lastPage = Math.min(Math.ceil(totalCount / PAGE_SIZE) || 1, MAX);
-  const BATCH = 6;
+  const BATCH = 10;
   for (let start = 2; start <= lastPage; start += BATCH) {
     const pages = [];
     for (let p = start; p < start + BATCH && p <= lastPage; p++) pages.push(p);
@@ -197,7 +198,7 @@ async function fetchCultureRaw() {
   return upcoming;
 }
 
-const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v4"], {
+const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v5"], {
   revalidate: 60 * 60 * 12,
 });
 
