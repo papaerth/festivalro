@@ -192,13 +192,22 @@ async function fetchCultureRaw() {
     }
   }
 
+  // id 기준 중복 제거(게이트웨이가 페이지 경계에서 같은 레코드를 반복하는 경우 방지)
+  const seen = new Set();
+  const uniq = [];
+  for (const it of all) {
+    if (seen.has(it.id)) continue;
+    seen.add(it.id);
+    uniq.push(it);
+  }
+
   // 종료되지 않은(오늘 이후 종료) 전시·공연만 — 안전망(API가 이미 걸러주지만 이중 확인)
-  const upcoming = all.filter((f) => f.endDate >= todayStr);
+  const upcoming = uniq.filter((f) => f.endDate >= todayStr);
   if (upcoming.length === 0) throw new Error("문화포털 전시·공연 결과 없음(또는 활용신청 전)");
   return upcoming;
 }
 
-const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v5"], {
+const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v6"], {
   revalidate: 60 * 60 * 12,
 });
 
