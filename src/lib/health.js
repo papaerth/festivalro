@@ -98,11 +98,9 @@ const CHECKS = [
       // 정부 게이트웨이 콜드스타트(첫 호출 ~15초) 대비 20초 허용
       const r = await ping(`${base}?serviceKey=${key}&from=20260101&to=20261231&cPage=1&rows=1&sortStdr=1`, {}, 20000);
       const text = await r.text();
-      // 정상: 레코드/필드가 있고 인증 에러가 아님
-      const ok = r.ok && (text.includes("<perforList") || text.includes("<item") || text.includes("<title>"));
-      // (임시 진단) 응답 태그 구조 노출 — 레코드 래퍼 확인용
-      const tagHint = (text.match(/<[a-zA-Z_][\w]*>/g) || []).slice(0, 16).join(" ").slice(0, 140);
-      return ok ? { ok: true, detail: tagHint } : { ok: false, detail: `HTTP ${r.status} ${tagHint}` };
+      // 정상: 레코드(<item>)/필드가 있고 인증 에러가 아님
+      const ok = r.ok && (text.includes("<item") || text.includes("<perforList") || text.includes("<title>"));
+      return ok ? { ok: true } : { ok: false, detail: `HTTP ${r.status}` };
     },
   },
   {

@@ -172,7 +172,7 @@ async function fetchCultureRaw() {
   return upcoming;
 }
 
-const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v1"], {
+const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v2"], {
   revalidate: 60 * 60 * 12,
 });
 
