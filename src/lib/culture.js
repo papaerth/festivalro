@@ -143,39 +143,61 @@ async function fetchCultureRaw() {
   const serviceKey = encodeURIComponent(decoded);
 
   const today = new Date();
-  // from은 넉넉히 과거로 — 오래전 시작해 지금도 진행 중인 상설 전시/공연까지 포함.
-  //  (아래에서 endDate >= 오늘 로 걸러 '현재 진행중/예정'만 남김)
-  const from = ymd(new Date(today.getTime() - 3 * 365 * 86400000)); // 3년 전
+  // ⚠️ period2는 from~to '기간과 겹치는' 이벤트를 줌. from=오늘로 잡아야
+  //  이미 끝난 이벤트를 API 단에서 제외하고 '현재 진행중/예정'만 받음.
+  //  (from을 과거로 잡으면 끝난 전시가 앞 페이지를 가득 채워 정작 진행중이 안 들어옴)
+  const from = ymd(today);
   const to = ymd(new Date(today.getTime() + 365 * 86400000)); // 1년 후
   const todayStr = today.toISOString().slice(0, 10);
 
-  const all = [];
-  const MAX = Number(process.env.CULTURE_MAX_PAGES || 20); // 100건×페이지
-  for (let page = 1; page <= MAX; page++) {
-    const url = `${CULTURE_BASE}?serviceKey=${serviceKey}&from=${from}&to=${to}&cPage=${page}&rows=100&sortStdr=1`;
-    const res = await fetchWithTimeout(url);
-    if (!res.ok) break;
-    const text = await res.text();
-    // 레코드 래퍼 자동 감지(<perforList> 또는 표준 <item>). 활용신청 전/에러면 없음 → 조용히 종료.
+  // period2는 페이지당 10건 고정(rows/numOfRows 무시). cPage로 페이징.
+  const PAGE_SIZE = 10;
+  const url = (page) =>
+    `${CULTURE_BASE}?serviceKey=${serviceKey}&from=${from}&to=${to}&cPage=${page}&rows=${PAGE_SIZE}&sortStdr=1`;
+
+  const parseBlocks = (text) => {
     const wrap = text.includes("<perforList>")
       ? "perforList"
       : text.includes("<item>")
       ? "item"
       : null;
-    if (!wrap) break;
-    const blocks = text.split(`<${wrap}>`).slice(1).map((b) => b.split(`</${wrap}>`)[0]);
-    const mapped = blocks.map(mapItem).filter(Boolean);
-    all.push(...mapped);
-    if (blocks.length < 100) break; // 마지막 페이지
+    if (!wrap) return null; // 활용신청 전/에러 페이지
+    return text.split(`<${wrap}>`).slice(1).map((b) => b.split(`</${wrap}>`)[0]);
+  };
+
+  // 1페이지: totalCount 확인 + 첫 데이터
+  const first = await fetchWithTimeout(url(1));
+  if (!first.ok) throw new Error(`문화포털 HTTP ${first.status}`);
+  const firstText = await first.text();
+  const firstBlocks = parseBlocks(firstText);
+  if (!firstBlocks) throw new Error("문화포털 응답 형식 오류(활용신청 전일 수 있음)");
+  const totalCount = Number((firstText.match(/<totalCount>(\d+)<\/totalCount>/) || [])[1] || 0);
+
+  const all = firstBlocks.map(mapItem).filter(Boolean);
+
+  // 남은 페이지를 병렬 배치로 수집(콜드스타트 후엔 빠름). 상한은 CULTURE_MAX_PAGES.
+  const MAX = Number(process.env.CULTURE_MAX_PAGES || 60); // 최대 ~600건
+  const lastPage = Math.min(Math.ceil(totalCount / PAGE_SIZE) || 1, MAX);
+  const BATCH = 6;
+  for (let start = 2; start <= lastPage; start += BATCH) {
+    const pages = [];
+    for (let p = start; p < start + BATCH && p <= lastPage; p++) pages.push(p);
+    const texts = await Promise.all(
+      pages.map((p) => fetchWithTimeout(url(p)).then((r) => (r.ok ? r.text() : "")).catch(() => ""))
+    );
+    for (const text of texts) {
+      const blocks = parseBlocks(text);
+      if (blocks) all.push(...blocks.map(mapItem).filter(Boolean));
+    }
   }
 
-  // 종료되지 않은(오늘 이후 종료) 전시·공연만
+  // 종료되지 않은(오늘 이후 종료) 전시·공연만 — 안전망(API가 이미 걸러주지만 이중 확인)
   const upcoming = all.filter((f) => f.endDate >= todayStr);
   if (upcoming.length === 0) throw new Error("문화포털 전시·공연 결과 없음(또는 활용신청 전)");
   return upcoming;
 }
 
-const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v3"], {
+const cultureCached = unstable_cache(fetchCultureRaw, ["culture-events-v4"], {
   revalidate: 60 * 60 * 12,
 });
 
