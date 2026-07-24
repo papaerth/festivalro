@@ -142,8 +142,9 @@ export default function BookingButton({ festival, compact = false, eager = false
     );
   }
 
-  // 지연대상(주로 지도 팝업 KOPIS): 낙관 버튼 → 클릭 시 조회 후 이동/목록
-  if (canLazy) {
+  // 지연대상 중 지도 팝업(eager=false)에서는 KOPIS만 낙관 표시(예매처가 거의 항상 있음).
+  //  축제(TourAPI) homepage는 eager 컨텍스트(모달·캐러셀)에서만 조회 → 지도에선 죽은 버튼 방지.
+  if (lazyKopis) {
     const onOptimisticClick = async () => {
       const res = await doFetch();
       const u = res && res.url;
