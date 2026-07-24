@@ -1295,6 +1295,41 @@ h3 {
   font-size: 10px;
   line-height: 1;
 }
+/* 시기 구분 마커: 예정=반투명 / 상설=∞ / 예정 D-day 라벨 */
+.festival-pin.pin-upcoming {
+  opacity: 0.55;
+}
+.festival-pin-inf {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  font-size: 11px;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1;
+}
+/* 예정 마커 위 D-day 라벨 — 핀(반투명) 바깥 형제라 또렷함. 핀 위쪽 중앙에 수평 표시 */
+.festival-pin-dday {
+  position: absolute;
+  left: 11px; /* 래퍼(22px) 가로 중앙 */
+  top: -4px;
+  transform: translate(-50%, -100%);
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.35;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+/* 겹칠 때 D-day 라벨(예정 마커)이 위로 오도록 래퍼 z-index 상향 */
+.festival-pin-wrap.has-dday {
+  z-index: 650 !important;
+}
 .leaflet-popup-content {
   font-family: var(--font-sans);
   margin: 12px 14px;
@@ -3781,6 +3816,67 @@ h3 {
 @keyframes userPulse {
   0% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
   100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+}
+
+/* 마커 팝업 상태 뱃지 (진행중 / D-12 / 종료) */
+.popup-status {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 999px);
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: #6b7280;
+}
+.popup-status.ongoing {
+  background: #dc2626;
+}
+.popup-status.upcoming {
+  background: #2563eb;
+}
+
+/* 📍 내 주변 시기 필터 칩 */
+.map-filters .mf-timing .mf-time.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.mf-time-n {
+  opacity: 0.75;
+  font-weight: 800;
+}
+.mf-time.active .mf-time-n {
+  opacity: 0.95;
+}
+
+/* 내 주변 목록 시기 그룹 헤더 */
+.nearby-group {
+  margin-top: 6px;
+}
+.nearby-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 2px 8px;
+  font-size: var(--fs-body);
+  font-weight: 800;
+  color: var(--text);
+}
+.nearby-group-head::before {
+  content: "";
+  width: 4px;
+  height: 15px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.nearby-group-count {
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  color: var(--text-soft);
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-pill, 999px);
+  padding: 1px 8px;
 }
 
 /* 지역 선택 패널 (지도 위에 떠서) */

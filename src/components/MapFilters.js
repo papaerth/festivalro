@@ -54,6 +54,9 @@ export default function MapFilters({
   onToggleNearby,
   radiusKm = 20,
   onPickRadius,
+  timing = null,
+  onPickTiming,
+  timingCounts = {},
   geoBusy = false,
   geoConsent = false,
   onGeoConfirm,
@@ -229,6 +232,29 @@ export default function MapFilters({
               onClick={() => onPickRadius && onPickRadius(km)}
             >
               {km}km
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 시기 필터 칩 (내 주변 전용) — 언제 갈 수 있는지 기준. 각 칩에 건수 표시. */}
+      {nearby && (
+        <div className="mf-row mf-timing" role="group" aria-label={(nearT.timing && nearT.timing.all) || "시기"}>
+          {[
+            { key: null, label: (nearT.timing && nearT.timing.all) || "전체", n: timingCounts.all },
+            { key: "ongoing", label: (nearT.timing && nearT.timing.ongoing) || "지금 진행중", n: timingCounts.ongoing },
+            { key: "week", label: (nearT.timing && nearT.timing.week) || "이번 주", n: timingCounts.week },
+            { key: "month", label: (nearT.timing && nearT.timing.month) || "이번 달", n: timingCounts.month },
+          ].map((c) => (
+            <button
+              key={c.key || "all"}
+              type="button"
+              className={`mf-chip mf-time ${timing === c.key ? "active" : ""}`}
+              onClick={() => onPickTiming && onPickTiming(c.key)}
+              aria-pressed={timing === c.key}
+            >
+              {c.label}
+              {typeof c.n === "number" ? <span className="mf-time-n"> {c.n}</span> : null}
             </button>
           ))}
         </div>

@@ -6,7 +6,7 @@ import "leaflet/dist/leaflet.css";
 import Link from "next/link";
 import { useEffect, useRef, useMemo } from "react";
 import { markerColor, typeTheme } from "@/lib/seasons";
-import { formatPeriod } from "@/lib/format";
+import { formatPeriod, getStatusInfo } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
 import { MAP_GESTURE_TEXT, getMarketText, getFireworksText } from "@/lib/i18n";
 import { nextMarketDay, formatMarketDate } from "@/lib/marketDay";
@@ -26,11 +26,21 @@ const VIEW_DETAIL = {
   th: "ดู →", ko: "상세보기 →", en: "View →", ja: "詳細 →", zh: "查看 →" };
 
 // 물방울 모양 핀 아이콘. 축제는 계절색(기존 그대로), 전시·공연은 유형색 + 작은 글리프로 살짝 구분.
-function makePin(color, glyph = "") {
+//  시기 구분(모든 지도 모드 공통):
+//   · 진행중: 선명(기본)  · 예정: 반투명 + D-day 라벨  · 상설: 작은 ∞ 배지.
+function makePin(color, glyph = "", opts = {}) {
+  const { upcoming = false, dday = null, permanent = false } = opts;
   const inner = glyph ? `<span class="festival-pin-glyph">${glyph}</span>` : "";
+  const ddayLabel =
+    upcoming && dday != null
+      ? `<span class="festival-pin-dday">${dday === 0 ? "D-day" : "D-" + dday}</span>`
+      : "";
+  const inf = permanent ? `<span class="festival-pin-inf">∞</span>` : "";
+  const cls = `festival-pin${upcoming ? " pin-upcoming" : ""}${permanent ? " pin-permanent" : ""}`;
+  // D-day 라벨은 핀(반투명) 바깥 형제로 두어 또렷하게 유지.
   return L.divIcon({
-    className: "festival-pin-wrap",
-    html: `<span class="festival-pin" style="--pin:${color}">${inner}</span>`,
+    className: `festival-pin-wrap${ddayLabel ? " has-dday" : ""}`,
+    html: `<span class="${cls}" style="--pin:${color}">${inner}${inf}</span>${ddayLabel}`,
     iconSize: [22, 22],
     iconAnchor: [11, 22],
     popupAnchor: [0, -22],
@@ -340,7 +350,7 @@ function SpotPopup({ f, locale }) {
 const MARKER_CAP = 500;
 
 export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, onHover = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null, homeSignal = 0, userLoc = null, radiusKm = 20, nearbySignal = 0, userHereLabel = "내 위치" }) {
-  const { locale, href } = useI18n();
+  const { locale, href, t } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 터치 기기에서만 제스처 핸들링 활성화 (한 손가락 스크롤 / 두 손가락 지도 조작 + 안내)
   const touch = isTouchDevice();
@@ -390,11 +400,18 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
           ? typeTheme(f.type).emoji
           : "";
         const r = ratings[f.id];
+        // 시기 상태: 진행중=선명 / 예정=반투명+D-day / 상설=∞ (시장은 상시라 상태표시 안 함)
+        const st = f.permanent || f.type === "market" ? null : getStatusInfo(f.startDate, f.endDate);
+        const pinOpts = {
+          permanent: !!f.permanent,
+          upcoming: st ? st.key === "upcoming" : false,
+          dday: st && st.key === "upcoming" ? st.dday : null,
+        };
         return (
           <Marker
             key={f.id}
             position={f._ll}
-            icon={makePin(color, glyph)}
+            icon={makePin(color, glyph, pinOpts)}
             eventHandlers={{
               click: () => onSelect && onSelect(f),
               mouseover: () => onHover && onHover(f.id),
@@ -413,6 +430,15 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
                 <MarketPopup f={f} locale={locale} href={href} viewDetail={viewDetail} />
               ) : (
                 <>
+                  {st && (
+                    <span className={`popup-status ${st.key}`}>
+                      {st.key === "ongoing"
+                        ? `🔴 ${t.status.ongoingShort || t.status.ongoing}`
+                        : st.key === "upcoming"
+                        ? st.dday === 0 ? "D-day" : `D-${st.dday}`
+                        : t.status.ended}
+                    </span>
+                  )}
                   <strong>{f.displayName || f.name}</strong>
                   <br />
                   <span>{formatPeriod(f.startDate, f.endDate)}</span>

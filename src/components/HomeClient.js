@@ -90,10 +90,14 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 // "내 주변" 다국어 문구 (ko·en·ja·zh 제공, 그 외 en 폴백)
 const NEARBY_TEXT = {
-  ko: { tab: "내 주변", consent: "가까운 축제·공연·전시를 찾기 위해 위치 정보를 사용합니다.", find: "내 위치 찾기", cancel: "취소", denied: "위치 권한이 꺼져 있어요. 지역을 직접 선택해 주세요.", offForRegion: "‘내 주변’을 껐어요. 선택한 지역으로 이동합니다.", unsupported: "이 환경에선 위치를 쓸 수 없어요. 지역을 선택해 주세요.", empty: "이 반경 안에 진행 중·예정 행사가 없어요. 반경을 넓혀 보세요.", locating: "위치 찾는 중…", here: "내 위치" },
-  en: { tab: "Near me", consent: "We use your location to find nearby festivals, shows and exhibitions.", find: "Find my location", cancel: "Cancel", denied: "Location is off. Please pick a region manually.", offForRegion: "Turned off ‘Near me’. Moving to the selected region.", unsupported: "Location isn’t available here. Please choose a region.", empty: "No ongoing/upcoming events in this radius. Try a wider one.", locating: "Locating…", here: "You are here" },
-  ja: { tab: "近く", consent: "近くのお祭り・公演・展示を探すため位置情報を使います。", find: "現在地を取得", cancel: "キャンセル", denied: "位置情報がオフです。地域を手動で選んでください。", offForRegion: "「近く」をオフにしました。選択した地域へ移動します。", unsupported: "この環境では位置情報を使えません。地域を選んでください。", empty: "この範囲に開催中・予定のイベントがありません。範囲を広げてください。", locating: "現在地を取得中…", here: "現在地" },
-  zh: { tab: "我的附近", consent: "使用您的位置来查找附近的庆典·演出·展览。", find: "获取我的位置", cancel: "取消", denied: "定位已关闭，请手动选择地区。", offForRegion: "已关闭“我的附近”，正在前往所选地区。", unsupported: "此环境无法使用定位，请选择地区。", empty: "该半径内没有进行中/即将举行的活动，请扩大范围。", locating: "定位中…", here: "我的位置" },
+  ko: { tab: "내 주변", consent: "가까운 축제·공연·전시를 찾기 위해 위치 정보를 사용합니다.", find: "내 위치 찾기", cancel: "취소", denied: "위치 권한이 꺼져 있어요. 지역을 직접 선택해 주세요.", offForRegion: "‘내 주변’을 껐어요. 선택한 지역으로 이동합니다.", unsupported: "이 환경에선 위치를 쓸 수 없어요. 지역을 선택해 주세요.", empty: "이 반경 안에 진행 중·예정 행사가 없어요. 반경을 넓혀 보세요.", locating: "위치 찾는 중…", here: "내 위치",
+    timing: { all: "전체", ongoing: "지금 진행중", week: "이번 주", month: "이번 달", g_ongoing: "지금 진행중", g_week: "이번 주 시작", g_month: "이번 달 시작", g_later: "다음 달 이후", g_permanent: "상설" } },
+  en: { tab: "Near me", consent: "We use your location to find nearby festivals, shows and exhibitions.", find: "Find my location", cancel: "Cancel", denied: "Location is off. Please pick a region manually.", offForRegion: "Turned off ‘Near me’. Moving to the selected region.", unsupported: "Location isn’t available here. Please choose a region.", empty: "No ongoing/upcoming events in this radius. Try a wider one.", locating: "Locating…", here: "You are here",
+    timing: { all: "All", ongoing: "Now on", week: "This week", month: "This month", g_ongoing: "Now on", g_week: "Starts this week", g_month: "Starts this month", g_later: "Later", g_permanent: "Permanent" } },
+  ja: { tab: "近く", consent: "近くのお祭り・公演・展示を探すため位置情報を使います。", find: "現在地を取得", cancel: "キャンセル", denied: "位置情報がオフです。地域を手動で選んでください。", offForRegion: "「近く」をオフにしました。選択した地域へ移動します。", unsupported: "この環境では位置情報を使えません。地域を選んでください。", empty: "この範囲に開催中・予定のイベントがありません。範囲を広げてください。", locating: "現在地を取得中…", here: "現在地",
+    timing: { all: "すべて", ongoing: "開催中", week: "今週", month: "今月", g_ongoing: "開催中", g_week: "今週開始", g_month: "今月開始", g_later: "来月以降", g_permanent: "常設" } },
+  zh: { tab: "我的附近", consent: "使用您的位置来查找附近的庆典·演出·展览。", find: "获取我的位置", cancel: "取消", denied: "定位已关闭，请手动选择地区。", offForRegion: "已关闭“我的附近”，正在前往所选地区。", unsupported: "此环境无法使用定位，请选择地区。", empty: "该半径内没有进行中/即将举行的活动，请扩大范围。", locating: "定位中…", here: "我的位置",
+    timing: { all: "全部", ongoing: "正在进行", week: "本周", month: "本月", g_ongoing: "正在进行", g_week: "本周开始", g_month: "本月开始", g_later: "下月以后", g_permanent: "常设" } },
 };
 function nearbyText(locale) {
   return NEARBY_TEXT[locale] || NEARBY_TEXT.en;
@@ -103,6 +107,48 @@ function fmtDistance(km) {
   if (!Number.isFinite(km)) return "";
   return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
 }
+
+// KST 기준 오늘/이번주 끝(일요일)/이번달 말일을 "YYYY-MM-DD"로 (자정 경계도 KST로 정확).
+function kstBounds(now = new Date()) {
+  const kst = new Date(now.getTime() + 9 * 3600 * 1000); // UTC→KST 시프트 후 UTC필드로 KST 달력 읽기
+  const y = kst.getUTCFullYear();
+  const m = kst.getUTCMonth();
+  const d = kst.getUTCDate();
+  const dow = kst.getUTCDay(); // 0=일 … 6=토 (KST)
+  const pad = (n) => String(n).padStart(2, "0");
+  const fromUTC = (dt) => `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
+  const todayStr = `${y}-${pad(m + 1)}-${pad(d)}`;
+  const endWeekStr = fromUTC(new Date(Date.UTC(y, m, d + ((7 - dow) % 7)))); // 이번 주 일요일
+  const endMonthStr = fromUTC(new Date(Date.UTC(y, m + 1, 0))); // 이번 달 말일
+  return { todayStr, endWeekStr, endMonthStr };
+}
+
+// 이벤트의 '시기 버킷' — 상설/진행중/이번주 시작/이번달 시작/다음달 이후 (배타적).
+//  진행중·예정 판정은 KST 정합인 getStatusInfo를 그대로 쓰고, 예정만 주/월 경계로 세분.
+function timingBucket(f, bounds, now) {
+  if (f.permanent) return "permanent";
+  const st = getStatusInfo(f.startDate, f.endDate, now);
+  if (st.key === "ongoing") return "ongoing";
+  if (st.key === "ended") return "later"; // withSido에서 이미 제외되지만 안전망
+  const start = f.startDate || "";
+  if (start <= bounds.endWeekStr) return "week";
+  if (start <= bounds.endMonthStr) return "month";
+  return "later";
+}
+
+// 시기 필터 칩(전체/진행중/이번주/이번달) 매칭 — 누적 범위(언제 갈 수 있는지). 상설은 항상 포함.
+function timingMatch(f, timing, bounds, now) {
+  if (!timing) return true;
+  const b = timingBucket(f, bounds, now);
+  if (b === "permanent") return true;
+  if (timing === "ongoing") return b === "ongoing";
+  if (timing === "week") return b === "ongoing" || b === "week";
+  if (timing === "month") return b === "ongoing" || b === "week" || b === "month";
+  return true;
+}
+
+// 목록 그룹 순서 + 라벨 키
+const TIMING_GROUPS = ["ongoing", "week", "month", "later", "permanent"];
 
 // 행사 기간이 특정 '월'(1~12, 연도 무관)에 걸치는지.
 //  예: 2026-06-26~2026-08-17 → 6·7·8월 모두 true (두 달에 걸쳐도 양쪽 다 잡힘)
@@ -145,6 +191,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const [nearby, setNearby] = useState(false); // 내 주변 모드 on/off
   const [userLoc, setUserLoc] = useState(null); // { lat, lng } — 사용자 현재 위치
   const [radiusKm, setRadiusKm] = useState(20); // 반경(km): 5/10/20/50
+  const [timing, setTiming] = useState(null); // 시기 필터: null=전체 | ongoing | week | month
   const [geoBusy, setGeoBusy] = useState(false); // 위치 조회 중
   const [geoConsent, setGeoConsent] = useState(false); // 위치 사용 안내(권한 요청 전 표시)
   const [nearbySignal, setNearbySignal] = useState(0); // 내 주변/반경 변경 → 지도 재조정 신호
@@ -200,6 +247,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
         // 권한 거부/실패 → 에러로 끝내지 않고 지역 선택 폴백 + 안내
         setGeoBusy(false);
         setNearby(false);
+        setTiming(null);
         showToast(nearT.denied);
         setOpenRegionSignal((n) => n + 1);
       },
@@ -211,6 +259,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const toggleNearby = () => {
     if (nearby) {
       setNearby(false);
+      setTiming(null); // 시기 필터도 초기화
       setHomeSignal((n) => n + 1); // 전국 초기 뷰 복귀
       return;
     }
@@ -227,6 +276,8 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     setRadiusKm(km);
     setNearbySignal((n) => n + 1); // 반경 변경 → 지도 재조정 + 결과 갱신
   };
+  // 시기 칩 토글 (다시 누르면 전체)
+  const pickTiming = (key) => setTiming((prev) => (prev === key ? null : key));
 
   // 축제마다 시도 key(_sido)를 한 번만 계산해 필터를 가볍게 유지.
   //  ⚠️ 종료일이 지난 이벤트는 여기서 자동 제외 → 목록·지도·캐러셀이 항상 '진행중/예정'만 표시.
@@ -345,6 +396,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     setSido(null);
     setSigungu(null);
     setNearby(false);
+    setTiming(null);
     setSelected(null);
     setFlashSignal((n) => n + 1);
     setMapFocus(null);
@@ -552,7 +604,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const spotFiltered = useMemo(() => {
     if (!showSpots) return [];
     const qq = query.trim().toLowerCase();
-    return spotsWithSido.filter((s) => {
+    let list = spotsWithSido.filter((s) => {
       if (sido && s._sido !== sido) return false;
       if (sigungu && s.sigungu !== sigungu) return false;
       if (qq) {
@@ -561,7 +613,15 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
       }
       return true;
     });
-  }, [showSpots, spotsWithSido, sido, sigungu, query]);
+    if (nearby && userLoc) {
+      list = list
+        .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng))
+        .map((s) => ({ ...s, _dist: haversineKm(userLoc.lat, userLoc.lng, s.lat, s.lng) }))
+        .filter((s) => s._dist <= radiusKm)
+        .sort((a, b) => (a._dist ?? 0) - (b._dist ?? 0));
+    }
+    return list;
+  }, [showSpots, spotsWithSido, sido, sigungu, query, nearby, userLoc, radiusKm]);
   // 목록 유형 탭 선택 → 지도 유형 필터를 그 유형으로 '설정'(토글 아님).
   //  → 지도 마커 집합이 그 유형으로 바뀌며 부드럽게 줌 조정됨(지역·계절·월 필터는 유지).
   //  ※ 카드뉴스 캐러셀 탭과는 무관 — 캐러셀은 자체 내부 탭으로 독립 동작.
@@ -615,6 +675,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     setShowFavorites(false);
     setStatusFilter(null);
     setNearby(false); // 📍 내 주변 모드도 해제
+    setTiming(null);
     setQuery("");
     setSearchText("");
     // 선택(블로그·영상 연동)·지도 포커스·팝업 정리
@@ -631,19 +692,37 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
 
   // 우선순위: 검색 > 기간(주말/이번달) > 즐겨찾기 > 계절+지역
   //  유형(type) 필터는 어떤 모드에서든 마지막에 공통 적용 (선택 시에만).
+  // 📍 내 주변 '풀' — 반경+기간+카테고리+태그까지 적용(시기 필터는 제외). 시기 칩 건수 계산의 기준.
+  const nearbyPool = useMemo(() => {
+    if (!nearby || !userLoc) return [];
+    let list = withSido
+      .filter((f) => Number.isFinite(f.lat) && Number.isFinite(f.lng))
+      .map((f) => ({ ...f, _dist: haversineKm(userLoc.lat, userLoc.lng, f.lat, f.lng) }))
+      .filter((f) => f._dist <= radiusKm);
+    if (period) {
+      const [rs, re] = period === "weekend" ? weekendRange() : monthRange();
+      list = list.filter((f) => overlaps(f.startDate, f.endDate, rs, re));
+    }
+    if (type) list = list.filter((f) => f.type === type);
+    if (tags.length) list = list.filter((f) => tags.every((tg) => (f.tags || []).includes(tg)));
+    return list;
+  }, [nearby, userLoc, withSido, radiusKm, period, type, tags]);
+
+  // 시기 칩 건수 (전체/진행중/이번주/이번달) — 풀 기준, 누적 범위.
+  const timingCounts = useMemo(() => {
+    const b = kstBounds();
+    const now = new Date();
+    const cnt = (tm) => nearbyPool.reduce((a, f) => a + (timingMatch(f, tm, b, now) ? 1 : 0), 0);
+    return { all: nearbyPool.length, ongoing: cnt("ongoing"), week: cnt("week"), month: cnt("month") };
+  }, [nearbyPool]);
+
   const base = useMemo(() => {
     let list;
     if (nearby && userLoc) {
-      // 📍 내 주변: 반경 내 이벤트만(거리 부여). 기간 필터가 켜져 있으면 AND로 조합.
-      //  계절·지역은 무시(내 주변은 위치 기반). 카테고리(type)·태그는 아래에서 공통 AND.
-      list = withSido
-        .filter((f) => Number.isFinite(f.lat) && Number.isFinite(f.lng))
-        .map((f) => ({ ...f, _dist: haversineKm(userLoc.lat, userLoc.lng, f.lat, f.lng) }))
-        .filter((f) => f._dist <= radiusKm);
-      if (period) {
-        const [rs, re] = period === "weekend" ? weekendRange() : monthRange();
-        list = list.filter((f) => overlaps(f.startDate, f.endDate, rs, re));
-      }
+      // 📍 내 주변: 풀(반경·기간·카테고리 적용됨)에 '시기 필터'만 추가로 AND.
+      const b = kstBounds();
+      const now = new Date();
+      list = timing ? nearbyPool.filter((f) => timingMatch(f, timing, b, now)) : nearbyPool;
     } else if (searching) {
       list = withSido.filter(
         (f) =>
@@ -671,7 +750,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     // 세부 태그: 선택한 태그를 '모두' 가진 축제만(유형 필터와 조합). 미선택이면 통과.
     if (tags.length) list = list.filter((f) => tags.every((tg) => (f.tags || []).includes(tg)));
     return list;
-  }, [withSido, season, month, type, tags, sido, sigungu, q, searching, period, showFavorites, favorites, nearby, userLoc, radiusKm]);
+  }, [withSido, season, month, type, tags, sido, sigungu, q, searching, period, showFavorites, favorites, nearby, userLoc, radiusKm, nearbyPool, timing]);
 
   // 현재 선택한 시도의 시군구 목록(실제 축제가 있는 곳만) — 2단계 칩
   const sigunguList = useMemo(() => {
@@ -795,7 +874,17 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const [visibleCount, setVisibleCount] = useState(PAGE);
   useEffect(() => {
     setVisibleCount(PAGE);
-  }, [season, month, type, tags, sido, sigungu, q, period, showFavorites, statusFilter, nearby, radiusKm]);
+  }, [season, month, type, tags, sido, sigungu, q, period, showFavorites, statusFilter, nearby, radiusKm, timing]);
+
+  // 내 주변 목록: 시기 그룹으로 나눠 렌더(진행중→이번주→이번달→다음달이후→상설). 그룹 내 거리순(filtered가 이미 거리정렬).
+  const nearbyGroups = useMemo(() => {
+    if (!nearby || !userLoc) return [];
+    const b = kstBounds();
+    const now = new Date();
+    const map = { ongoing: [], week: [], month: [], later: [], permanent: [] };
+    for (const f of filtered) map[timingBucket(f, b, now)].push(f);
+    return TIMING_GROUPS.map((key) => ({ key, items: map[key] })).filter((g) => g.items.length > 0);
+  }, [nearby, userLoc, filtered]);
   const visible = filtered.slice(0, visibleCount);
 
   // 지도용 목록: 시장 모드면 시장 마커, 아니면 축제 필터 결과
@@ -909,6 +998,9 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               onToggleNearby={toggleNearby}
               radiusKm={radiusKm}
               onPickRadius={pickRadius}
+              timing={timing}
+              onPickTiming={pickTiming}
+              timingCounts={timingCounts}
               geoBusy={geoBusy}
               geoConsent={geoConsent}
               onGeoConfirm={requestGeo}
@@ -1077,37 +1169,60 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
           )}
         </div>
 
-        <div className="card-grid">
-          {filtered.length === 0 ? (
-            <div className="empty">
-              {searching
-                ? t.list.emptySearch
-                : period
-                ? t.list.emptyPeriod
-                : showFavorites
-                ? t.list.emptyFav
-                : t.list.emptyDefault}
-            </div>
+        {nearby && userLoc ? (
+          // 📍 내 주변: 시기 그룹 헤더로 구분(그룹 내 거리순). 반경이 결과를 제한하므로 전체 표시.
+          filtered.length === 0 ? (
+            <div className="card-grid"><div className="empty">{nearT.empty}</div></div>
           ) : (
-            visible.map((f) => (
-              <FestivalCard
-                key={f.id}
-                festival={f}
-                rating={ratings[f.id]}
-                highlight={hoverId === f.id}
-              />
+            nearbyGroups.map((g) => (
+              <div key={g.key} className="nearby-group">
+                <div className="nearby-group-head">
+                  <span>{nearT.timing[`g_${g.key}`]}</span>
+                  <span className="nearby-group-count">{g.items.length}</span>
+                </div>
+                <div className="card-grid">
+                  {g.items.map((f) => (
+                    <FestivalCard key={f.id} festival={f} rating={ratings[f.id]} highlight={hoverId === f.id} />
+                  ))}
+                </div>
+              </div>
             ))
-          )}
-        </div>
+          )
+        ) : (
+          <>
+            <div className="card-grid">
+              {filtered.length === 0 ? (
+                <div className="empty">
+                  {searching
+                    ? t.list.emptySearch
+                    : period
+                    ? t.list.emptyPeriod
+                    : showFavorites
+                    ? t.list.emptyFav
+                    : t.list.emptyDefault}
+                </div>
+              ) : (
+                visible.map((f) => (
+                  <FestivalCard
+                    key={f.id}
+                    festival={f}
+                    rating={ratings[f.id]}
+                    highlight={hoverId === f.id}
+                  />
+                ))
+              )}
+            </div>
 
-        {filtered.length > visibleCount && (
-          <button
-            className="load-more"
-            onClick={() => setVisibleCount((c) => c + PAGE)}
-          >
-            {t.list.loadMore}{" "}
-            <span>{t.list.remain(filtered.length - visibleCount)}</span>
-          </button>
+            {filtered.length > visibleCount && (
+              <button
+                className="load-more"
+                onClick={() => setVisibleCount((c) => c + PAGE)}
+              >
+                {t.list.loadMore}{" "}
+                <span>{t.list.remain(filtered.length - visibleCount)}</span>
+              </button>
+            )}
+          </>
         )}
 
         {/* 🎆 상설 불꽃놀이 명소 — 기간 있는 불꽃축제 뒤, 별도 섹션 */}
