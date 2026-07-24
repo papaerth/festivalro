@@ -10,6 +10,7 @@ import { getUiExtra } from "@/lib/i18n";
 import { shortSourceLabel } from "@/lib/dataSources";
 import CoverImage from "./CoverImage";
 import MapDirections from "./MapDirections";
+import BookingButton from "./BookingButton";
 
 // 미니 지도는 브라우저 전용(leaflet) — 팝업이 열릴 때만 로드되고, 닫히면(모달 언마운트)
 //  leaflet 인스턴스가 정리됩니다. ssr:false + 조건부 렌더로 메모리·성능 부담 없음.
@@ -126,6 +127,8 @@ export default function CardNewsModal({ festival, onClose }) {
             <button className="lcm-cta" onClick={goDetail}>
               {ux.detailCta} →
             </button>
+            {/* 예매하기 / 홈페이지 — 단일 팝업이라 eager 조회(있을 때만 표시) */}
+            <BookingButton festival={festival} eager />
             {shortSourceLabel(festival.source, locale) && (
               <p className="lcm-source">{shortSourceLabel(festival.source, locale)}</p>
             )}

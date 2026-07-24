@@ -97,6 +97,8 @@ function mapRow(row) {
     eventplace: (row.PLACE || "").trim() || null,
     addr: `서울특별시 ${gu}`.trim(),
     homepage: (row.HMPG_ADDR || "").trim() || null,
+    // 예매/상세 링크: 서울 열린데이터는 ORG_LINK(예약·신청 링크)를 우선, 없으면 HMPG_ADDR.
+    bookingUrl: (row.ORG_LINK || "").trim() || (row.HMPG_ADDR || "").trim() || null,
     tel: (row.INQUIRY || "").trim() || null,
   };
 }

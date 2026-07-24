@@ -12,6 +12,7 @@ import { MAP_GESTURE_TEXT, getMarketText, getFireworksText } from "@/lib/i18n";
 import { nextMarketDay, formatMarketDate } from "@/lib/marketDay";
 import { isTouchDevice } from "@/lib/mapGesture";
 import MapDirections from "./MapDirections";
+import BookingButton from "./BookingButton";
 
 const VIEW_DETAIL = {
   "zh-TW": "查看 →",
@@ -402,6 +403,8 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
                     {viewDetail}
                   </Link>
                   <MapDirections name={f.displayName || f.name} lat={f.lat} lng={f.lng} compact />
+                  {/* 예매하기 / 홈페이지 — 지도는 마커가 많아 eager 조회 금지(KOPIS는 클릭 시 조회) */}
+                  <BookingButton festival={f} compact eager={false} />
                 </>
               )}
             </Popup>

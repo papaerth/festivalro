@@ -7,6 +7,7 @@ import { formatPeriod, getStatusInfo } from "@/lib/format";
 import { useI18n } from "@/lib/I18nProvider";
 import CoverImage from "./CoverImage";
 import MapDirections from "./MapDirections";
+import BookingButton from "./BookingButton";
 
 // 확장 카드 "상세보기" 버튼 라벨 (13개 언어, 미지정은 영어)
 const DETAIL = {
@@ -248,6 +249,8 @@ export default function HeroCarousel({ carousels = {}, tabLabels = {}, onPick, o
               lat={expanded.lat}
               lng={expanded.lng}
             />
+            {/* 예매하기 / 홈페이지 — 확장 카드는 하나만 열려 eager 조회 */}
+            <BookingButton festival={expanded} eager />
           </div>
           <button
             className="hero-expand-close"
