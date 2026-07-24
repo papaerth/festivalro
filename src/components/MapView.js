@@ -1,6 +1,6 @@
 "use client";
 
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Circle, ZoomControl, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import Link from "next/link";
@@ -37,6 +37,18 @@ function makePin(color, glyph = "") {
   });
 }
 
+// 📍 내 주변: 사용자 현재 위치를 나타내는 파란 점(맥동) 아이콘
+function makeUserDot() {
+  return L.divIcon({
+    className: "user-loc-wrap",
+    html: `<span class="user-loc-dot"><span class="user-loc-pulse"></span></span>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+    popupAnchor: [0, -10],
+  });
+}
+const USER_DOT = typeof window !== "undefined" ? makeUserDot() : null;
+
 // 좌표 안전검사: 한국 범위(위도33~39, 경도124~132) 안이면 그대로, 위경도가 뒤바뀌었으면 교정,
 //  범위 밖(0,0·깨진 값 등)이면 null → 지도에서 제외(엉뚱한 좌표가 fitBounds를 끌어당기지 않게).
 function safeLatLng(f) {
@@ -57,7 +69,7 @@ export const DEFAULT_ZOOM = 7;
 //  points는 상위에서 메모이즈되어 마커 집합이 바뀔 때만 갱신됨 → 카드 클릭엔 재실행 안 됨.
 //  regionCenter: 지역 선택 시 그 지역 중심([위도,경도]) — 마커가 없을 때 이 좌표로 이동.
 //  homeSignal: 지역 필터 해제 시 +1 → 마커 fit 대신 기본 전국 뷰로 flyTo(부드럽게).
-function FitBounds({ points, regionCenter, homeSignal = 0 }) {
+function FitBounds({ points, regionCenter, homeSignal = 0, userLoc = null, radiusKm = 20, nearbySignal = 0 }) {
   const map = useMap();
   const first = useRef(true);
   const prevHome = useRef(homeSignal);
@@ -69,6 +81,20 @@ function FitBounds({ points, regionCenter, homeSignal = 0 }) {
       typeof window !== "undefined" &&
       window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // 📍 내 주변: 위치가 있으면 반경이 다 보이게 맞춤(마커 fit·homeSignal보다 우선).
+    if (userLoc && Number.isFinite(userLoc.lat) && Number.isFinite(userLoc.lng)) {
+      const dLat = radiusKm / 111;
+      const dLng = radiusKm / (111 * Math.max(0.2, Math.cos((userLoc.lat * Math.PI) / 180)));
+      const b = [
+        [userLoc.lat - dLat, userLoc.lng - dLng],
+        [userLoc.lat + dLat, userLoc.lng + dLng],
+      ];
+      prevHome.current = homeSignal;
+      first.current = false;
+      if (reduce) map.fitBounds(b, { padding: [30, 30] });
+      else map.flyToBounds(b, { padding: [30, 30], duration: 0.5 });
+      return;
+    }
     // 지역 해제 신호가 올라오면: 마커 fit보다 우선해서 기본 전국 뷰로 복귀(flyTo).
     if (homeSignal !== prevHome.current) {
       prevHome.current = homeSignal;
@@ -94,7 +120,7 @@ function FitBounds({ points, regionCenter, homeSignal = 0 }) {
     }
     if (instant) map.fitBounds(points, { padding: [40, 40], maxZoom: 12 });
     else map.flyToBounds(points, { padding: [40, 40], maxZoom: 12, duration: 0.5 });
-  }, [points, regionCenter, homeSignal, map]);
+  }, [points, regionCenter, homeSignal, map, userLoc, radiusKm, nearbySignal]);
   return null;
 }
 
@@ -313,7 +339,7 @@ function SpotPopup({ f, locale }) {
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
-export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, onHover = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null, homeSignal = 0 }) {
+export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, onHover = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null, homeSignal = 0, userLoc = null, radiusKm = 20, nearbySignal = 0, userHereLabel = "내 위치" }) {
   const { locale, href } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 터치 기기에서만 제스처 핸들링 활성화 (한 손가락 스크롤 / 두 손가락 지도 조작 + 안내)
@@ -411,7 +437,20 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
           </Marker>
         );
       })}
-      <FitBounds points={points} regionCenter={regionCenter} homeSignal={homeSignal} />
+      {/* 📍 내 주변: 반경 원 + 현재 위치 파란 점 */}
+      {userLoc && Number.isFinite(userLoc.lat) && Number.isFinite(userLoc.lng) && (
+        <>
+          <Circle
+            center={[userLoc.lat, userLoc.lng]}
+            radius={radiusKm * 1000}
+            pathOptions={{ color: "#2563eb", weight: 1, fillColor: "#2563eb", fillOpacity: 0.06 }}
+          />
+          <Marker position={[userLoc.lat, userLoc.lng]} icon={USER_DOT} zIndexOffset={1000}>
+            <Popup>{userHereLabel}</Popup>
+          </Marker>
+        </>
+      )}
+      <FitBounds points={points} regionCenter={regionCenter} homeSignal={homeSignal} userLoc={userLoc} radiusKm={radiusKm} nearbySignal={nearbySignal} />
       <FocusFly focus={focus} markerRefs={markerRefs} />
       <ResetView signal={resetSignal} points={points} />
       <PopupEvents onOpen={onPopupOpen} onClose={onPopupClose} />

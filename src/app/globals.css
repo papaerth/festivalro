@@ -3660,6 +3660,129 @@ h3 {
   background: rgba(255, 255, 255, 0.7);
 }
 
+/* ── 📍 내 주변 ── */
+.mf-chip.mf-nearby {
+  border-color: rgba(37, 99, 235, 0.5);
+  color: #1d4ed8;
+}
+.mf-chip.mf-nearby.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.mf-chip.mf-nearby:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+/* 반경 칩 */
+.map-filters .mf-radius .mf-rad.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+/* 위치 권한 요청 전 안내 카드 */
+.mf-geo-consent {
+  pointer-events: auto;
+  align-self: flex-start;
+  max-width: min(320px, calc(100% - 4px));
+  margin-top: 2px;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg, 12px);
+  background: rgba(255, 255, 255, 0.96);
+  -webkit-backdrop-filter: saturate(180%) blur(10px);
+  backdrop-filter: saturate(180%) blur(10px);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(24, 27, 34, 0.2);
+}
+.mf-geo-msg {
+  margin: 0 0 8px;
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  color: var(--text);
+}
+.mf-geo-actions {
+  display: flex;
+  gap: 6px;
+}
+.mf-geo-ok,
+.mf-geo-cancel {
+  flex: 1 1 0;
+  height: 30px;
+  border-radius: var(--radius-btn, 8px);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--line);
+}
+.mf-geo-ok {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+.mf-geo-cancel {
+  background: var(--surface, #fff);
+  color: var(--text-soft);
+}
+
+/* 지도 위 짧은 안내 토스트 */
+.map-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 1100;
+  max-width: calc(100% - 24px);
+  padding: 9px 14px;
+  border-radius: var(--radius-pill, 999px);
+  background: rgba(24, 27, 34, 0.9);
+  color: #fff;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  animation: fadeInUp 0.2s ease;
+  pointer-events: none;
+}
+
+/* 카드 거리 뱃지 (📍 3.2km) — 상태 뱃지(top-left) 아래로 */
+.badge.dist-badge {
+  position: absolute;
+  top: 44px;
+  left: 10px;
+  z-index: 1;
+  background: #2563eb;
+  color: #fff;
+  box-shadow: var(--shadow);
+}
+
+/* 사용자 현재 위치 파란 점(맥동) */
+.user-loc-dot {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.5);
+}
+.user-loc-pulse {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(37, 99, 235, 0.35);
+  transform: translate(-50%, -50%);
+  animation: userPulse 1.8s ease-out infinite;
+}
+@keyframes userPulse {
+  0% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
+  100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+}
+
 /* 지역 선택 패널 (지도 위에 떠서) */
 .mf-region {
   pointer-events: auto;

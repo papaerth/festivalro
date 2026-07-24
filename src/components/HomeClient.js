@@ -76,6 +76,34 @@ function overlaps(startDate, endDate, rangeStart, rangeEnd) {
   return startDate <= rangeEnd && endDate >= rangeStart;
 }
 
+// 두 좌표 사이 거리(km) — 하버사인 공식(클라이언트 계산).
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// "내 주변" 다국어 문구 (ko·en·ja·zh 제공, 그 외 en 폴백)
+const NEARBY_TEXT = {
+  ko: { tab: "내 주변", consent: "가까운 축제·공연·전시를 찾기 위해 위치 정보를 사용합니다.", find: "내 위치 찾기", cancel: "취소", denied: "위치 권한이 꺼져 있어요. 지역을 직접 선택해 주세요.", offForRegion: "‘내 주변’을 껐어요. 선택한 지역으로 이동합니다.", unsupported: "이 환경에선 위치를 쓸 수 없어요. 지역을 선택해 주세요.", empty: "이 반경 안에 진행 중·예정 행사가 없어요. 반경을 넓혀 보세요.", locating: "위치 찾는 중…", here: "내 위치" },
+  en: { tab: "Near me", consent: "We use your location to find nearby festivals, shows and exhibitions.", find: "Find my location", cancel: "Cancel", denied: "Location is off. Please pick a region manually.", offForRegion: "Turned off ‘Near me’. Moving to the selected region.", unsupported: "Location isn’t available here. Please choose a region.", empty: "No ongoing/upcoming events in this radius. Try a wider one.", locating: "Locating…", here: "You are here" },
+  ja: { tab: "近く", consent: "近くのお祭り・公演・展示を探すため位置情報を使います。", find: "現在地を取得", cancel: "キャンセル", denied: "位置情報がオフです。地域を手動で選んでください。", offForRegion: "「近く」をオフにしました。選択した地域へ移動します。", unsupported: "この環境では位置情報を使えません。地域を選んでください。", empty: "この範囲に開催中・予定のイベントがありません。範囲を広げてください。", locating: "現在地を取得中…", here: "現在地" },
+  zh: { tab: "我的附近", consent: "使用您的位置来查找附近的庆典·演出·展览。", find: "获取我的位置", cancel: "取消", denied: "定位已关闭，请手动选择地区。", offForRegion: "已关闭“我的附近”，正在前往所选地区。", unsupported: "此环境无法使用定位，请选择地区。", empty: "该半径内没有进行中/即将举行的活动，请扩大范围。", locating: "定位中…", here: "我的位置" },
+};
+function nearbyText(locale) {
+  return NEARBY_TEXT[locale] || NEARBY_TEXT.en;
+}
+// 거리 표시: 1km 미만은 m, 그 이상은 소수 1자리 km
+function fmtDistance(km) {
+  if (!Number.isFinite(km)) return "";
+  return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
+}
+
 // 행사 기간이 특정 '월'(1~12, 연도 무관)에 걸치는지.
 //  예: 2026-06-26~2026-08-17 → 6·7·8월 모두 true (두 달에 걸쳐도 양쪽 다 잡힘)
 function overlapsMonth(startDate, endDate, month) {
@@ -113,6 +141,15 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const [homeSignal, setHomeSignal] = useState(0); // 지역 필터 해제 시 +1 → 지도 전국 기본 뷰로 복귀
   const [mounted, setMounted] = useState(false); // 시즌 배너: 날짜 기반이라 마운트 후에만(SSR 불일치 방지)
   const [hoverId, setHoverId] = useState(null); // 지도 마커에 마우스 올린 대상 → 목록 카드 하이라이트
+  // 📍 내 주변 모드
+  const [nearby, setNearby] = useState(false); // 내 주변 모드 on/off
+  const [userLoc, setUserLoc] = useState(null); // { lat, lng } — 사용자 현재 위치
+  const [radiusKm, setRadiusKm] = useState(20); // 반경(km): 5/10/20/50
+  const [geoBusy, setGeoBusy] = useState(false); // 위치 조회 중
+  const [geoConsent, setGeoConsent] = useState(false); // 위치 사용 안내(권한 요청 전 표시)
+  const [nearbySignal, setNearbySignal] = useState(0); // 내 주변/반경 변경 → 지도 재조정 신호
+  const [openRegionSignal, setOpenRegionSignal] = useState(0); // 권한 거부 시 지역 팝업 강제 오픈
+  const [toast, setToast] = useState(null); // 짧은 안내 토스트
   const theme = SEASONS[season];
   const mapRef = useRef(null); // 카드뉴스 클릭 시 스크롤할 지도 영역
   const listRef = useRef(null); // 배지 CTA에서 스크롤할 축제 목록 영역
@@ -125,6 +162,71 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const marketText = getMarketText(locale);
   const fireworksText = getFireworksText(locale);
   const carouselTabs = getCarouselTabs(locale); // { festival, performance, exhibition }
+  const nearT = nearbyText(locale); // 📍 내 주변 문구
+
+  // 짧은 안내 토스트 (3초 후 자동 사라짐)
+  const showToast = (msg) => setToast({ msg, ts: Date.now() });
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  // HTTPS(또는 localhost)에서만 Geolocation 동작
+  const geoSecure =
+    typeof window !== "undefined" &&
+    (window.isSecureContext ||
+      ["localhost", "127.0.0.1"].includes(window.location.hostname));
+
+  // 실제 위치 요청 (안내 확인 후 호출)
+  const requestGeo = () => {
+    setGeoConsent(false);
+    if (typeof navigator === "undefined" || !("geolocation" in navigator) || !geoSecure) {
+      showToast(nearT.unsupported);
+      setOpenRegionSignal((n) => n + 1); // 지역 선택 폴백
+      return;
+    }
+    setGeoBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGeoBusy(false);
+        setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setSido(null); // 내 주변 ↔ 지역 상호배타
+        setSigungu(null);
+        setNearby(true);
+        setNearbySignal((n) => n + 1);
+      },
+      () => {
+        // 권한 거부/실패 → 에러로 끝내지 않고 지역 선택 폴백 + 안내
+        setGeoBusy(false);
+        setNearby(false);
+        showToast(nearT.denied);
+        setOpenRegionSignal((n) => n + 1);
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 5 * 60 * 1000 }
+    );
+  };
+
+  // 내 주변 토글: 끄기→전국뷰 / 켜기→(위치 있으면 바로, 없으면 안내 먼저)
+  const toggleNearby = () => {
+    if (nearby) {
+      setNearby(false);
+      setHomeSignal((n) => n + 1); // 전국 초기 뷰 복귀
+      return;
+    }
+    if (userLoc) {
+      setSido(null);
+      setSigungu(null);
+      setNearby(true);
+      setNearbySignal((n) => n + 1);
+    } else {
+      setGeoConsent(true); // 권한 요청 전 안내 표시
+    }
+  };
+  const pickRadius = (km) => {
+    setRadiusKm(km);
+    setNearbySignal((n) => n + 1); // 반경 변경 → 지도 재조정 + 결과 갱신
+  };
 
   // 축제마다 시도 key(_sido)를 한 번만 계산해 필터를 가볍게 유지.
   //  ⚠️ 종료일이 지난 이벤트는 여기서 자동 제외 → 목록·지도·캐러셀이 항상 '진행중/예정'만 표시.
@@ -213,6 +315,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     setPeriod(null);
     setShowFavorites(false);
     setStatusFilter(null);
+    if (nearby) { setNearby(false); showToast(nearT.offForRegion); } // 지역 검색 → 내 주변 해제
     setSelected(null);
     setFlashSignal((n) => n + 1); // 블로그·영상 기본 복귀
     setMapFocus(null);
@@ -241,6 +344,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     setMonth(null);
     setSido(null);
     setSigungu(null);
+    setNearby(false);
     setSelected(null);
     setFlashSignal((n) => n + 1);
     setMapFocus(null);
@@ -341,7 +445,12 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   });
 
   // 시도를 바꾸면 시군구 선택 초기화. 같은 지역 다시 누르면(해제) 전국 뷰로 복귀.
+  //  ⚠️ 지역 선택 시 '내 주변' 모드는 상호배타 → 자동 해제 + 토스트 안내.
   const pickSido = (key) => {
+    if (nearby && sido !== key) {
+      setNearby(false);
+      showToast(nearT.offForRegion);
+    }
     if (sido === key) {
       setSido(null);
       setSigungu(null);
@@ -415,11 +524,11 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     });
   };
 
-  // 시장 목록: 지역·검색만 적용 (계절/기간/상태 무관 — 시장은 상시).
+  // 시장 목록: 지역·검색 적용 (계절/기간/상태 무관 — 시장은 상시). 내 주변이면 반경 필터 + 거리순.
   const marketFiltered = useMemo(() => {
     if (!showMarkets) return [];
     const qq = query.trim().toLowerCase();
-    return marketsWithSido.filter((m) => {
+    let list = marketsWithSido.filter((m) => {
       if (sido && m._sido !== sido) return false;
       if (sigungu && m.sigungu !== sigungu) return false;
       if (qq) {
@@ -428,7 +537,15 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
       }
       return true;
     });
-  }, [showMarkets, marketsWithSido, sido, sigungu, query]);
+    if (nearby && userLoc) {
+      list = list
+        .filter((m) => Number.isFinite(m.lat) && Number.isFinite(m.lng))
+        .map((m) => ({ ...m, _dist: haversineKm(userLoc.lat, userLoc.lng, m.lat, m.lng) }))
+        .filter((m) => m._dist <= radiusKm)
+        .sort((a, b) => (a._dist ?? 0) - (b._dist ?? 0));
+    }
+    return list;
+  }, [showMarkets, marketsWithSido, sido, sigungu, query, nearby, userLoc, radiusKm]);
 
   // 🎆 불꽃놀이 태그가 켜지면(유형·시장 모드 아닐 때) 상설 명소를 목록/지도 맨 뒤에 붙임.
   const showSpots = tags.includes("fireworks") && !type && !showMarkets;
@@ -485,7 +602,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   };
 
   // 지도 오버레이 필터 상태 — 부가필터(월/유형/지역/기간/즐겨찾기)가 하나라도 켜졌는지
-  const filtersActive = !!(month || type || tags.length || sido || sigungu || period || showFavorites || showMarkets);
+  const filtersActive = !!(month || type || tags.length || sido || sigungu || period || showFavorites || showMarkets || nearby);
   // 지도 위 '전체 보기 X' 칩 — 모든 부가필터·검색·선택 초기화 후 지도는 전국 기본 뷰로 복귀.
   const resetFilters = () => {
     setMonth(null);
@@ -497,6 +614,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     setPeriod(null);
     setShowFavorites(false);
     setStatusFilter(null);
+    setNearby(false); // 📍 내 주변 모드도 해제
     setQuery("");
     setSearchText("");
     // 선택(블로그·영상 연동)·지도 포커스·팝업 정리
@@ -515,7 +633,18 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   //  유형(type) 필터는 어떤 모드에서든 마지막에 공통 적용 (선택 시에만).
   const base = useMemo(() => {
     let list;
-    if (searching) {
+    if (nearby && userLoc) {
+      // 📍 내 주변: 반경 내 이벤트만(거리 부여). 기간 필터가 켜져 있으면 AND로 조합.
+      //  계절·지역은 무시(내 주변은 위치 기반). 카테고리(type)·태그는 아래에서 공통 AND.
+      list = withSido
+        .filter((f) => Number.isFinite(f.lat) && Number.isFinite(f.lng))
+        .map((f) => ({ ...f, _dist: haversineKm(userLoc.lat, userLoc.lng, f.lat, f.lng) }))
+        .filter((f) => f._dist <= radiusKm);
+      if (period) {
+        const [rs, re] = period === "weekend" ? weekendRange() : monthRange();
+        list = list.filter((f) => overlaps(f.startDate, f.endDate, rs, re));
+      }
+    } else if (searching) {
       list = withSido.filter(
         (f) =>
           f.name.toLowerCase().includes(q) ||
@@ -542,7 +671,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     // 세부 태그: 선택한 태그를 '모두' 가진 축제만(유형 필터와 조합). 미선택이면 통과.
     if (tags.length) list = list.filter((f) => tags.every((tg) => (f.tags || []).includes(tg)));
     return list;
-  }, [withSido, season, month, type, tags, sido, sigungu, q, searching, period, showFavorites, favorites]);
+  }, [withSido, season, month, type, tags, sido, sigungu, q, searching, period, showFavorites, favorites, nearby, userLoc, radiusKm]);
 
   // 현재 선택한 시도의 시군구 목록(실제 축제가 있는 곳만) — 2단계 칩
   const sigunguList = useMemo(() => {
@@ -648,12 +777,14 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     return [...list].sort((a, b) => {
       const sa = getStatusInfo(a.startDate, a.endDate).key;
       const sb = getStatusInfo(b.startDate, b.endDate).key;
+      // 진행중 → 예정 → 종료 순은 공통. 내 주변 모드에선 같은 상태끼리 '거리순'.
       if (STATUS_ORDER[sa] !== STATUS_ORDER[sb]) {
         return STATUS_ORDER[sa] - STATUS_ORDER[sb];
       }
+      if (nearby && userLoc) return (a._dist ?? 0) - (b._dist ?? 0);
       return a.startDate.localeCompare(b.startDate);
     });
-  }, [base, statusFilter]);
+  }, [base, statusFilter, nearby, userLoc]);
 
   // 상태 요약 칩 클릭 → 해당 상태만 필터 (다시 누르면 해제)
   const toggleStatus = (key) =>
@@ -664,7 +795,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const [visibleCount, setVisibleCount] = useState(PAGE);
   useEffect(() => {
     setVisibleCount(PAGE);
-  }, [season, month, type, tags, sido, sigungu, q, period, showFavorites, statusFilter]);
+  }, [season, month, type, tags, sido, sigungu, q, period, showFavorites, statusFilter, nearby, radiusKm]);
   const visible = filtered.slice(0, visibleCount);
 
   // 지도용 목록: 시장 모드면 시장 마커, 아니면 축제 필터 결과
@@ -774,6 +905,16 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               filtersActive={filtersActive}
               onReset={resetFilters}
               collapsed={popupOpen}
+              nearby={nearby}
+              onToggleNearby={toggleNearby}
+              radiusKm={radiusKm}
+              onPickRadius={pickRadius}
+              geoBusy={geoBusy}
+              geoConsent={geoConsent}
+              onGeoConfirm={requestGeo}
+              onGeoCancel={() => setGeoConsent(false)}
+              nearT={nearT}
+              openRegionSignal={openRegionSignal}
             />
             <MapView
               festivals={mapFestivals}
@@ -786,7 +927,12 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               onPopupClose={() => setPopupOpen(false)}
               regionCenter={regionCenter}
               homeSignal={homeSignal}
+              userLoc={nearby ? userLoc : null}
+              radiusKm={radiusKm}
+              nearbySignal={nearbySignal}
+              userHereLabel={nearT.here}
             />
+            {toast && <div className="map-toast" role="status">{toast.msg}</div>}
           </div>
         </div>
 

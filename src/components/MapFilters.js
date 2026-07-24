@@ -49,6 +49,17 @@ export default function MapFilters({
   filtersActive,
   onReset,
   collapsed = false, // 마커 팝업이 열리면 true → 하위필터 패널 자동 접힘
+  // 📍 내 주변
+  nearby = false,
+  onToggleNearby,
+  radiusKm = 20,
+  onPickRadius,
+  geoBusy = false,
+  geoConsent = false,
+  onGeoConfirm,
+  onGeoCancel,
+  nearT = {},
+  openRegionSignal = 0,
 }) {
   const { t, locale } = useI18n();
   const [regionOpen, setRegionOpen] = useState(false);
@@ -65,6 +76,11 @@ export default function MapFilters({
   useEffect(() => {
     setRegionOpen(false);
   }, [type, showMarkets]);
+
+  // 위치 권한 거부 등 폴백 신호가 오면 지역 선택 팝업을 자동으로 열어 수동 선택 유도
+  useEffect(() => {
+    if (openRegionSignal > 0) setRegionOpen(true);
+  }, [openRegionSignal]);
 
   // 지역 패널: Esc 또는 바깥(지도 등) 클릭 시 닫기
   useEffect(() => {
@@ -154,7 +170,7 @@ export default function MapFilters({
 
   return (
     <div className="map-filters mf-staged" ref={rootRef}>
-      {/* ── 카테고리 탭 (항상 표시) ── */}
+      {/* ── 카테고리 탭 (항상 표시) + 📍 내 주변 ── */}
       <div className="mf-row mf-cats" role="tablist" aria-label={typeLabels.all || "유형"}>
         {CATS.map((cat) => {
           const active = cat.key === activeCat;
@@ -175,7 +191,48 @@ export default function MapFilters({
             </button>
           );
         })}
+        {/* 📍 내 주변 — 카테고리와 독립 토글(위치 기반). 켜짐=파랑 강조 */}
+        <button
+          type="button"
+          className={`mf-chip mf-nearby ${nearby ? "active" : ""}`}
+          aria-pressed={nearby}
+          onClick={() => onToggleNearby && onToggleNearby()}
+          disabled={geoBusy}
+        >
+          📍 {nearT.tab || "내 주변"}{geoBusy ? " …" : ""}
+        </button>
       </div>
+
+      {/* 위치 권한 요청 전 안내(권한 요청은 확인 클릭 후) */}
+      {geoConsent && (
+        <div className="mf-geo-consent" role="dialog" aria-label={nearT.tab}>
+          <p className="mf-geo-msg">📍 {nearT.consent}</p>
+          <div className="mf-geo-actions">
+            <button type="button" className="mf-geo-ok" onClick={() => onGeoConfirm && onGeoConfirm()}>
+              {nearT.find || "내 위치 찾기"}
+            </button>
+            <button type="button" className="mf-geo-cancel" onClick={() => onGeoCancel && onGeoCancel()}>
+              {nearT.cancel || "취소"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 반경 선택 칩 (내 주변 켜졌을 때만) */}
+      {nearby && (
+        <div className="mf-row mf-radius" role="group" aria-label="반경">
+          {[5, 10, 20, 50].map((km) => (
+            <button
+              key={km}
+              type="button"
+              className={`mf-chip mf-rad ${radiusKm === km ? "active" : ""}`}
+              onClick={() => onPickRadius && onPickRadius(km)}
+            >
+              {km}km
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── 요약 칩 (패널 접힘 + 적용 중 필터 있을 때) ── */}
       {!panelOpen && summaryChips.length > 0 && (

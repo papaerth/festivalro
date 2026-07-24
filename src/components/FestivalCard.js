@@ -38,6 +38,12 @@ export default function FestivalCard({ festival, rating, highlight = false }) {
   const seasonLabel = seasonBadge ? seasonBadgeLabel(seasonBadge, getSeasonText(locale)) : null;
   // KOPIS·문화정보 등 출처 표기가 필요한 소스면 카드 하단에 작게 표기(그 외 null)
   const sourceCredit = shortSourceLabel(festival.source, locale);
+  // 📍 내 주변 모드에서만 거리(_dist) 부여됨 → 거리 뱃지 표시
+  const dist = Number.isFinite(festival._dist)
+    ? festival._dist < 1
+      ? `${Math.round(festival._dist * 1000)}m`
+      : `${festival._dist.toFixed(1)}km`
+    : null;
 
   return (
     <Link
@@ -62,6 +68,7 @@ export default function FestivalCard({ festival, rating, highlight = false }) {
       >
         {ty.emoji} {getTypeLabel(festival.type || "festival", locale)}
       </span>
+      {dist && <span className="badge dist-badge">📍 {dist}</span>}
       <FavoriteButton id={festival.id} />
       <div className="card-body">
         <p className="card-title">{festival.displayName || festival.name}</p>
