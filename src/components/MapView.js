@@ -445,7 +445,7 @@ function SpotPopup({ f, locale }) {
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
-export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, onHover = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null, homeSignal = 0, userLoc = null, radiusKm = 20, nearbySignal = 0, userHereLabel = "내 위치", cardCloseSignal = 0 }) {
+export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, onHover = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null, homeSignal = 0, userLoc = null, radiusKm = 20, nearbySignal = 0, userHereLabel = "내 위치", cardCloseSignal = 0, onOpenDetail = null }) {
   const { locale, href, t } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 터치 기기에서만 제스처 핸들링 활성화 (한 손가락 스크롤 / 두 손가락 지도 조작 + 안내)
@@ -550,9 +550,17 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
                     </>
                   )}
                   <br />
-                  <Link className="popup-link" href={href(`/festival/${f.id}`)}>
-                    {viewDetail}
-                  </Link>
+                  {/* 상세보기 → 왼쪽 상세 카드(CardNewsModal) 열기. 닫으면 지도가 필터 뷰로 복귀.
+                      (onOpenDetail 미제공 시 기존처럼 상세 페이지로 이동 — 폴백) */}
+                  {onOpenDetail ? (
+                    <button type="button" className="popup-link popup-link-btn" onClick={() => onOpenDetail(f)}>
+                      {viewDetail}
+                    </button>
+                  ) : (
+                    <Link className="popup-link" href={href(`/festival/${f.id}`)}>
+                      {viewDetail}
+                    </Link>
+                  )}
                   <MapDirections name={f.displayName || f.name} lat={f.lat} lng={f.lng} compact />
                   {/* 예매하기 / 홈페이지 — 지도는 마커가 많아 eager 조회 금지(KOPIS는 클릭 시 조회) */}
                   <BookingButton festival={f} compact eager={false} />

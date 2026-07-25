@@ -37,6 +37,7 @@ export default function CardNewsModal({ festival, onClose }) {
     status.key === "upcoming" ? status.label : t.status[status.key];
 
   const [overview, setOverview] = useState(festival.description || "");
+  const [address, setAddress] = useState(festival.addr || ""); // 카카오 로컬로 보강할 도로명 주소
 
   // 스크롤 잠금 + ESC로 닫기
   useEffect(() => {
@@ -67,6 +68,24 @@ export default function CardNewsModal({ festival, onClose }) {
       alive = false;
     };
   }, [festival.id, festival.source, locale]);
+
+  // 주소 보강: 카카오 로컬 '키워드 검색'으로 공연장/행사장 도로명 주소를 채움(있으면 표시).
+  useEffect(() => {
+    let alive = true;
+    const venue = festival.eventplace || festival.displayName || festival.name;
+    const q = [venue, festival.sido].filter(Boolean).join(" ").trim();
+    if (q) {
+      fetch(`/api/address?q=${encodeURIComponent(q)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (alive && d && d.address) setAddress(d.address);
+        })
+        .catch(() => {});
+    }
+    return () => {
+      alive = false;
+    };
+  }, [festival.id, festival.eventplace, festival.name, festival.displayName, festival.sido]);
 
   const goDetail = () => {
     onClose();
@@ -123,6 +142,7 @@ export default function CardNewsModal({ festival, onClose }) {
             <p className="lcm-period">
               📅 {formatPeriod(festival.startDate, festival.endDate)}
             </p>
+            {address && <p className="lcm-addr">📍 {address}</p>}
             <p className="lcm-intro">{intro}</p>
             <button className="lcm-cta" onClick={goDetail}>
               {ux.detailCta} →

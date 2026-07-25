@@ -1364,6 +1364,19 @@ h3 {
   color: var(--accent);
   font-weight: 700;
 }
+/* 상세보기 버튼(팝업) — 링크와 동일하게 보이도록 버튼 기본 스타일 제거 */
+.popup-link-btn {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+.popup-link-btn:hover {
+  text-decoration: underline;
+}
 
 /* ── 축제 카드 목록 ── */
 .card-grid {
@@ -4147,6 +4160,13 @@ h3 {
   font-weight: 700;
   font-size: var(--fs-body);
   color: var(--text);
+}
+/* 카카오 로컬로 채운 도로명 주소 */
+.lcm-addr {
+  margin: 2px 0 0;
+  font-size: var(--fs-caption);
+  color: var(--text-soft);
+  line-height: 1.45;
 }
 .lcm-intro {
   margin: 0;

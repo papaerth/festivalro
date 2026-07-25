@@ -8,6 +8,7 @@ import { matchSido, SIDO_CENTER } from "@/lib/regionsKr";
 import { currentCategory, categoryFilters } from "@/lib/filterConfig";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
+import { useCardNews } from "./CardNewsProvider";
 import { useI18n } from "@/lib/I18nProvider";
 import { getTypeLabels, getCarouselTabs, getHeroButtonLabel, getTagLabels, getSeasonText, getMarketText, getFireworksText } from "@/lib/i18n";
 import { getSeasonBanner } from "@/lib/season";
@@ -204,6 +205,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
 
   const { favorites, ready: favReady } = useFavorites();
   const ratings = useReviewStats();
+  const { open: openCardNews } = useCardNews();
   const { t, locale } = useI18n();
   const typeLabels = getTypeLabels(locale); // { all, festival, exhibition, performance }
   const tagLabels = getTagLabels(locale); // { fireworks, night, water }
@@ -334,6 +336,9 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     setPopupOpen(false);
     setCardCloseSignal((n) => n + 1);
   };
+  // 지도 마커 팝업의 "상세보기 →" → 왼쪽 상세 카드(CardNewsModal) 열기.
+  //  닫을 때 closeDetailCard가 실행되어 지도가 현재 필터 뷰(전국/부산/내 주변)로 복귀.
+  const openDetailFromMap = (f) => openCardNews(f, { onClose: closeDetailCard });
 
   // 지도가 화면에 안 보이면(모바일 스택) 지도로 부드럽게 스크롤
   const scrollMapIntoView = () => {
@@ -1036,6 +1041,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               nearbySignal={nearbySignal}
               userHereLabel={nearT.here}
               cardCloseSignal={cardCloseSignal}
+              onOpenDetail={openDetailFromMap}
             />
             {toast && <div className="map-toast" role="status">{toast.msg}</div>}
           </div>
