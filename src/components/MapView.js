@@ -1,8 +1,12 @@
 "use client";
 
 import { MapContainer, TileLayer, Marker, Popup, Circle, ZoomControl, useMap, useMapEvents } from "react-leaflet";
+import { LeafletContext, useLeafletContext, extendContext } from "@react-leaflet/core";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "leaflet.markercluster";
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import Link from "next/link";
 import { useEffect, useRef, useMemo } from "react";
 import { markerColor, typeTheme } from "@/lib/seasons";
@@ -58,6 +62,48 @@ function makeUserDot() {
   });
 }
 const USER_DOT = typeof window !== "undefined" ? makeUserDot() : null;
+
+// 클러스터 버블 아이콘 — 겹치는 마커를 하나로 묶어 D-day 라벨 겹침을 없앰. 숫자 = 묶인 개수.
+function clusterIcon(cluster) {
+  const count = cluster.getChildCount();
+  const size = count < 10 ? 32 : count < 100 ? 38 : 46;
+  return L.divIcon({
+    html: `<div class="cluster-bubble" style="width:${size}px;height:${size}px">${count}</div>`,
+    className: "cluster-wrap",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
+// 자식 <Marker>들을 markerClusterGroup에 담는 래퍼(react-leaflet v5 컨텍스트 주입).
+//  · 낮은 줌: 겹치는 마커를 버블로 묶음(D-day 라벨 겹침 해소).
+//  · 높은 줌(≥15): 개별 마커로 풀려 팝업/뱃지 그대로. 카드 클릭 시 zoomToShowLayer로 펼쳐 팝업 오픈.
+function ClusterGroup({ children, groupRef }) {
+  const context = useLeafletContext();
+  const ref = useRef(null);
+  if (!ref.current) {
+    ref.current = L.markerClusterGroup({
+      chunkedLoading: true,
+      maxClusterRadius: 55,
+      showCoverageOnHover: false,
+      spiderfyOnMaxZoom: true,
+      disableClusteringAtZoom: 15,
+      removeOutsideVisibleBounds: true,
+      iconCreateFunction: clusterIcon,
+    });
+    if (groupRef) groupRef.current = ref.current;
+  }
+  useEffect(() => {
+    const container = context.layerContainer || context.map;
+    const group = ref.current;
+    container.addLayer(group);
+    return () => {
+      try { container.removeLayer(group); } catch { /* 언마운트 정리 */ }
+    };
+  }, [context]);
+  const clustered = useMemo(() => extendContext(context, { layerContainer: ref.current }), [context]);
+  return <LeafletContext.Provider value={clustered}>{children}</LeafletContext.Provider>;
+}
 
 // 좌표 안전검사: 한국 범위(위도33~39, 경도124~132) 안이면 그대로, 위경도가 뒤바뀌었으면 교정,
 //  범위 밖(0,0·깨진 값 등)이면 null → 지도에서 제외(엉뚱한 좌표가 fitBounds를 끌어당기지 않게).
@@ -252,29 +298,30 @@ function KoreaLock() {
 // 카드에서 축제를 고르면 그 위치로 부드럽게 이동(flyTo)하고,
 // 이동이 끝나는 타이밍에 해당 마커 팝업을 엽니다.
 //  - '동작 줄이기' 설정이면 비행 없이 즉시 이동 + 즉시 팝업
-function FocusFly({ focus, markerRefs }) {
+function FocusFly({ focus, markerRefs, clusterRef }) {
   const map = useMap();
   useEffect(() => {
     if (!focus || !Number.isFinite(focus.lat) || !Number.isFinite(focus.lng)) return;
-    const openPopup = () => {
-      const m =
-        markerRefs && markerRefs.current && focus.id
-          ? markerRefs.current[focus.id]
-          : null;
-      if (m && m.openPopup) m.openPopup();
-    };
+    const marker = markerRefs && markerRefs.current && focus.id ? markerRefs.current[focus.id] : null;
+    const open = () => { if (marker && marker.openPopup) marker.openPopup(); };
+    const group = clusterRef && clusterRef.current;
+    // 클러스터에 묶인 마커면 zoomToShowLayer로 펼친 뒤 팝업 오픈(겹침 상태에서도 확실히 열림).
+    if (marker && group && typeof group.hasLayer === "function" && group.hasLayer(marker) && group.zoomToShowLayer) {
+      group.zoomToShowLayer(marker, open);
+      return;
+    }
     const reduce =
       typeof window !== "undefined" &&
       window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce) {
       map.setView([focus.lat, focus.lng], 12);
-      openPopup();
+      open();
     } else {
       map.flyTo([focus.lat, focus.lng], 12, { duration: 0.6 });
-      map.once("moveend", openPopup);
+      map.once("moveend", open);
     }
-  }, [focus, map, markerRefs]);
+  }, [focus, map, markerRefs, clusterRef]);
   return null;
 }
 
@@ -367,6 +414,7 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const points = useMemo(() => shown.map((f) => f._ll), [pointsKey]);
   const markerRefs = useRef({}); // 축제 id → 마커 인스턴스(팝업 열기용)
+  const clusterRef = useRef(null); // markerClusterGroup 인스턴스(카드 클릭 시 펼치기용)
 
   return (
     <MapContainer
@@ -391,6 +439,7 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <KoreaLock />
+      <ClusterGroup groupRef={clusterRef}>
       {shown.map((f) => {
         // 상설 불꽃놀이 명소는 전용 색·🎆 글리프로 구분
         const color = f.permanent ? "#B5427A" : markerColor(f);
@@ -463,6 +512,7 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
           </Marker>
         );
       })}
+      </ClusterGroup>
       {/* 📍 내 주변: 반경 원 + 현재 위치 파란 점 */}
       {userLoc && Number.isFinite(userLoc.lat) && Number.isFinite(userLoc.lng) && (
         <>
@@ -477,7 +527,7 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
         </>
       )}
       <FitBounds points={points} regionCenter={regionCenter} homeSignal={homeSignal} userLoc={userLoc} radiusKm={radiusKm} nearbySignal={nearbySignal} />
-      <FocusFly focus={focus} markerRefs={markerRefs} />
+      <FocusFly focus={focus} markerRefs={markerRefs} clusterRef={clusterRef} />
       <ResetView signal={resetSignal} points={points} />
       <PopupEvents onOpen={onPopupOpen} onClose={onPopupClose} />
       <InvalidateOnResize />

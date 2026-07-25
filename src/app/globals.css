@@ -1330,6 +1330,28 @@ h3 {
 .festival-pin-wrap.has-dday {
   z-index: 650 !important;
 }
+
+/* 마커 클러스터 버블 — 겹치는 마커를 묶어 D-day 라벨 겹침 해소. 숫자=묶인 개수 */
+.cluster-wrap {
+  background: transparent !important;
+  border: none !important;
+}
+.cluster-bubble {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(24, 27, 34, 0.3);
+  transition: transform 0.12s ease;
+}
+.cluster-bubble:hover {
+  transform: scale(1.08);
+}
 .leaflet-popup-content {
   font-family: var(--font-sans);
   margin: 12px 14px;
