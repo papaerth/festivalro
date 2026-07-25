@@ -209,7 +209,7 @@ function InvalidateOnResize() {
 //  ③ 팝업 '열기 직전' 지도 뷰(중심+줌)를 저장 → 팝업이 닫히면(X·빈곳 클릭·ESC 등) 그 뷰로 복귀.
 //     · 팝업 열린 채 사용자가 직접 드래그/줌하면 복귀하지 않고 현재 위치 유지.
 //     · 마커를 연달아 클릭해도 '최초 열기 직전' 뷰를 유지(중간 마커로 덮어쓰지 않음).
-function PopupEvents({ onOpen, onClose }) {
+function PopupEvents({ onOpen, onClose, skipRestore }) {
   const map = useMap();
   const saved = useRef(null); // 팝업 열기 직전 { center, zoom }
   const active = useRef(false); // 팝업 세션 진행 중(하나라도 열려 있음)
@@ -251,6 +251,14 @@ function PopupEvents({ onOpen, onClose }) {
       onClose && onClose();
       // 다른 마커로 전환하면 close 직후 open이 오므로, 다음 프레임에 '정말 다 닫혔는지' 확인.
       requestAnimationFrame(() => {
+        // 상세 카드 닫기로 인한 close면 '열기전 복귀'를 건너뜀(카드 닫기 전용 복귀가 대신 처리).
+        if (skipRestore && skipRestore.current) {
+          skipRestore.current = false;
+          active.current = false;
+          saved.current = null;
+          userMoved.current = false;
+          return;
+        }
         if (openCount.current > 0 || !active.current) return; // 다른 팝업 열림 → 세션 유지
         const target = saved.current;
         const shouldReturn = target && !userMoved.current;
@@ -262,6 +270,47 @@ function PopupEvents({ onOpen, onClose }) {
       });
     },
   });
+  return null;
+}
+
+// 상세 카드(왼쪽 hero-expand)를 닫을 때: 팝업 닫고 '현재 필터의 홈 뷰'로 복귀.
+//  · 내 주변 → 반경 뷰 / 지역(부산 등) → 그 지역 마커에 맞춤 / 그 외 → 전국 기본 center·zoom.
+//  · 팝업 close의 '열기전 복귀'는 skipRestore로 억제(이 복귀가 대신 수행).
+function CardCloseView({ signal, points, regionCenter, userLoc, radiusKm, skipRestore }) {
+  const map = useMap();
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (skipRestore) skipRestore.current = true; // 팝업 close의 기본 복귀 억제
+    map.closePopup();
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // 내 주변: 반경이 다 보이게
+    if (userLoc && Number.isFinite(userLoc.lat) && Number.isFinite(userLoc.lng)) {
+      const dLat = radiusKm / 111;
+      const dLng = radiusKm / (111 * Math.max(0.2, Math.cos((userLoc.lat * Math.PI) / 180)));
+      const b = [
+        [userLoc.lat - dLat, userLoc.lng - dLng],
+        [userLoc.lat + dLat, userLoc.lng + dLng],
+      ];
+      if (reduce) map.fitBounds(b, { padding: [30, 30] });
+      else map.flyToBounds(b, { padding: [30, 30], duration: 0.6 });
+    } else if (regionCenter && points.length) {
+      // 지역 필터: 그 지역 마커 전체가 보이게(지역 뷰)
+      if (reduce) map.fitBounds(points, { padding: [40, 40], maxZoom: 12 });
+      else map.flyToBounds(points, { padding: [40, 40], maxZoom: 12, duration: 0.6 });
+    } else if (regionCenter) {
+      if (reduce) map.setView(regionCenter, 11);
+      else map.flyTo(regionCenter, 11, { duration: 0.6 });
+    } else {
+      // 전국 기본 뷰
+      if (reduce) map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+      else map.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, { duration: 0.6 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signal]);
   return null;
 }
 
@@ -396,7 +445,7 @@ function SpotPopup({ f, locale }) {
 // 지도에 한 번에 그리는 마커 상한 (성능 유지 — 데이터가 많아도 지도가 느려지지 않게)
 const MARKER_CAP = 500;
 
-export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, onHover = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null, homeSignal = 0, userLoc = null, radiusKm = 20, nearbySignal = 0, userHereLabel = "내 위치" }) {
+export default function MapView({ festivals, ratings = {}, focus = null, onSelect = null, onHover = null, resetSignal = 0, onPopupOpen = null, onPopupClose = null, regionCenter = null, homeSignal = 0, userLoc = null, radiusKm = 20, nearbySignal = 0, userHereLabel = "내 위치", cardCloseSignal = 0 }) {
   const { locale, href, t } = useI18n();
   const viewDetail = VIEW_DETAIL[locale] || VIEW_DETAIL.ko;
   // 터치 기기에서만 제스처 핸들링 활성화 (한 손가락 스크롤 / 두 손가락 지도 조작 + 안내)
@@ -415,6 +464,7 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
   const points = useMemo(() => shown.map((f) => f._ll), [pointsKey]);
   const markerRefs = useRef({}); // 축제 id → 마커 인스턴스(팝업 열기용)
   const clusterRef = useRef(null); // markerClusterGroup 인스턴스(카드 클릭 시 펼치기용)
+  const skipRestore = useRef(false); // 상세 카드 닫기 시 팝업의 '열기전 복귀'를 한 번 건너뛰게
 
   return (
     <MapContainer
@@ -529,7 +579,8 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
       <FitBounds points={points} regionCenter={regionCenter} homeSignal={homeSignal} userLoc={userLoc} radiusKm={radiusKm} nearbySignal={nearbySignal} />
       <FocusFly focus={focus} markerRefs={markerRefs} clusterRef={clusterRef} />
       <ResetView signal={resetSignal} points={points} />
-      <PopupEvents onOpen={onPopupOpen} onClose={onPopupClose} />
+      <CardCloseView signal={cardCloseSignal} points={points} regionCenter={regionCenter} userLoc={userLoc} radiusKm={radiusKm} skipRestore={skipRestore} />
+      <PopupEvents onOpen={onPopupOpen} onClose={onPopupClose} skipRestore={skipRestore} />
       <InvalidateOnResize />
     </MapContainer>
   );

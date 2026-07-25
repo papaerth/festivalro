@@ -185,6 +185,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const [flashSignal, setFlashSignal] = useState(0); // 선택 시마다 +1 → 섹션 하이라이트
   const [resetSignal, setResetSignal] = useState(0); // 선택 해제 시 +1 → 지도 줌아웃 + 마커 팝업 닫기
   const [homeSignal, setHomeSignal] = useState(0); // 지역 필터 해제 시 +1 → 지도 전국 기본 뷰로 복귀
+  const [cardCloseSignal, setCardCloseSignal] = useState(0); // 상세 카드 닫기 시 +1 → 지도 필터 홈 뷰 복귀
   const [mounted, setMounted] = useState(false); // 시즌 배너: 날짜 기반이라 마운트 후에만(SSR 불일치 방지)
   const [hoverId, setHoverId] = useState(null); // 지도 마커에 마우스 올린 대상 → 목록 카드 하이라이트
   // 📍 내 주변 모드
@@ -321,6 +322,17 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     setFlashSignal((n) => n + 1);
     setMapFocus(null);
     setResetSignal((n) => n + 1);
+  };
+
+  // 상세 카드(왼쪽 hero-expand) 닫기: 카드/선택/팝업을 정리하고 지도를 '현재 필터의 홈 뷰'로 복귀.
+  //  · 지도는 CardCloseView가 필터 상태(내 주변/지역/전국)에 맞춰 flyTo (필터 상태 자체는 유지).
+  //  · 팝업의 '열기전 복귀'는 CardCloseView가 skipRestore로 억제 → 필터 홈 뷰가 최종 승리.
+  const closeDetailCard = () => {
+    setSelected(null);
+    setFlashSignal((n) => n + 1);
+    setMapFocus(null);
+    setPopupOpen(false);
+    setCardCloseSignal((n) => n + 1);
   };
 
   // 지도가 화면에 안 보이면(모바일 스택) 지도로 부드럽게 스크롤
@@ -959,7 +971,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               carousels={carousels}
               tabLabels={carouselTabs}
               onPick={handleHeroPick}
-              onReset={resetSelection}
+              onReset={closeDetailCard}
             />
           </div>
           <div className="cmr-map" ref={mapRef}>
@@ -1023,6 +1035,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               radiusKm={radiusKm}
               nearbySignal={nearbySignal}
               userHereLabel={nearT.here}
+              cardCloseSignal={cardCloseSignal}
             />
             {toast && <div className="map-toast" role="status">{toast.msg}</div>}
           </div>
