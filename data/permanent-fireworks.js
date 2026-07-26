@@ -10,11 +10,13 @@
 //   scheduleText : 운영 안내(자유 문구). 카드·팝업에 '날짜 대신' 이 문구를 표시.
 //   homepage     : 공식 홈페이지 URL → 카드·팝업의 '홈페이지' 버튼.
 //   addr         : 주소(선택, 표시·검색 보조).
-//   operatingDays: (선택) 운영 요일 배열.  ⬅⬅ 여기에 요일을 채워 넣으세요. 예: ["금","토","일"]
-//                  · 채우면 안내 문구에 "· 금·토·일 운영"처럼 함께 표시됩니다. 비우면 표시 안 함.
-//   seasons      : (선택) 운영 시즌 배열.  ⬅⬅ 여기에 시즌을 채워 넣으세요. 예: ["summer","winter"]
-//                  · 값(spring/summer/autumn/winter)을 지정하면 '그 계절 필터'에서만 노출됩니다.
-//                  · 비워 두면(기본) 모든 계절에 노출됩니다.
+//   operatingDays: (선택) 운영 요일 배열. 예: ["금","토","일"]  ← 확정 요일이 있으면 채우기.
+//                  · ⚠️ 이 파크들은 시즌·행사에 따라 요일이 자주 바뀌므로 대부분 비워 둡니다
+//                    (정확한 날짜는 scheduleText가 홈페이지로 안내). 확실할 때만 채우세요.
+//   seasons      : (선택) 운영 시즌 배열. 예: ["summer","winter"]  ← 특정 계절에만 운영할 때만 채우기.
+//                  · ⚠️ 아래 6곳은 여름 야간개장·겨울 별빛 등으로 '연중 여러 계절' 운영하므로
+//                    비워 둡니다(비움 = 모든 계절 노출). 특정 계절 전용 명소를 추가할 때만 값을 넣으세요.
+//                    (spring/summer/autumn/winter)
 // ────────────────────────────────────────────────────────────────
 
 export const PERMANENT_FIREWORKS = [
@@ -26,11 +28,12 @@ export const PERMANENT_FIREWORKS = [
     region: "gyeonggi",
     lat: 37.2939,
     lng: 127.2025,
-    scheduleText: "시즌별 불꽃쇼 운영 · 일정은 공식 홈페이지 확인",
+    // 2026 50주년 새 불꽃쇼를 3월부터 상시 운영, 여름 야간개장(7~8월 금·토·성수기).
+    scheduleText: "50주년 새 불꽃쇼 상시 운영 · 여름 야간개장(7~8월 금·토·성수기) · 정확한 일정은 공식 홈페이지 확인",
     homepage: "https://www.everland.com",
     addr: "경기도 용인시 처인구 포곡읍",
-    operatingDays: [], // 예: ["금","토","일"]  ← 운영 요일 확인되면 채우기
-    seasons: [], // 예: ["summer","winter"]  ← 운영 시즌 있으면 채우기(비우면 모든 계절)
+    operatingDays: [], // 연중 운영(여름 야간은 금·토 중심) — 일자는 홈페이지 확인
+    seasons: [], // 연중(봄 시작~여름·겨울 성수기) → 모든 계절 노출
   },
   {
     id: "fw-seoulland",
@@ -40,11 +43,11 @@ export const PERMANENT_FIREWORKS = [
     region: "gyeonggi",
     lat: 37.4348,
     lng: 127.0203,
-    scheduleText: "시즌별 불꽃쇼 운영 · 일정은 공식 홈페이지 확인",
+    scheduleText: "주말·성수기 야간 불꽃 · 여름 야간개장·시즌 이벤트 · 정확한 일정은 공식 홈페이지 확인",
     homepage: "https://www.seoulland.co.kr",
     addr: "경기도 과천시 광명로",
-    operatingDays: [], // ← 운영 요일
-    seasons: [], // ← 운영 시즌
+    operatingDays: [], // 주말·성수기 중심 — 일자는 홈페이지 확인
+    seasons: [], // 여러 시즌 운영 → 모든 계절 노출
   },
   {
     id: "fw-lotteworld",
@@ -54,11 +57,11 @@ export const PERMANENT_FIREWORKS = [
     region: "seoul",
     lat: 37.5111,
     lng: 127.098,
-    scheduleText: "시즌별 불꽃·레이저 야간쇼 · 일정은 공식 홈페이지 확인",
+    scheduleText: "시즌 불꽃·레이저 야간쇼 (매직아일랜드) · 정확한 일정은 공식 홈페이지 확인",
     homepage: "https://adventure.lotteworld.com",
     addr: "서울특별시 송파구 올림픽로 240",
-    operatingDays: [], // ← 운영 요일
-    seasons: [], // ← 운영 시즌
+    operatingDays: [], // 시즌·행사별 — 일자는 홈페이지 확인
+    seasons: [], // 연중 시즌쇼 → 모든 계절 노출
   },
   {
     id: "fw-busanlotteworld",
@@ -68,11 +71,11 @@ export const PERMANENT_FIREWORKS = [
     region: "gyeongsang",
     lat: 35.1957,
     lng: 129.213,
-    scheduleText: "시즌별 불꽃·쇼 운영 · 일정은 공식 홈페이지 확인",
+    scheduleText: "야간개장 시 불꽃·쇼(성수기) · 정확한 일정은 공식 홈페이지 확인",
     homepage: "https://adventurebusan.lotteworld.com",
     addr: "부산광역시 기장군 기장읍 동부산관광로",
-    operatingDays: [], // ← 운영 요일
-    seasons: [], // ← 운영 시즌
+    operatingDays: [], // 야간개장(성수기) 중심 — 일자는 홈페이지 확인
+    seasons: [], // 성수기 여러 시즌 → 모든 계절 노출
   },
   {
     id: "fw-gyeongjuworld",
@@ -82,11 +85,11 @@ export const PERMANENT_FIREWORKS = [
     region: "gyeongsang",
     lat: 35.8329,
     lng: 129.2818,
-    scheduleText: "시즌별 야간 불꽃 운영 · 일정은 공식 홈페이지 확인",
+    scheduleText: "여름 야간개장 불꽃·성수기 야간쇼 · 정확한 일정은 공식 홈페이지 확인",
     homepage: "https://www.gyeongjuworld.com",
     addr: "경상북도 경주시 보문로",
-    operatingDays: [], // ← 운영 요일
-    seasons: [], // ← 운영 시즌
+    operatingDays: [], // 여름·성수기 중심 — 일자는 홈페이지 확인
+    seasons: [], // 성수기 중심이나 시즌 폭이 넓어 모든 계절 노출
   },
   {
     id: "fw-eworld",
@@ -96,10 +99,11 @@ export const PERMANENT_FIREWORKS = [
     region: "gyeongsang",
     lat: 35.8536,
     lng: 128.5606,
-    scheduleText: "시즌별 불꽃·별빛축제 운영 · 일정은 공식 홈페이지 확인",
+    // 여름 워터워즈 야간 불꽃쇼(6~8월) + 겨울 별빛축제, 성수기엔 매일 야간 불꽃쇼.
+    scheduleText: "여름 워터워즈 야간 불꽃쇼(6~8월) · 겨울 별빛축제 · 성수기 매일 야간 불꽃 · 일정은 공식 홈페이지 확인",
     homepage: "https://www.eworld.kr",
     addr: "대구광역시 달서구 두류공원로",
-    operatingDays: [], // ← 운영 요일
-    seasons: [], // ← 운영 시즌
+    operatingDays: [], // 성수기 매일·시즌별 — 일자는 홈페이지 확인
+    seasons: [], // 여름·겨울 등 여러 시즌 → 모든 계절 노출
   },
 ];
