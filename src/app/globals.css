@@ -4289,6 +4289,112 @@ h3 {
   from { transform: translateY(14px) scale(0.98); opacity: 0; }
   to { transform: none; opacity: 1; }
 }
+
+/* ── 지도 옆 사이드 패널형 상세 카드 (지도 안 가림) ── */
+.cmr-carousel { position: relative; }
+.mdp {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, #fff);
+  border-radius: var(--radius-lg, 14px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--line);
+  animation: cn-pop 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.mdp-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+}
+.mdp-close:hover { background: rgba(0, 0, 0, 0.6); }
+.mdp-cover {
+  position: relative;
+  flex: 0 0 auto;
+  height: clamp(150px, 32%, 220px);
+  overflow: hidden;
+}
+.mdp-cover-bg { width: 100%; height: 100%; object-fit: cover; }
+.mdp-cover-veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.55) 100%);
+}
+.mdp-cover-text {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+  color: #fff;
+}
+.mdp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill, 999px);
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+.mdp-status.ongoing { background: #dc2626; }
+.mdp-title {
+  margin: 0;
+  font-size: var(--fs-h3, 18px);
+  font-weight: 800;
+  line-height: 1.25;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.mdp-sub { margin: 3px 0 0; font-size: var(--fs-caption); opacity: 0.95; }
+.mdp-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px 18px;
+}
+.mdp-period { margin: 0; font-weight: 700; font-size: var(--fs-body); color: var(--text); }
+.mdp-addr { margin: 0; font-size: var(--fs-caption); color: var(--text-soft); line-height: 1.45; }
+.mdp-intro {
+  margin: 2px 0 4px;
+  font-size: var(--fs-caption);
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+.mdp-cta {
+  align-self: flex-start;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn, 8px);
+  background: var(--surface, #fff);
+  color: var(--accent);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+.mdp-cta:hover { background: var(--accent-soft); }
+.mdp-source { margin: 4px 0 0; font-size: 11px; color: var(--text-soft); opacity: 0.85; }
+
+@media (max-width: 860px) {
+  /* 모바일: 카드뉴스 영역(상단)만 덮음 — 아래 지도는 그대로 클릭 가능 */
+  .mdp { border-radius: var(--radius-lg, 14px); }
+  .mdp-cover { height: clamp(140px, 34%, 200px); }
+}
 .cn-close {
   position: absolute;
   top: 10px;

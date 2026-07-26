@@ -8,7 +8,6 @@ import { matchSido, SIDO_CENTER } from "@/lib/regionsKr";
 import { currentCategory, categoryFilters } from "@/lib/filterConfig";
 import { useFavorites } from "@/lib/useFavorites";
 import { useReviewStats } from "@/lib/useReviewStats";
-import { useCardNews } from "./CardNewsProvider";
 import { useI18n } from "@/lib/I18nProvider";
 import { getTypeLabels, getCarouselTabs, getHeroButtonLabel, getTagLabels, getSeasonText, getMarketText, getFireworksText } from "@/lib/i18n";
 import { getSeasonBanner } from "@/lib/season";
@@ -20,6 +19,7 @@ import FavoriteAlerts from "./FavoriteAlerts";
 import AccountMenu from "./AccountMenu";
 import LangSwitcher from "./LangSwitcher";
 import HeroCarousel from "./HeroCarousel";
+import MapDetailPanel from "./MapDetailPanel";
 import TopSearch from "./TopSearch";
 import HomeBlogSection from "./HomeBlogSection";
 import HomeVideoSection from "./HomeVideoSection";
@@ -187,6 +187,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
   const [resetSignal, setResetSignal] = useState(0); // 선택 해제 시 +1 → 지도 줌아웃 + 마커 팝업 닫기
   const [homeSignal, setHomeSignal] = useState(0); // 지역 필터 해제 시 +1 → 지도 전국 기본 뷰로 복귀
   const [cardCloseSignal, setCardCloseSignal] = useState(0); // 상세 카드 닫기 시 +1 → 지도 필터 홈 뷰 복귀
+  const [detailFestival, setDetailFestival] = useState(null); // 지도 옆 사이드 패널에 표시할 축제(null=닫힘)
   const [mounted, setMounted] = useState(false); // 시즌 배너: 날짜 기반이라 마운트 후에만(SSR 불일치 방지)
   const [hoverId, setHoverId] = useState(null); // 지도 마커에 마우스 올린 대상 → 목록 카드 하이라이트
   // 📍 내 주변 모드
@@ -205,7 +206,6 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
 
   const { favorites, ready: favReady } = useFavorites();
   const ratings = useReviewStats();
-  const { open: openCardNews } = useCardNews();
   const { t, locale } = useI18n();
   const typeLabels = getTypeLabels(locale); // { all, festival, exhibition, performance }
   const tagLabels = getTagLabels(locale); // { fireworks, night, water }
@@ -336,9 +336,14 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     setPopupOpen(false);
     setCardCloseSignal((n) => n + 1);
   };
-  // 지도 마커 팝업의 "상세보기 →" → 왼쪽 상세 카드(CardNewsModal) 열기.
-  //  닫을 때 closeDetailCard가 실행되어 지도가 현재 필터 뷰(전국/부산/내 주변)로 복귀.
-  const openDetailFromMap = (f) => openCardNews(f, { onClose: closeDetailCard });
+  // 지도 마커 팝업의 "상세보기 →" → 지도 옆 '사이드 패널'로 상세 카드 열기(지도 안 가림).
+  //  · 패널이 열린 채 다른 마커를 누르면 handleMapSelect가 내용을 교체.
+  //  · 닫으면(X) 패널을 없애고 지도를 현재 필터 뷰로 복귀(closeDetailCard).
+  const openDetailFromMap = (f) => setDetailFestival(f);
+  const closeDetailPanel = () => {
+    setDetailFestival(null);
+    closeDetailCard();
+  };
 
   // 지도가 화면에 안 보이면(모바일 스택) 지도로 부드럽게 스크롤
   const scrollMapIntoView = () => {
@@ -360,12 +365,14 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     scrollMapIntoView();
   };
 
-  // 지도 마커 클릭 → 그 축제로 줌인 + 아래 섹션 전환
+  // 지도 마커 클릭 → 그 축제로 줌인 + 아래 섹션 전환.
+  //  · 사이드 패널이 열려 있으면 그 내용을 이 축제로 교체(패널은 닫지 않음).
   const handleMapSelect = (f) => {
     if (Number.isFinite(f.lat) && Number.isFinite(f.lng)) {
       setMapFocus({ id: f.id, lat: f.lat, lng: f.lng, ts: Date.now() });
     }
     selectFestival(f);
+    setDetailFestival((prev) => (prev ? f : prev)); // 패널 열려 있을 때만 교체
   };
 
   // ── 상단 검색바 동작 ──
@@ -978,6 +985,10 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
               onPick={handleHeroPick}
               onReset={closeDetailCard}
             />
+            {/* 지도 옆 사이드 패널 상세 카드 — 카드뉴스 영역만 덮고 지도는 클릭 가능 */}
+            {detailFestival && (
+              <MapDetailPanel festival={detailFestival} onClose={closeDetailPanel} />
+            )}
           </div>
           <div className="cmr-map" ref={mapRef}>
             {/* 지도 위 오버레이 필터 (계절/기간/즐겨찾기/지역) */}
