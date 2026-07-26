@@ -21,7 +21,12 @@ export default function FireworksSpotCard({ spot, highlight = false }) {
       <div className="card-body">
         <p className="card-title">{name}</p>
         <span className="card-region">📍 {region}</span>
-        {spot.scheduleText && <p className="market-day">🎇 {spot.scheduleText}</p>}
+        {(spot.scheduleText || (spot.operatingDays && spot.operatingDays.length > 0)) && (
+          <p className="market-day">
+            🎇 {spot.scheduleText}
+            {spot.operatingDays && spot.operatingDays.length > 0 ? ` · ${spot.operatingDays.join("·")} 운영` : ""}
+          </p>
+        )}
         <div className="market-card-actions">
           <MapDirections name={name} lat={spot.lat} lng={spot.lng} compact />
           {homeUrl && (

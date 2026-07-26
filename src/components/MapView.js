@@ -432,12 +432,17 @@ function MarketPopup({ f, locale, href, viewDetail }) {
 function SpotPopup({ f, locale }) {
   const fw = getFireworksText(locale);
   const name = f.displayName || f.name;
+  const days = Array.isArray(f.operatingDays) && f.operatingDays.length ? ` · ${f.operatingDays.join("·")} 운영` : "";
   return (
     <>
+      <span className="popup-status permanent">∞ {fw.permanent}</span>
       <strong>🎆 {name}</strong>
       <br />
-      <span>[{fw.permanent}] {f.scheduleText || ""}</span>
+      {/* 날짜 대신 운영 정보 표시 */}
+      <span>{f.scheduleText || ""}{days}</span>
       <MapDirections name={name} lat={f.lat} lng={f.lng} compact />
+      {/* 홈페이지 버튼 — 기존 버튼 체계(BookingButton) 재사용 */}
+      <BookingButton festival={f} compact eager={false} />
     </>
   );
 }
@@ -493,8 +498,9 @@ export default function MapView({ festivals, ratings = {}, focus = null, onSelec
       {shown.map((f) => {
         // 상설 불꽃놀이 명소는 전용 색·🎆 글리프로 구분
         const color = f.permanent ? "#B5427A" : markerColor(f);
+        // 상설 명소는 ∞ 배지로 구분(글리프 비움 → ∞가 또렷하게 중앙 표시). 그 외는 유형 이모지.
         const glyph = f.permanent
-          ? "🎆"
+          ? ""
           : f.type === "exhibition" || f.type === "performance" || f.type === "market"
           ? typeTheme(f.type).emoji
           : "";

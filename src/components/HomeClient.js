@@ -631,6 +631,8 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
     let list = spotsWithSido.filter((s) => {
       if (sido && s._sido !== sido) return false;
       if (sigungu && s.sigungu !== sigungu) return false;
+      // 운영 시즌이 데이터에 명시된 경우에만 해당 계절에 노출. 없으면(빈 배열) 모든 계절 노출.
+      if (Array.isArray(s.seasons) && s.seasons.length && !s.seasons.includes(season)) return false;
       if (qq) {
         const hay = `${s.name} ${s.displayName || ""} ${s.sigungu || ""}`.toLowerCase();
         if (!hay.includes(qq)) return false;
@@ -645,7 +647,7 @@ export default function HomeClient({ festivals, markets = [], fireworksSpots = [
         .sort((a, b) => (a._dist ?? 0) - (b._dist ?? 0));
     }
     return list;
-  }, [showSpots, spotsWithSido, sido, sigungu, query, nearby, userLoc, radiusKm]);
+  }, [showSpots, spotsWithSido, sido, sigungu, query, season, nearby, userLoc, radiusKm]);
   // 목록 유형 탭 선택 → 지도 유형 필터를 그 유형으로 '설정'(토글 아님).
   //  → 지도 마커 집합이 그 유형으로 바뀌며 부드럽게 줌 조정됨(지역·계절·월 필터는 유지).
   //  ※ 카드뉴스 캐러셀 탭과는 무관 — 캐러셀은 자체 내부 탭으로 독립 동작.

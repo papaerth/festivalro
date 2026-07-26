@@ -3870,6 +3870,9 @@ h3 {
 .popup-status.upcoming {
   background: #2563eb;
 }
+.popup-status.permanent {
+  background: #B5427A; /* 상설(∞) — 상설 명소 마커색과 일치 */
+}
 
 /* 📍 내 주변 시기 필터 칩 */
 .map-filters .mf-timing .mf-time.active {
