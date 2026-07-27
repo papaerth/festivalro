@@ -5,6 +5,8 @@ import { I18nProvider } from "@/lib/I18nProvider";
 import { CardNewsProvider } from "@/components/CardNewsProvider";
 import ScrollReveal from "@/components/ScrollReveal";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
+import PWARegister from "@/components/PWARegister";
+import PWAInstall from "@/components/PWAInstall";
 import { Analytics } from "@vercel/analytics/react";
 import {
   LOCALES,
@@ -60,7 +62,18 @@ export async function generateMetadata({ params }) {
     metadataBase: new URL(SITE_URL),
     title: dict.meta.homeTitle,
     description: dict.meta.homeDesc,
-    icons: { icon: "/icon.svg", apple: "/icon.svg", shortcut: "/icon.svg" },
+    icons: {
+      icon: [
+        { url: "/icon.svg", type: "image/svg+xml" },
+        { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+        { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      ],
+      apple: "/apple-touch-icon.png",
+      shortcut: "/icon.svg",
+    },
+    // iOS 홈 화면 추가 지원 (apple-mobile-web-app-* 메타 자동 삽입)
+    appleWebApp: { capable: true, statusBarStyle: "default", title: "축제로" },
+    other: { "mobile-web-app-capable": "yes", "apple-mobile-web-app-capable": "yes" },
     // 구글 서치콘솔 소유권 확인 (모든 페이지 <head>에 자동 삽입)
     verification: {
       google: "X2lMlAl8Jnk1K-WzSlT70dzBXQG-27cRjTyMTuJPhV8",
@@ -93,8 +106,10 @@ export default async function RootLayout({ children, params }) {
           <AuthProvider>
             <CardNewsProvider>{children}</CardNewsProvider>
             <ScrollReveal />
+            <PWAInstall />
           </AuthProvider>
         </I18nProvider>
+        <PWARegister />
         <Analytics />
       </body>
     </html>
