@@ -1,5 +1,6 @@
 import { getFestivals } from "@/lib/festivals";
-import { SITE_URL } from "@/lib/i18n";
+import { SITE_URL, localeHref } from "@/lib/i18n";
+import { SEO_LOCALES, CITIES, currentMonths } from "@/lib/seoLanding";
 
 // /sitemap.xml 자동 생성 — 구글 등 검색엔진에 사이트의 페이지 목록을 제출합니다.
 //  - 홈 + 개인정보 + 모든 축제 상세페이지.
@@ -23,6 +24,19 @@ export default async function sitemap() {
       priority: 0.2,
     },
   ];
+
+  // 프로그래매틱 SEO 랜딩(영문 우선) — 허브·월별(현재~+12개월)·도시별·이번 주말.
+  //  currentMonths()가 오늘 기준이라 크론/ISR 갱신 때 월 범위가 자동으로 밀림.
+  for (const loc of SEO_LOCALES) {
+    entries.push({ url: `${SITE_URL}${localeHref(loc, "/festivals-in-korea")}`, lastModified: now, changeFrequency: "daily", priority: 0.8 });
+    entries.push({ url: `${SITE_URL}${localeHref(loc, "/this-weekend")}`, lastModified: now, changeFrequency: "daily", priority: 0.8 });
+    for (const m of currentMonths(now, 12)) {
+      entries.push({ url: `${SITE_URL}${localeHref(loc, `/festivals-in-korea/${m.slug}`)}`, lastModified: now, changeFrequency: "weekly", priority: 0.7 });
+    }
+    for (const c of CITIES) {
+      entries.push({ url: `${SITE_URL}${localeHref(loc, `/festivals-in-${c.slug}`)}`, lastModified: now, changeFrequency: "weekly", priority: 0.7 });
+    }
+  }
 
   try {
     const festivals = await getFestivals();
