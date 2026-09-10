@@ -1,0 +1,8 @@
+# 노래방 자막 생성기 의존성
+# 1) PyTorch는 환경에 맞게 먼저 설치하세요 (아래 README 참고)
+#    CPU:   pip install torch torchaudio
+#    CUDA:  https://pytorch.org/get-started/locally/ 의 명령 사용
+whisperx>=3.1
+pillow>=10.0
+numpy
+imageio-ffmpeg>=0.5
