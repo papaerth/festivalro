@@ -7,12 +7,24 @@ import traceback
 import tkinter as tk
 from tkinter import colorchooser, filedialog, messagebox, scrolledtext, ttk
 
+from PIL import Image, ImageDraw, ImageFont
+
+from .fonts import default_font_entry, load_font_entries, scan_fonts
 from .pipeline import JobOptions, parse_time, run_job
-from .render import CODECS, RESOLUTIONS, RenderStyle, default_font_path
+from .render import CODECS, RESOLUTIONS, RenderStyle
+
+try:
+    from PIL import ImageTk
+except ImportError:  # tkinter 이미지 지원이 없는 환경
+    ImageTk = None
 
 LANGUAGES = [("자동 감지", "auto"), ("한국어", "ko"), ("영어", "en"), ("일본어", "ja"), ("중국어", "zh"),
              ("스페인어", "es"), ("프랑스어", "fr"), ("독일어", "de"), ("베트남어", "vi"), ("태국어", "th")]
 MODELS = ["tiny", "base", "small", "medium", "large-v3"]
+COLOR_PRESETS = [("흰색", "#FFFFFF"), ("노랑", "#FFD400"), ("빨강", "#FF3B30"), ("주황", "#FF8C00"),
+                 ("분홍", "#FF4FA3"), ("연두", "#7CFC00"), ("초록", "#22C55E"), ("하늘", "#4FC3F7"),
+                 ("파랑", "#2F6BFF"), ("보라", "#A855F7"), ("금색", "#E5B80B"), ("회색", "#9E9E9E"),
+                 ("검정", "#000000"), ("남색", "#1E2A5A")]
 CODEC_LABELS = [("ProRes 4444 (알파, 편집기 호환 최고)", "prores4444"),
                 ("Animation/qtrle (알파, 빠르고 작음)", "qtrle"),
                 ("PNG (알파, 무손실)", "png")]
@@ -112,26 +124,41 @@ class App(tk.Tk):
                      state="readonly").pack(side="left", padx=4)
         r += 1
 
-        # 폰트·스타일
-        ttk.Label(root, text="폰트 파일").grid(row=r, column=0, sticky="w", **pad)
-        self.font_var = tk.StringVar(value=default_font_path() or "")
-        ttk.Entry(root, textvariable=self.font_var).grid(row=r, column=1, sticky="ew", **pad)
-        ttk.Button(root, text="찾아보기", command=self._pick_font).grid(row=r, column=2, **pad)
+        # 폰트(시스템 폰트 폴더에서 선택)
+        ttk.Label(root, text="폰트").grid(row=r, column=0, sticky="w", **pad)
+        self.font_entries = scan_fonts()
+        self.font_var = tk.StringVar()
+        self.font_combo = ttk.Combobox(root, textvariable=self.font_var, state="readonly",
+                                       values=[e.label for e in self.font_entries])
+        self.font_combo.grid(row=r, column=1, sticky="ew", **pad)
+        self.font_combo.bind("<<ComboboxSelected>>", lambda _e: self._update_font_preview())
+        ttk.Button(root, text="다른 파일…", command=self._pick_font).grid(row=r, column=2, **pad)
         r += 1
+        self.font_preview = ttk.Label(root, text="", foreground="#666")
+        self.font_preview.grid(row=r, column=1, columnspan=2, sticky="w", padx=6)
+        r += 1
+        default = default_font_entry(self.font_entries)
+        if default:
+            self.font_var.set(default.label)
+        self._update_font_preview()
 
-        ttk.Label(root, text="스타일").grid(row=r, column=0, sticky="w", **pad)
+        ttk.Label(root, text="글자 크기").grid(row=r, column=0, sticky="w", **pad)
         f = ttk.Frame(root)
         f.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
-        ttk.Label(f, text="글자 크기").pack(side="left")
         self.size_var = tk.StringVar(value="0")
-        ttk.Entry(f, textvariable=self.size_var, width=5).pack(side="left", padx=(4, 2))
-        ttk.Label(f, text="(0=자동)").pack(side="left", padx=(0, 10))
+        ttk.Entry(f, textvariable=self.size_var, width=5).pack(side="left", padx=(0, 2))
+        ttk.Label(f, text="px (0 = 화면 폭에 맞춰 자동)").pack(side="left")
+        r += 1
+
+        ttk.Label(root, text="자막 색상").grid(row=r, column=0, sticky="nw", **pad)
+        f = ttk.Frame(root)
+        f.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
         self.base_color = tk.StringVar(value="#FFFFFF")
         self.hl_color = tk.StringVar(value="#FFD400")
         self.outline_color = tk.StringVar(value="#000000")
-        self._color_button(f, "기본색", self.base_color)
-        self._color_button(f, "채움색", self.hl_color)
-        self._color_button(f, "외곽선", self.outline_color)
+        self._color_row(f, 0, "부르기 전 글자", self.base_color)
+        self._color_row(f, 1, "부른 글자(채워지는 색)", self.hl_color)
+        self._color_row(f, 2, "외곽선", self.outline_color)
         r += 1
 
         ttk.Label(root, text="출력 옵션").grid(row=r, column=0, sticky="w", **pad)
@@ -179,10 +206,33 @@ class App(tk.Tk):
         root.rowconfigure(r, weight=1)
         self._on_aspect()
 
-    def _color_button(self, parent, label, var):
-        btn = tk.Button(parent, text=label, width=7, bg=var.get(), fg=self._contrast(var.get()),
-                        command=lambda: self._pick_color(var, btn))
-        btn.pack(side="left", padx=3)
+    def _color_row(self, parent, row, label, var):
+        """색 이름 프리셋 드롭다운 + 색상표 버튼 + HEX 표시 한 줄."""
+        ttk.Label(parent, text=label, width=20).grid(row=row, column=0, sticky="w", pady=2)
+        names = [n for n, _ in COLOR_PRESETS]
+        preset_var = tk.StringVar(value=self._preset_name(var.get()))
+        combo = ttk.Combobox(parent, textvariable=preset_var, values=names, width=8, state="readonly")
+        combo.grid(row=row, column=1, padx=4)
+        swatch = tk.Button(parent, text=var.get(), width=9, bg=var.get(), fg=self._contrast(var.get()),
+                           relief="groove")
+        swatch.grid(row=row, column=2, padx=4)
+
+        def apply(hexv):
+            var.set(hexv.upper())
+            swatch.configure(text=var.get(), bg=var.get(), fg=self._contrast(var.get()))
+            preset_var.set(self._preset_name(var.get()))
+            self._update_font_preview()
+
+        combo.bind("<<ComboboxSelected>>", lambda _e: apply(dict(COLOR_PRESETS)[preset_var.get()]))
+        swatch.configure(command=lambda: self._pick_color(var, apply))
+        ttk.Label(parent, text="← 색상표에서 직접 고르기", foreground="#666").grid(row=row, column=3, sticky="w")
+
+    @staticmethod
+    def _preset_name(hexv):
+        for n, h in COLOR_PRESETS:
+            if h.upper() == hexv.upper():
+                return n
+        return "직접 지정"
 
     @staticmethod
     def _contrast(hexcolor):
@@ -191,11 +241,10 @@ class App(tk.Tk):
         return "#000000" if (r * 299 + g * 587 + b * 114) / 1000 > 128 else "#FFFFFF"
 
     # ------------------------------------------------------------ handlers
-    def _pick_color(self, var, btn):
-        rgb, hexv = colorchooser.askcolor(color=var.get(), parent=self)
+    def _pick_color(self, var, apply):
+        _rgb, hexv = colorchooser.askcolor(color=var.get(), parent=self, title="색 선택")
         if hexv:
-            var.set(hexv.upper())
-            btn.configure(bg=hexv, fg=self._contrast(hexv))
+            apply(hexv)
 
     def _pick_audio(self):
         p = filedialog.askopenfilename(title="음원 선택", filetypes=[("오디오", "*.mp3 *.wav *.m4a *.flac *.ogg *.aac"), ("모든 파일", "*.*")])
@@ -222,10 +271,51 @@ class App(tk.Tk):
             self.timings_var.set(p)
 
     def _pick_font(self):
-        p = filedialog.askopenfilename(title="폰트 선택", initialdir=r"C:\Windows\Fonts" if os.name == "nt" else "/",
-                                       filetypes=[("폰트", "*.ttf *.ttc *.otf"), ("모든 파일", "*.*")])
-        if p:
-            self.font_var.set(p)
+        """폰트 폴더 밖의 폰트 파일을 목록에 추가하고 선택한다."""
+        p = filedialog.askopenfilename(title="폰트 파일 선택", filetypes=[("폰트", "*.ttf *.ttc *.otf"), ("모든 파일", "*.*")])
+        if not p:
+            return
+        entries = load_font_entries(p)
+        if not entries:
+            messagebox.showerror("폰트 오류", "폰트 파일을 읽을 수 없습니다.", parent=self)
+            return
+        self.font_entries = entries + self.font_entries
+        self.font_combo.configure(values=[e.label for e in self.font_entries])
+        self.font_var.set(entries[0].label)
+        self._update_font_preview()
+
+    def _selected_font(self):
+        label = self.font_var.get()
+        for e in self.font_entries:
+            if e.label == label:
+                return e
+        return None
+
+    def _update_font_preview(self):
+        entry = self._selected_font()
+        if entry is None:
+            self.font_preview.configure(text="시스템 폰트를 찾지 못했습니다. '다른 파일…'로 폰트를 지정하세요.", image="")
+            return
+        if ImageTk is None:
+            self.font_preview.configure(text=entry.path, image="")
+            return
+        try:
+            font = ImageFont.truetype(entry.path, 26, index=entry.index)
+            text = "노래방 자막 미리보기 Karaoke 123"
+            l, t, rgt, b = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox((0, 0), text, font=font, stroke_width=2)
+            w, h = rgt - l + 8, b - t + 8
+            base = Image.new("RGB", (w, h), "#3A5F8A")
+            ImageDraw.Draw(base).text((-l + 4, -t + 4), text, font=font, fill=self.base_color.get(),
+                                      stroke_width=2, stroke_fill=self.outline_color.get())
+            hl = Image.new("RGB", (w, h), "#3A5F8A")
+            ImageDraw.Draw(hl).text((-l + 4, -t + 4), text, font=font, fill=self.hl_color.get(),
+                                    stroke_width=2, stroke_fill=self.outline_color.get())
+            half = int(w * 0.55)
+            base.paste(hl.crop((0, 0, half, h)), (0, 0))
+            self._preview_photo = ImageTk.PhotoImage(base)
+            self.font_preview.configure(image=self._preview_photo, text="")
+        except Exception as e:
+            self.font_preview.configure(text=f"미리보기 실패: {e}", image="")
 
     def _pick_out(self):
         p = filedialog.askdirectory(title="출력 폴더 선택")
@@ -286,8 +376,11 @@ class App(tk.Tk):
             fps = int(self.fps_var.get() or 30)
         except ValueError:
             raise ValueError("글자 크기와 FPS는 정수여야 합니다.")
+        font = self._selected_font()
+        if font is None:
+            raise ValueError("폰트를 선택하세요.")
         style = RenderStyle(
-            font_path=self.font_var.get().strip() or None, font_size=size,
+            font_path=font.path, font_index=font.index, font_size=size,
             base_color=self.base_color.get(), highlight_color=self.hl_color.get(),
             outline_color=self.outline_color.get(), show_next=self.next_var.get(),
         )
