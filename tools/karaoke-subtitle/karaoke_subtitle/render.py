@@ -59,6 +59,7 @@ def hex_to_rgba(color, alpha=255):
 @dataclass
 class RenderStyle:
     font_path: str = None
+    font_index: int = 0           # .ttc 안의 폰트 번호
     font_size: int = 0            # 0 = 화면 폭 기준 자동
     base_color: str = "#FFFFFF"   # 아직 부르지 않은 글자
     highlight_color: str = "#FFD400"  # 부른 글자(채워지는 색)
@@ -79,13 +80,13 @@ class LineArt:
     def __init__(self, line, font_path, size, style, width_limit, scale=1.0, alpha=1.0, highlight=True):
         text = line.text
         size = max(8, int(size * scale))
-        font = ImageFont.truetype(font_path, size)
+        font = ImageFont.truetype(font_path, size, index=style.font_index)
         stroke = max(1, int(size * style.outline_ratio))
         # 폭 제한을 넘으면 글자 크기를 줄인다
         w = font.getlength(text) + stroke * 2
         if w > width_limit:
             size = max(8, int(size * width_limit / w))
-            font = ImageFont.truetype(font_path, size)
+            font = ImageFont.truetype(font_path, size, index=style.font_index)
             stroke = max(1, int(size * style.outline_ratio))
         self.font_size = size
 

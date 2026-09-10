@@ -23,6 +23,7 @@ def build_parser():
     p.add_argument("--codec", choices=list(CODECS), default="prores4444")
     p.add_argument("--audio-in-mov", action="store_true", help="MOV에 (구간) 오디오 트랙 포함")
     p.add_argument("--font", default=None, help="폰트 파일(.ttf/.ttc)")
+    p.add_argument("--font-index", type=int, default=0, help=".ttc 안의 폰트 번호(기본 0)")
     p.add_argument("--font-size", type=int, default=0, help="글자 크기(px), 0=자동")
     p.add_argument("--base-color", default="#FFFFFF")
     p.add_argument("--highlight-color", default="#FFD400")
@@ -44,7 +45,7 @@ def main(argv=None):
         return 2
 
     style = RenderStyle(
-        font_path=args.font, font_size=args.font_size, base_color=args.base_color,
+        font_path=args.font, font_index=args.font_index, font_size=args.font_size, base_color=args.base_color,
         highlight_color=args.highlight_color, outline_color=args.outline_color,
         show_next=not args.no_next_line,
     )
