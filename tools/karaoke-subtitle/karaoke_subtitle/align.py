@@ -126,6 +126,7 @@ def align_lyrics(audio, lyric_lines, language=None, model_name="small", device="
         by_text.setdefault(seg.get("text", "").strip(), []).append(seg)
 
     lines = []
+    aligned_line_count = 0
     for i, (words, (ws, we)) in enumerate(zip(lyric_lines, windows)):
         text = " ".join(words)
         seg = None
@@ -137,7 +138,19 @@ def align_lyrics(audio, lyric_lines, language=None, model_name="small", device="
             for w in seg.get("words", []):
                 tokens.append({"text": w.get("word", ""), "start": w.get("start"), "end": w.get("end")})
         times = assign_times_by_chars(words, tokens) if tokens else [(None, None)] * len(words)
+        if any(t[0] is not None for t in times):
+            aligned_line_count += 1
         lines.append(Line(fill_missing_word_times(words, times, (ws, we))))
+
+    if aligned_line_count == 0:
+        raise RuntimeError(
+            "가사 정렬에 실패했습니다: 어떤 줄도 음성과 맞춰지지 않았습니다.\n"
+            "- 음원에 노래(보컬)가 들어 있는지, 가사가 이 곡의 것인지 확인하세요.\n"
+            "- 언어를 '자동 감지' 대신 직접 지정해 보세요.\n"
+            "- 반주가 크면 보컬 분리 음원을 쓰거나 모델을 medium 이상으로 올려 보세요."
+        )
+    if aligned_line_count < len(lines) * 0.5:
+        log(f"[경고] {len(lines)}줄 중 {aligned_line_count}줄만 정렬되었습니다. 나머지는 추정값이라 타이밍이 어긋날 수 있습니다.")
 
     # 줄 경계가 겹치면 앞 줄의 마지막 단어 끝을 다음 줄 시작에 맞춘다(시작 시각을 더 신뢰)
     for prev, cur in zip(lines, lines[1:]):
