@@ -244,3 +244,31 @@ def render_video(lines, display_times, out_path, width, height, fps=30, style=No
     if progress:
         progress(1.0, "렌더링 완료")
     return out_path
+
+
+PREVIEW_SIZES = {"16:9": (1920, 1080), "9:16": (1080, 1920)}
+
+
+def render_preview_mp4(mov_path, out_path, aspect, fps=30, audio_path=None, audio_offset=0.0,
+                       duration=None, bg_color="808080", log=print):
+    """투명 MOV를 회색 배경 위에 합성한 1080p H.264 미리보기 mp4를 만든다(구간 오디오 포함)."""
+    ffmpeg = find_ffmpeg()
+    w, h = PREVIEW_SIZES.get(aspect, (1920, 1080))
+    cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+           "-f", "lavfi", "-i", f"color=c=0x{bg_color}:s={w}x{h}:r={fps}",
+           "-i", mov_path]
+    if audio_path:
+        cmd += ["-ss", f"{audio_offset:.3f}", "-i", audio_path]
+    cmd += ["-filter_complex", f"[1:v]scale={w}:{h}:flags=lanczos[sub];[0:v][sub]overlay=shortest=1[v]",
+            "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]
+    if audio_path:
+        cmd += ["-map", "2:a", "-c:a", "aac", "-b:a", "192k"]
+    if duration:
+        cmd += ["-t", f"{duration:.3f}"]
+    cmd += ["-movflags", "+faststart", out_path]
+    log(f"[미리보기] {w}x{h} mp4 인코딩 중")
+    proc = subprocess.run(cmd, capture_output=True, **_no_window_flags())
+    if proc.returncode != 0:
+        err = proc.stderr.decode("utf-8", "replace").strip().splitlines()
+        raise RuntimeError("미리보기 mp4 생성 실패: " + (err[-1] if err else f"코드 {proc.returncode}"))
+    return out_path

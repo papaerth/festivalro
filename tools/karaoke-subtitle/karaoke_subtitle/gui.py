@@ -2,6 +2,8 @@
 
 import os
 import queue
+import subprocess
+import sys
 import threading
 import traceback
 import tkinter as tk
@@ -34,7 +36,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("노래방 자막 생성기 (WhisperX)")
-        self.minsize(860, 760)
+        self.minsize(900, 860)
         self.log_queue = queue.Queue()
         self.worker = None
         self._build()
@@ -140,7 +142,6 @@ class App(tk.Tk):
         default = default_font_entry(self.font_entries)
         if default:
             self.font_var.set(default.label)
-        self._update_font_preview()
 
         ttk.Label(root, text="글자 크기").grid(row=r, column=0, sticky="w", **pad)
         f = ttk.Frame(root)
@@ -178,6 +179,8 @@ class App(tk.Tk):
         ttk.Checkbutton(f, text="다음 줄 미리보기", variable=self.next_var).pack(side="left")
         self.audio_var_in = tk.BooleanVar(value=False)
         ttk.Checkbutton(f, text="MOV에 (구간) 오디오 포함", variable=self.audio_var_in).pack(side="left", padx=12)
+        self.preview_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(f, text="미리보기 mp4 생성(회색 배경 합성, 1080p)", variable=self.preview_var).pack(side="left")
         r += 1
 
         ttk.Label(root, text="출력 폴더").grid(row=r, column=0, sticky="w", **pad)
@@ -198,13 +201,36 @@ class App(tk.Tk):
         self.progress = ttk.Progressbar(f, maximum=1.0)
         self.progress.grid(row=0, column=1, sticky="ew", padx=8)
         self.status_var = tk.StringVar(value="대기 중")
-        ttk.Label(f, textvariable=self.status_var, width=28).grid(row=0, column=2)
+        ttk.Label(f, textvariable=self.status_var, width=22).grid(row=0, column=2)
+        self.play_btn = ttk.Button(f, text="완성본 재생", state="disabled",
+                                   command=lambda: self._open_path(self.outputs.get("mov")))
+        self.play_btn.grid(row=0, column=3, padx=(8, 2))
+        self.folder_btn = ttk.Button(f, text="폴더 열기", state="disabled",
+                                     command=lambda: self._open_path(self.outputs.get("out_dir")))
+        self.folder_btn.grid(row=0, column=4, padx=2)
+        r += 1
+
+        # 출력 파일 영역
+        self.outputs = {}
+        of = ttk.LabelFrame(root, text="출력 파일", padding=(6, 2))
+        of.grid(row=r, column=0, columnspan=3, sticky="ew", **pad)
+        of.columnconfigure(1, weight=1)
+        self.output_rows = {}
+        for i, (key, label) in enumerate([("mov", "MOV"), ("srt", "SRT"), ("json", "timings.json"), ("preview", "미리보기 mp4")]):
+            ttk.Label(of, text=label, width=13).grid(row=i, column=0, sticky="w", pady=1)
+            var = tk.StringVar(value="")
+            ttk.Entry(of, textvariable=var, state="readonly").grid(row=i, column=1, sticky="ew", padx=4, pady=1)
+            btn = ttk.Button(of, text="열기", width=6, state="disabled",
+                             command=lambda k=key: self._open_path(self.outputs.get(k)))
+            btn.grid(row=i, column=2, pady=1)
+            self.output_rows[key] = (var, btn)
         r += 1
 
         self.log_box = scrolledtext.ScrolledText(root, height=9, state="disabled", font=("Consolas", 9))
         self.log_box.grid(row=r, column=0, columnspan=3, sticky="nsew", **pad)
         root.rowconfigure(r, weight=1)
         self._on_aspect()
+        self._update_font_preview()  # 색상 변수까지 만들어진 뒤에 첫 미리보기
 
     def _color_row(self, parent, row, label, var):
         """색 이름 프리셋 드롭다운 + 색상표 버튼 + HEX 표시 한 줄."""
@@ -241,6 +267,38 @@ class App(tk.Tk):
         return "#000000" if (r * 299 + g * 587 + b * 114) / 1000 > 128 else "#FFFFFF"
 
     # ------------------------------------------------------------ handlers
+    def _open_path(self, path):
+        """파일은 기본 프로그램으로, 폴더는 탐색기로 연다."""
+        if not path or not os.path.exists(path):
+            messagebox.showwarning("열기", "파일이 없습니다.\n" + str(path or ""), parent=self)
+            return
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)  # noqa: S606
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except Exception as e:
+            messagebox.showerror("열기 실패", str(e), parent=self)
+
+    def _show_outputs(self, result):
+        self.outputs = dict(result)
+        for key, (var, btn) in self.output_rows.items():
+            path = result.get(key)
+            var.set(path or ("(생성 안 함)" if key == "preview" else ""))
+            btn.configure(state="normal" if path else "disabled")
+        self.play_btn.configure(state="normal" if result.get("mov") else "disabled")
+        self.folder_btn.configure(state="normal" if result.get("out_dir") else "disabled")
+
+    def _clear_outputs(self):
+        self.outputs = {}
+        for var, btn in self.output_rows.values():
+            var.set("")
+            btn.configure(state="disabled")
+        self.play_btn.configure(state="disabled")
+        self.folder_btn.configure(state="disabled")
+
     def _pick_color(self, var, apply):
         _rgb, hexv = colorchooser.askcolor(color=var.get(), parent=self, title="색 선택")
         if hexv:
@@ -349,7 +407,11 @@ class App(tk.Tk):
                 elif kind == "done":
                     self.run_btn.configure(state="normal")
                     self.status_var.set("완료")
-                    messagebox.showinfo("완료", "생성이 끝났습니다.\n\n" + "\n".join(payload.values()), parent=self)
+                    self._show_outputs(payload)
+                    msg = f"완료! MOV 파일: {payload.get('mov')}"
+                    if payload.get("preview"):
+                        msg += f"\n미리보기 mp4: {payload['preview']}"
+                    messagebox.showinfo("완료", msg, parent=self)
                 elif kind == "error":
                     self.run_btn.configure(state="normal")
                     self.status_var.set("오류")
@@ -388,6 +450,7 @@ class App(tk.Tk):
             audio_path=audio, lyrics_text=lyrics, aspect=aspect, resolution=self.res_var.get(),
             clip_start=clip_start, clip_end=clip_end, language=lang, model_name=self.model_var.get(),
             device=self.device_var.get(), fps=fps, codec=codec, include_audio=self.audio_var_in.get(),
+            preview_mp4=self.preview_var.get(),
             out_dir=self.out_var.get().strip(), timings_json=timings, style=style,
         )
 
@@ -398,6 +461,7 @@ class App(tk.Tk):
             messagebox.showerror("입력 오류", str(e), parent=self)
             return
         self.run_btn.configure(state="disabled")
+        self._clear_outputs()
         self.progress["value"] = 0
         self.status_var.set("시작")
         self._log("=" * 60)

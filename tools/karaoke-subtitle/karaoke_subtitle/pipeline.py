@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from .ffmpeg_utils import load_audio
 from .lyrics import parse_lyrics
-from .render import ASPECTS, RenderStyle, render_video
+from .render import ASPECTS, RenderStyle, render_preview_mp4, render_video
 from .srt import write_srt
 from .timing import clip_lines, compute_display_times, lines_from_dict, lines_to_dict
 
@@ -26,6 +26,7 @@ class JobOptions:
     fps: int = 30
     codec: str = "prores4444"
     include_audio: bool = False
+    preview_mp4: bool = False     # 회색 배경 합성 1080p 미리보기 mp4도 생성
     out_dir: str = ""
     base_name: str = ""
     timings_json: str = ""        # 이전 정렬 결과 재사용(WhisperX 생략)
@@ -133,5 +134,15 @@ def run_job(opts, log=print, progress=None):
     srt_path = os.path.join(out_dir, f"{base}{suffix}.srt")
     write_srt(clipped, srt_path, duration=clip_len)
     log(f"[저장] 자막 → {srt_path}")
+    result = {"mov": mov_path, "srt": srt_path, "json": json_path, "out_dir": out_dir}
+
+    # 5) 미리보기 mp4 (선택)
+    if opts.preview_mp4:
+        prog(0.985, "미리보기 mp4 생성")
+        preview_path = os.path.join(out_dir, f"{base}{suffix}_preview.mp4")
+        render_preview_mp4(mov_path, preview_path, opts.aspect, fps=opts.fps, audio_path=opts.audio_path,
+                           audio_offset=clip_start, duration=clip_len, log=log)
+        log(f"[저장] 미리보기 → {preview_path}")
+        result["preview"] = preview_path
     prog(1.0, "완료")
-    return {"mov": mov_path, "srt": srt_path, "json": json_path}
+    return result
