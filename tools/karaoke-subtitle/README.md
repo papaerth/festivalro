@@ -54,7 +54,13 @@ run_gui.bat
 | `<이름>.timings.json` | 단어별 타이밍. 다시 렌더링할 때 **타이밍 재사용**에 지정 |
 | `<이름>_16x9_preview.mp4` | (선택) 회색 배경 합성 미리보기 |
 
-### CLI 예시
+#### 이전 작업 기록과 설정 유지
+- 생성이 끝난 작업은 **이전 작업** 드롭다운에 쌓이고, 프로그램을 껐다 켜도 남습니다. 항목을 고르면 출력 파일 영역에 그 작업의 MOV/SRT/timings.json/미리보기 경로가 표시되고, 파일이 실제로 있으면 [열기]·[완성본 재생]·[폴더 열기]가 활성화됩니다(지워진 파일은 "(파일 없음)" 표시).
+- **타이밍 재사용에 넣기**를 누르면 그 작업의 timings.json과 음원이 입력칸에 채워져 색·폰트·구간만 바꿔 바로 다시 렌더링할 수 있습니다. **기록 지우기**는 목록만 지우며 파일은 삭제하지 않습니다.
+- 마지막으로 사용한 설정(가사, 비율, 구간, 언어, 폰트, 색, 코덱, 출력 폴더 등)도 자동 저장되어 다음 실행 때 복원됩니다.
+- 저장 위치: Windows `%APPDATA%\karaoke-subtitle\history.json`, `settings.json` (macOS `~/Library/Application Support/karaoke-subtitle`, Linux `~/.config/karaoke-subtitle`)
+
+## CLI 예시
 
 ```bat
 python main.py song.mp3 --lyrics lyrics.txt --aspect 16:9

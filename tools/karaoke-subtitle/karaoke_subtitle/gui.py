@@ -12,6 +12,7 @@ from tkinter import colorchooser, filedialog, messagebox, scrolledtext, ttk
 from PIL import Image, ImageDraw, ImageFont
 
 from .fonts import default_font_entry, load_font_entries, scan_fonts
+from .history import add_entry, clear_history, entry_label, load_history, load_settings, save_settings
 from .pipeline import JobOptions, parse_time, run_job
 from .render import CODECS, RESOLUTIONS, RenderStyle
 
@@ -36,11 +37,14 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("노래방 자막 생성기 (WhisperX)")
-        self.minsize(900, 860)
+        self.minsize(900, 900)
         self.log_queue = queue.Queue()
         self.worker = None
         self._build()
-        self.after(100, self._poll_log)
+        self._restore_settings()
+        self._load_history()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._poll_id = self.after(100, self._poll_log)
 
     # ------------------------------------------------------------------ UI
     def _build(self):
@@ -157,6 +161,7 @@ class App(tk.Tk):
         self.base_color = tk.StringVar(value="#FFFFFF")
         self.hl_color = tk.StringVar(value="#FFD400")
         self.outline_color = tk.StringVar(value="#000000")
+        self._color_refreshers = []
         self._color_row(f, 0, "부르기 전 글자", self.base_color)
         self._color_row(f, 1, "부른 글자(채워지는 색)", self.hl_color)
         self._color_row(f, 2, "외곽선", self.outline_color)
@@ -210,6 +215,20 @@ class App(tk.Tk):
         self.folder_btn.grid(row=0, column=4, padx=2)
         r += 1
 
+        # 이전 작업 기록(프로그램을 껐다 켜도 유지)
+        ttk.Label(root, text="이전 작업").grid(row=r, column=0, sticky="w", **pad)
+        f = ttk.Frame(root)
+        f.grid(row=r, column=1, columnspan=2, sticky="ew", **pad)
+        f.columnconfigure(0, weight=1)
+        self.history = []
+        self.history_var = tk.StringVar()
+        self.history_combo = ttk.Combobox(f, textvariable=self.history_var, state="readonly")
+        self.history_combo.grid(row=0, column=0, sticky="ew")
+        self.history_combo.bind("<<ComboboxSelected>>", lambda _e: self._select_history())
+        ttk.Button(f, text="타이밍 재사용에 넣기", command=self._reuse_history_timings).grid(row=0, column=1, padx=(6, 2))
+        ttk.Button(f, text="기록 지우기", command=self._clear_history).grid(row=0, column=2)
+        r += 1
+
         # 출력 파일 영역
         self.outputs = {}
         of = ttk.LabelFrame(root, text="출력 파일", padding=(6, 2))
@@ -249,9 +268,14 @@ class App(tk.Tk):
             preset_var.set(self._preset_name(var.get()))
             self._update_font_preview()
 
+        self._color_refreshers.append(lambda: apply(var.get()))
         combo.bind("<<ComboboxSelected>>", lambda _e: apply(dict(COLOR_PRESETS)[preset_var.get()]))
         swatch.configure(command=lambda: self._pick_color(var, apply))
         ttk.Label(parent, text="← 색상표에서 직접 고르기", foreground="#666").grid(row=row, column=3, sticky="w")
+
+    def _refresh_color_widgets(self):
+        for fn in self._color_refreshers:
+            fn()
 
     @staticmethod
     def _preset_name(hexv):
@@ -283,13 +307,130 @@ class App(tk.Tk):
             messagebox.showerror("열기 실패", str(e), parent=self)
 
     def _show_outputs(self, result):
+        """출력 파일 영역을 채운다. 파일이 실제로 있을 때만 [열기]를 활성화한다."""
         self.outputs = dict(result)
         for key, (var, btn) in self.output_rows.items():
             path = result.get(key)
-            var.set(path or ("(생성 안 함)" if key == "preview" else ""))
-            btn.configure(state="normal" if path else "disabled")
-        self.play_btn.configure(state="normal" if result.get("mov") else "disabled")
-        self.folder_btn.configure(state="normal" if result.get("out_dir") else "disabled")
+            exists = bool(path) and os.path.exists(path)
+            if not path:
+                var.set("(생성 안 함)" if key == "preview" else "")
+            else:
+                var.set(path if exists else f"{path}  (파일 없음)")
+            btn.configure(state="normal" if exists else "disabled")
+        mov = result.get("mov")
+        out_dir = result.get("out_dir")
+        self.play_btn.configure(state="normal" if mov and os.path.exists(mov) else "disabled")
+        self.folder_btn.configure(state="normal" if out_dir and os.path.isdir(out_dir) else "disabled")
+
+    # ------------------------------------------------------------ 기록
+    def _load_history(self, select_first=True):
+        self.history = load_history()
+        self.history_combo.configure(values=[entry_label(h) for h in self.history])
+        if self.history and select_first:
+            self.history_combo.current(0)
+            self._select_history()
+        elif not self.history:
+            self.history_var.set("")
+
+    def _selected_history(self):
+        idx = self.history_combo.current()
+        return self.history[idx] if 0 <= idx < len(self.history) else None
+
+    def _select_history(self):
+        entry = self._selected_history()
+        if entry:
+            self._show_outputs(entry)
+
+    def _reuse_history_timings(self):
+        entry = self._selected_history()
+        if not entry or not entry.get("json") or not os.path.exists(entry["json"]):
+            messagebox.showwarning("타이밍 재사용", "선택한 작업의 timings.json 파일이 없습니다.", parent=self)
+            return
+        self.timings_var.set(entry["json"])
+        if entry.get("audio") and os.path.exists(entry["audio"]):
+            self.audio_var.set(entry["audio"])
+        self._log(f"[기록] 타이밍 재사용: {entry['json']}")
+
+    def _clear_history(self):
+        if not self.history:
+            return
+        if messagebox.askyesno("기록 지우기", "이전 작업 목록만 지웁니다(파일은 삭제되지 않습니다). 계속할까요?", parent=self):
+            self.history = clear_history()
+            self.history_combo.configure(values=[])
+            self.history_var.set("")
+            self._clear_outputs()
+
+    # ------------------------------------------------------------ 설정 저장/복원
+    def _collect_settings(self):
+        font = self._selected_font()
+        return {
+            "audio": self.audio_var.get(), "lyrics": self.lyrics_text.get("1.0", "end").rstrip("\n"),
+            "timings": self.timings_var.get(), "aspect": self.aspect_var.get(), "resolution": self.res_var.get(),
+            "start": self.start_var.get(), "end": self.end_var.get(), "language": self.lang_var.get(),
+            "model": self.model_var.get(), "device": self.device_var.get(),
+            "font_path": font.path if font else "", "font_index": font.index if font else 0,
+            "font_size": self.size_var.get(), "base_color": self.base_color.get(), "hl_color": self.hl_color.get(),
+            "outline_color": self.outline_color.get(), "codec": self.codec_var.get(), "fps": self.fps_var.get(),
+            "show_next": self.next_var.get(), "audio_in_mov": self.audio_var_in.get(),
+            "preview_mp4": self.preview_var.get(), "out_dir": self.out_var.get(),
+        }
+
+    def _restore_settings(self):
+        st = load_settings()
+        if not st:
+            return
+        try:
+            self.audio_var.set(st.get("audio", ""))
+            if st.get("lyrics"):
+                self.lyrics_text.delete("1.0", "end")
+                self.lyrics_text.insert("1.0", st["lyrics"])
+            self.timings_var.set(st.get("timings", ""))
+            if st.get("aspect") in ("16:9", "9:16"):
+                self.aspect_var.set(st["aspect"])
+            if st.get("resolution") in RESOLUTIONS:
+                self.res_var.set(st["resolution"])
+            self.start_var.set(st.get("start", "0:00"))
+            self.end_var.set(st.get("end", ""))
+            if st.get("language") in dict(LANGUAGES):
+                self.lang_var.set(st["language"])
+            if st.get("model") in MODELS:
+                self.model_var.set(st["model"])
+            if st.get("device") in ("auto", "cpu", "cuda"):
+                self.device_var.set(st["device"])
+            fp = st.get("font_path")
+            if fp and os.path.exists(fp):
+                match = [e for e in self.font_entries if e.path == fp and e.index == st.get("font_index", 0)]
+                if not match:
+                    match = load_font_entries(fp)
+                    if match:
+                        self.font_entries = match + self.font_entries
+                        self.font_combo.configure(values=[e.label for e in self.font_entries])
+                if match:
+                    self.font_var.set(match[0].label)
+            self.size_var.set(str(st.get("font_size", "0")))
+            for key, var in (("base_color", self.base_color), ("hl_color", self.hl_color), ("outline_color", self.outline_color)):
+                if st.get(key):
+                    var.set(st[key])
+            if st.get("codec") in dict(CODEC_LABELS):
+                self.codec_var.set(st["codec"])
+            self.fps_var.set(str(st.get("fps", "30")))
+            self.next_var.set(bool(st.get("show_next", True)))
+            self.audio_var_in.set(bool(st.get("audio_in_mov", False)))
+            self.preview_var.set(bool(st.get("preview_mp4", False)))
+            self.out_var.set(st.get("out_dir", ""))
+        except Exception as e:
+            self._log(f"[설정] 복원 중 일부 항목을 건너뜀: {e}")
+        self._on_aspect()
+        self._refresh_color_widgets()
+        self._update_font_preview()
+
+    def _on_close(self):
+        save_settings(self._collect_settings())
+        try:
+            self.after_cancel(self._poll_id)
+        except Exception:
+            pass
+        self.destroy()
 
     def _clear_outputs(self):
         self.outputs = {}
@@ -307,6 +448,10 @@ class App(tk.Tk):
     def _pick_audio(self):
         p = filedialog.askopenfilename(title="음원 선택", filetypes=[("오디오", "*.mp3 *.wav *.m4a *.flac *.ogg *.aac"), ("모든 파일", "*.*")])
         if p:
+            if p != self.audio_var.get() and self.timings_var.get():
+                # 다른 곡의 타이밍이 그대로 쓰이지 않도록 비운다
+                self.timings_var.set("")
+                self._log("[안내] 음원이 바뀌어 '타이밍 재사용' 칸을 비웠습니다.")
             self.audio_var.set(p)
             if not self.out_var.get():
                 self.out_var.set(os.path.dirname(p))
@@ -407,6 +552,12 @@ class App(tk.Tk):
                 elif kind == "done":
                     self.run_btn.configure(state="normal")
                     self.status_var.set("완료")
+                    try:
+                        add_entry(payload, self._last_opts)
+                        self._load_history(select_first=False)
+                        self.history_combo.current(0)
+                    except Exception as e:
+                        self._log(f"[기록] 저장 실패: {e}")
                     self._show_outputs(payload)
                     msg = f"완료! MOV 파일: {payload.get('mov')}"
                     if payload.get("preview"):
@@ -418,7 +569,7 @@ class App(tk.Tk):
                     messagebox.showerror("오류", payload, parent=self)
         except queue.Empty:
             pass
-        self.after(100, self._poll_log)
+        self._poll_id = self.after(100, self._poll_log)
 
     def _build_options(self):
         audio = self.audio_var.get().strip()
@@ -460,6 +611,8 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror("입력 오류", str(e), parent=self)
             return
+        self._last_opts = opts
+        save_settings(self._collect_settings())
         self.run_btn.configure(state="disabled")
         self._clear_outputs()
         self.progress["value"] = 0
