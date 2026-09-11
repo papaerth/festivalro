@@ -195,7 +195,8 @@ def render_video(lines, display_times, out_path, width, height, fps=30, style=No
 
     blank = Image.new("RGBA", (width, height), (0, 0, 0, 0)).tobytes()
     bottom = height - int(height * style.bottom_margin_ratio)
-    last_key, last_bytes = None, None
+    # last_key는 '아직 아무 프레임도 없음'을 뜻하는 고유 값으로 시작한다(None은 '빈 화면' 키로 쓰임).
+    last_key, last_bytes = object(), blank
     active = 0
     try:
         for fi in range(total_frames):
@@ -205,9 +206,8 @@ def render_video(lines, display_times, out_path, width, height, fps=30, style=No
                 active += 1
             cur = active if active < len(lines) and t >= display_times[active][0] else None
             if cur is None:
-                key = None
-                if last_key != key:
-                    last_key, last_bytes = key, blank
+                if last_key is not None:
+                    last_key, last_bytes = None, blank
                 proc.stdin.write(last_bytes)
             else:
                 art = arts[cur]
@@ -224,7 +224,7 @@ def render_video(lines, display_times, out_path, width, height, fps=30, style=No
                     if sx > 0:
                         frame.paste(art.hl.crop((0, 0, min(sx, art.w), art.h)), (x, y))
                     last_key, last_bytes = key, frame.tobytes()
-                proc.stdin.write(last_bytes)
+                proc.stdin.write(last_bytes or blank)
             if progress and fi % 30 == 0:
                 progress(fi / total_frames, f"렌더링 {fi}/{total_frames}")
         proc.stdin.close()

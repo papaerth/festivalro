@@ -79,7 +79,10 @@ def run_job(opts, log=print, progress=None):
         language = data.get("language")
         log(f"[정렬] 타이밍 파일 재사용: {os.path.basename(opts.timings_json)} ({len(lines)}줄)")
         if not lines:
-            raise ValueError("타이밍 파일에 줄 정보가 없습니다.")
+            raise ValueError(
+                f"타이밍 파일에 가사 줄이 하나도 없습니다: {os.path.basename(opts.timings_json)}\n"
+                "타이밍 재사용 칸을 비우고 가사를 입력해 다시 정렬하세요."
+            )
     else:
         lyric_lines = parse_lyrics(opts.lyrics_text)
         if not lyric_lines:
@@ -91,6 +94,8 @@ def run_job(opts, log=print, progress=None):
                                        model_name=opts.model_name, device=opts.device,
                                        log=log, progress=lambda f, m: prog(0.05 + f * 0.45, m))
     del audio
+    if not lines or not any(ln.words for ln in lines):
+        raise RuntimeError("단어 타이밍이 비어 있어 자막을 만들 수 없습니다. 가사와 음원을 확인하세요.")
 
     json_path = os.path.join(out_dir, f"{base}.timings.json")
     with open(json_path, "w", encoding="utf-8") as f:
@@ -108,7 +113,10 @@ def run_job(opts, log=print, progress=None):
     clip_len = clip_end - clip_start
     clipped = clip_lines(lines, clip_start, clip_end)
     if not clipped:
-        log("[경고] 선택한 구간에 가사가 없습니다. 빈 자막이 생성됩니다.")
+        raise ValueError(
+            f"선택한 구간({clip_start:.1f}s ~ {clip_end:.1f}s)에 가사가 없습니다.\n"
+            f"가사는 {lines[0].start:.1f}s ~ {lines[-1].end:.1f}s 사이에 있습니다. 구간을 다시 지정하세요."
+        )
     shows = compute_display_times(clipped, lead_in=opts.style.lead_in, tail=opts.style.tail, duration=clip_len)
 
     # 3) MOV
