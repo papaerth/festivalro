@@ -238,8 +238,8 @@ class App(tk.Tk):
             ttk.Label(of, text=label, width=13).grid(row=i, column=0, sticky="w", pady=1)
             var = tk.StringVar(value="")
             ttk.Entry(of, textvariable=var, state="readonly").grid(row=i, column=1, sticky="ew", padx=4, pady=1)
-            btn = ttk.Button(of, text="열기", width=6, state="disabled",
-                             command=lambda k=key: self._open_path(self.outputs.get(k)))
+            btn = ttk.Button(of, text="재생" if key == "mov" else "열기", width=6, state="disabled",
+                             command=(self._play_output if key == "mov" else (lambda k=key: self._open_path(self.outputs.get(k)))))
             btn.grid(row=i, column=2, pady=1)
             self.output_rows[key] = (var, btn)
         r += 1
@@ -318,11 +318,13 @@ class App(tk.Tk):
         ok = messagebox.askyesno(
             "완성본 재생",
             "투명 배경 MOV(ProRes 4444)는 윈도우 기본 플레이어에서 재생되지 않습니다.\n"
-            "(프리미어·다빈치 리졸브 등 편집기에서는 정상적으로 열립니다.)\n\n"
-            "회색 배경에 합성한 미리보기 mp4를 지금 만들어서 재생할까요?",
+            "(프리미어·다빈치 리졸브 등 편집기에서는 정상적으로 열립니다. VLC 플레이어로는 재생 가능)\n\n"
+            "회색 배경에 합성한 미리보기 mp4를 지금 만들어서 재생할까요?\n"
+            "'아니요'를 누르면 MOV 파일을 그대로 엽니다.",
             parent=self,
         )
         if not ok:
+            self._open_path(mov)
             return
         self.play_btn.configure(state="disabled")
         self.status_var.set("미리보기 mp4 생성 중")
