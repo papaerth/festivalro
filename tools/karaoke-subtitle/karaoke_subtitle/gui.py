@@ -12,9 +12,9 @@ from tkinter import colorchooser, filedialog, messagebox, scrolledtext, ttk
 from PIL import Image, ImageDraw, ImageFont
 
 from .fonts import default_font_entry, load_font_entries, scan_fonts
-from .history import add_entry, clear_history, entry_label, load_history, load_settings, save_settings
+from .history import add_entry, clear_history, entry_label, load_history, load_settings, save_settings, update_entry
 from .pipeline import JobOptions, parse_time, run_job
-from .render import CODECS, RESOLUTIONS, RenderStyle
+from .render import CODECS, RESOLUTIONS, RenderStyle, render_preview_mp4
 
 try:
     from PIL import ImageTk
@@ -184,8 +184,8 @@ class App(tk.Tk):
         ttk.Checkbutton(f, text="다음 줄 미리보기", variable=self.next_var).pack(side="left")
         self.audio_var_in = tk.BooleanVar(value=False)
         ttk.Checkbutton(f, text="MOV에 (구간) 오디오 포함", variable=self.audio_var_in).pack(side="left", padx=12)
-        self.preview_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(f, text="미리보기 mp4 생성(회색 배경 합성, 1080p)", variable=self.preview_var).pack(side="left")
+        self.preview_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(f, text="미리보기 mp4 생성(회색 배경 합성, 1080p · 재생 확인용)", variable=self.preview_var).pack(side="left")
         r += 1
 
         ttk.Label(root, text="출력 폴더").grid(row=r, column=0, sticky="w", **pad)
@@ -207,8 +207,7 @@ class App(tk.Tk):
         self.progress.grid(row=0, column=1, sticky="ew", padx=8)
         self.status_var = tk.StringVar(value="대기 중")
         ttk.Label(f, textvariable=self.status_var, width=22).grid(row=0, column=2)
-        self.play_btn = ttk.Button(f, text="완성본 재생", state="disabled",
-                                   command=lambda: self._open_path(self.outputs.get("mov")))
+        self.play_btn = ttk.Button(f, text="완성본 재생", state="disabled", command=self._play_output)
         self.play_btn.grid(row=0, column=3, padx=(8, 2))
         self.folder_btn = ttk.Button(f, text="폴더 열기", state="disabled",
                                      command=lambda: self._open_path(self.outputs.get("out_dir")))
@@ -305,6 +304,45 @@ class App(tk.Tk):
                 subprocess.Popen(["xdg-open", path])
         except Exception as e:
             messagebox.showerror("열기 실패", str(e), parent=self)
+
+    def _play_output(self):
+        """미리보기 mp4가 있으면 재생, 없으면 ProRes MOV는 기본 플레이어로 못 여니 만들어서 재생할지 묻는다."""
+        preview = self.outputs.get("preview")
+        if preview and os.path.exists(preview):
+            self._open_path(preview)
+            return
+        mov = self.outputs.get("mov")
+        if not mov or not os.path.exists(mov):
+            messagebox.showwarning("완성본 재생", "재생할 파일이 없습니다.", parent=self)
+            return
+        ok = messagebox.askyesno(
+            "완성본 재생",
+            "투명 배경 MOV(ProRes 4444)는 윈도우 기본 플레이어에서 재생되지 않습니다.\n"
+            "(프리미어·다빈치 리졸브 등 편집기에서는 정상적으로 열립니다.)\n\n"
+            "회색 배경에 합성한 미리보기 mp4를 지금 만들어서 재생할까요?",
+            parent=self,
+        )
+        if not ok:
+            return
+        self.play_btn.configure(state="disabled")
+        self.status_var.set("미리보기 mp4 생성 중")
+        info = dict(self.outputs)
+
+        def work():
+            try:
+                aspect = info.get("aspect") or ("9:16" if "_9x16" in os.path.basename(mov) else "16:9")
+                start = info.get("clip_start") or 0.0
+                end = info.get("clip_end")
+                audio = info.get("audio") if info.get("audio") and os.path.exists(info["audio"]) else None
+                out = os.path.splitext(mov)[0] + "_preview.mp4"
+                render_preview_mp4(mov, out, aspect, fps=int(info.get("fps") or 30), audio_path=audio,
+                                   audio_offset=start, duration=(end - start) if end else None, log=self._log)
+                self.log_queue.put(("preview_done", out))
+            except Exception as e:
+                self._log(traceback.format_exc())
+                self.log_queue.put(("error", str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _show_outputs(self, result):
         """출력 파일 영역을 채운다. 파일이 실제로 있을 때만 [열기]를 활성화한다."""
@@ -563,6 +601,17 @@ class App(tk.Tk):
                     if payload.get("preview"):
                         msg += f"\n미리보기 mp4: {payload['preview']}"
                     messagebox.showinfo("완료", msg, parent=self)
+                elif kind == "preview_done":
+                    self.outputs["preview"] = payload
+                    try:
+                        update_entry(self.outputs.get("mov"), preview=payload)
+                        self._load_history(select_first=False)
+                    except Exception as e:
+                        self._log(f"[기록] 갱신 실패: {e}")
+                    self._show_outputs(self.outputs)
+                    self.status_var.set("완료")
+                    self._log(f"[저장] 미리보기 → {payload}")
+                    self._open_path(payload)
                 elif kind == "error":
                     self.run_btn.configure(state="normal")
                     self.status_var.set("오류")

@@ -134,7 +134,10 @@ def run_job(opts, log=print, progress=None):
     srt_path = os.path.join(out_dir, f"{base}{suffix}.srt")
     write_srt(clipped, srt_path, duration=clip_len)
     log(f"[저장] 자막 → {srt_path}")
-    result = {"mov": mov_path, "srt": srt_path, "json": json_path, "out_dir": out_dir}
+    result = {"mov": mov_path, "srt": srt_path, "json": json_path, "out_dir": out_dir,
+              "audio": opts.audio_path, "aspect": opts.aspect, "resolution": opts.resolution, "fps": opts.fps,
+              "clip_start": clip_start if opts.aspect == "9:16" else None,
+              "clip_end": clip_end if opts.aspect == "9:16" else None}
 
     # 5) 미리보기 mp4 (선택)
     if opts.preview_mp4:
