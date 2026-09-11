@@ -44,20 +44,21 @@ run_gui.bat
 4. 언어(자동 감지 가능)·Whisper 모델·장치 선택. CPU라면 `small`, GPU라면 `medium`/`large-v3` 권장
 5. **폰트**는 시스템 폰트 폴더(`C:\Windows\Fonts`와 사용자 폰트)를 읽어 드롭다운으로 고릅니다. 한글 지원 폰트가 `[한글]` 표시와 함께 위쪽에 오고, 기본은 맑은 고딕 굵게입니다. 폴더 밖의 폰트는 **다른 파일…** 로 추가합니다.
 6. **자막 색상**은 세 가지(부르기 전 글자 / 부른 글자, 즉 채워지는 색 / 외곽선)를 각각 색 이름 프리셋(노랑·빨강·파랑 …)에서 고르거나 색상표 버튼으로 직접 지정합니다. 폰트 아래 미리보기에 바로 반영됩니다.
-7. 글자 크기(0=자동), 코덱, FPS 설정
-8. **자막 생성** → 출력 폴더에 아래 파일이 생깁니다.
+7. 글자 크기(0=자동), 코덱, FPS 설정. **미리보기 mp4 생성**을 켜면 투명 MOV를 회색 배경 위에 합성한 1080p H.264 mp4(구간 오디오 포함)도 함께 만들어져 결과를 바로 재생해 볼 수 있습니다.
+8. **자막 생성** → 완료 팝업이 뜨고, **완성본 재생**(기본 플레이어)·**폴더 열기** 버튼과 '출력 파일' 영역의 **열기** 버튼이 활성화됩니다. 출력 폴더에 아래 파일이 생깁니다.
 
 | 파일 | 내용 |
 |---|---|
 | `<이름>_16x9.mov` / `<이름>_9x16.mov` | 투명 배경 자막 영상 (편집기에서 원본 영상 위에 얹기) |
 | `<이름>_16x9.srt` / `<이름>_9x16.srt` | 줄 단위 SRT (9:16은 구간 시작이 0초) |
 | `<이름>.timings.json` | 단어별 타이밍. 다시 렌더링할 때 **타이밍 재사용**에 지정 |
+| `<이름>_16x9_preview.mp4` | (선택) 회색 배경 합성 미리보기 |
 
 ### CLI 예시
 
 ```bat
 python main.py song.mp3 --lyrics lyrics.txt --aspect 16:9
-python main.py song.mp3 --lyrics lyrics.txt --aspect 9:16 --start 1:05 --end 1:35 --audio-in-mov
+python main.py song.mp3 --lyrics lyrics.txt --aspect 9:16 --start 1:05 --end 1:35 --audio-in-mov --preview-mp4
 python main.py song.mp3 --timings song.timings.json --aspect 9:16 --start 0:40 --end 1:10 --highlight-color #FF4081
 python main.py --help
 ```

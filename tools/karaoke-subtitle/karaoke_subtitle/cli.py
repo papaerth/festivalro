@@ -22,6 +22,7 @@ def build_parser():
     p.add_argument("--fps", type=int, default=30)
     p.add_argument("--codec", choices=list(CODECS), default="prores4444")
     p.add_argument("--audio-in-mov", action="store_true", help="MOV에 (구간) 오디오 트랙 포함")
+    p.add_argument("--preview-mp4", action="store_true", help="회색 배경에 합성한 1080p 미리보기 mp4도 생성")
     p.add_argument("--font", default=None, help="폰트 파일(.ttf/.ttc)")
     p.add_argument("--font-index", type=int, default=0, help=".ttc 안의 폰트 번호(기본 0)")
     p.add_argument("--font-size", type=int, default=0, help="글자 크기(px), 0=자동")
@@ -53,7 +54,7 @@ def main(argv=None):
         audio_path=args.audio, lyrics_text=lyrics_text, aspect=args.aspect, resolution=args.resolution,
         clip_start=parse_time(args.start) or 0.0, clip_end=parse_time(args.end),
         language=args.language, model_name=args.model, device=args.device, fps=args.fps,
-        codec=args.codec, include_audio=args.audio_in_mov, out_dir=args.out_dir,
+        codec=args.codec, include_audio=args.audio_in_mov, preview_mp4=args.preview_mp4, out_dir=args.out_dir,
         base_name=args.name, timings_json=args.timings or "", style=style,
     )
     outputs = run_job(opts, log=print, progress=lambda f, m: print(f"  [{f * 100:5.1f}%] {m}"))
