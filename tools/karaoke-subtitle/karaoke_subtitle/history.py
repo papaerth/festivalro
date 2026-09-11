@@ -65,10 +65,21 @@ def add_entry(result, opts):
         "json": result.get("json"),
         "preview": result.get("preview"),
         "out_dir": result.get("out_dir"),
+        "fps": opts.fps,
     }
     hist = [h for h in load_history() if h.get("mov") != entry["mov"]]
     hist.insert(0, entry)
     hist = hist[:MAX_ENTRIES]
+    _write_json(history_path(), hist)
+    return hist
+
+
+def update_entry(mov, **fields):
+    """mov 경로로 항목을 찾아 필드를 갱신한다(예: 나중에 만든 미리보기 경로)."""
+    hist = load_history()
+    for h in hist:
+        if h.get("mov") == mov:
+            h.update(fields)
     _write_json(history_path(), hist)
     return hist
 

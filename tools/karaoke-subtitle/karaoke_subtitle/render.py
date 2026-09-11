@@ -265,7 +265,7 @@ def render_preview_mp4(mov_path, out_path, aspect, fps=30, audio_path=None, audi
         cmd += ["-map", "2:a", "-c:a", "aac", "-b:a", "192k"]
     if duration:
         cmd += ["-t", f"{duration:.3f}"]
-    cmd += ["-movflags", "+faststart", out_path]
+    cmd += ["-shortest", "-movflags", "+faststart", out_path]
     log(f"[미리보기] {w}x{h} mp4 인코딩 중")
     proc = subprocess.run(cmd, capture_output=True, **_no_window_flags())
     if proc.returncode != 0:
