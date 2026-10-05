@@ -1,5 +1,6 @@
 """Tkinter 기반 GUI (Windows 기본 파이썬에 포함된 tkinter만 사용)."""
 
+import json
 import os
 import queue
 import subprocess
@@ -14,7 +15,9 @@ from PIL import Image, ImageDraw, ImageFont
 from .fonts import default_font_entry, load_font_entries, scan_fonts
 from .history import add_entry, clear_history, entry_label, load_history, load_settings, save_settings, update_entry
 from .pipeline import JobOptions, parse_time, run_job
-from .render import CODECS, RESOLUTIONS, RenderStyle, render_preview_mp4
+from .lyrics import parse_lyrics
+from .render import ASPECTS, CODECS, RESOLUTIONS, RenderStyle, render_preview_mp4, render_still
+from .timing import Line, Word, lines_from_dict, spread_lines_evenly
 
 try:
     from PIL import ImageTk
@@ -31,16 +34,23 @@ COLOR_PRESETS = [("흰색", "#FFFFFF"), ("노랑", "#FFD400"), ("빨강", "#FF3B
 CODEC_LABELS = [("ProRes 4444 (알파, 편집기 호환 최고)", "prores4444"),
                 ("Animation/qtrle (알파, 빠르고 작음)", "qtrle"),
                 ("PNG (알파, 무손실)", "png")]
+POSITION_LABELS = [("하단", "bottom"), ("중앙", "middle"), ("상단", "top"), ("직접 지정", "custom")]
+CHROMA_LABELS = [("만들지 않음", ""), ("초록 배경", "green"), ("파랑 배경", "blue"), ("마젠타 배경", "magenta")]
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("노래방 자막 생성기 (WhisperX)")
-        self.minsize(900, 900)
+        self.minsize(820, 480)
         self.log_queue = queue.Queue()
         self.worker = None
         self._build()
+        self.update_idletasks()
+        # 화면보다 크지 않게 창 크기를 정한다(넘치는 부분은 스크롤)
+        w = min(self._content.winfo_reqwidth() + 24, self.winfo_screenwidth() - 40)
+        h = min(self._content.winfo_reqheight() + 4, self.winfo_screenheight() - 110)
+        self.geometry(f"{w}x{h}")
         self._restore_settings()
         self._load_history()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -49,13 +59,39 @@ class App(tk.Tk):
     # ------------------------------------------------------------------ UI
     def _build(self):
         pad = {"padx": 6, "pady": 3}
-        root = ttk.Frame(self, padding=10)
-        root.pack(fill="both", expand=True)
+        # 항목이 많아 낮은 화면(노트북·배율 125% 이상)에서는 잘리므로 세로 스크롤이 되게 한다
+        canvas = tk.Canvas(self, highlightthickness=0)
+        vbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vbar.set)
+        vbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        root = ttk.Frame(canvas, padding=10)
+        win_id = canvas.create_window((0, 0), window=root, anchor="nw")
+
+        def fit(_e=None):
+            need = root.winfo_reqheight()
+            canvas.itemconfigure(win_id, width=canvas.winfo_width(), height=max(need, canvas.winfo_height()))
+            canvas.configure(scrollregion=(0, 0, canvas.winfo_width(), max(need, canvas.winfo_height())))
+
+        canvas.bind("<Configure>", fit)
+        root.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        def wheel(e):
+            if isinstance(e.widget, str):  # 콤보박스 목록 위
+                return
+            cls = e.widget.winfo_class()
+            if e.widget.winfo_toplevel() is not self or cls in ("Text", "TCombobox", "Listbox"):
+                return
+            if root.winfo_reqheight() > canvas.winfo_height():
+                canvas.yview_scroll(-1 if e.delta > 0 else 1, "units")
+
+        self.bind_all("<MouseWheel>", wheel)
+        self._content = root
         root.columnconfigure(1, weight=1)
         r = 0
 
         # 음원
-        ttk.Label(root, text="음원 파일(mp3)").grid(row=r, column=0, sticky="w", **pad)
+        ttk.Label(root, text="음원 파일(mp3·wav)").grid(row=r, column=0, sticky="w", **pad)
         self.audio_var = tk.StringVar()
         ttk.Entry(root, textvariable=self.audio_var).grid(row=r, column=1, sticky="ew", **pad)
         ttk.Button(root, text="찾아보기", command=self._pick_audio).grid(row=r, column=2, **pad)
@@ -67,7 +103,7 @@ class App(tk.Tk):
         lyr.grid(row=r, column=1, columnspan=2, sticky="nsew", **pad)
         lyr.columnconfigure(0, weight=1)
         root.rowconfigure(r, weight=1)
-        self.lyrics_text = scrolledtext.ScrolledText(lyr, height=10, wrap="word", font=("Malgun Gothic", 10))
+        self.lyrics_text = scrolledtext.ScrolledText(lyr, height=7, wrap="word", font=("Malgun Gothic", 10))
         self.lyrics_text.grid(row=0, column=0, columnspan=2, sticky="nsew")
         lyr.rowconfigure(0, weight=1)
         ttk.Button(lyr, text="가사 파일 열기(.txt)", command=self._pick_lyrics).grid(row=1, column=0, sticky="w", pady=3)
@@ -81,8 +117,14 @@ class App(tk.Tk):
         ttk.Entry(root, textvariable=self.timings_var).grid(row=r, column=1, sticky="ew", **pad)
         ttk.Button(root, text="찾아보기", command=self._pick_timings).grid(row=r, column=2, **pad)
         r += 1
-        ttk.Label(root, text="이전 실행 시 저장된 *.timings.json 을 지정하면 WhisperX 정렬을 건너뛰고 바로 렌더링합니다.",
-                  foreground="#666").grid(row=r, column=1, columnspan=2, sticky="w", padx=6)
+        f = ttk.Frame(root)
+        f.grid(row=r, column=1, columnspan=2, sticky="ew", padx=6)
+        ttk.Button(f, text="싱크 보정…", command=self._open_sync_editor).pack(side="left")
+        ttk.Label(f, text=" 전체 싱크 밀기").pack(side="left", padx=(10, 0))
+        self.offset_var = tk.StringVar(value="0")
+        ttk.Entry(f, textvariable=self.offset_var, width=6).pack(side="left", padx=4)
+        ttk.Label(f, text="초 (+늦게 / −빨리)   ※ 타이밍 파일을 지정하면 AI 정렬을 건너뛰고 바로 렌더링",
+                  foreground="#666").pack(side="left")
         r += 1
 
         # 비율·구간
@@ -97,6 +139,24 @@ class App(tk.Tk):
         ttk.Label(f, text="   해상도").pack(side="left")
         self.res_var = tk.StringVar(value="1080p")
         ttk.Combobox(f, textvariable=self.res_var, values=RESOLUTIONS, width=7, state="readonly").pack(side="left", padx=4)
+        r += 1
+
+        ttk.Label(root, text="자막 위치").grid(row=r, column=0, sticky="w", **pad)
+        f = ttk.Frame(root)
+        f.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
+        self.pos_var = tk.StringVar(value=POSITION_LABELS[0][0])
+        cb = ttk.Combobox(f, textvariable=self.pos_var, values=[n for n, _ in POSITION_LABELS], width=9, state="readonly")
+        cb.pack(side="left")
+        cb.bind("<<ComboboxSelected>>", lambda _e: self._on_position())
+        ttk.Label(f, text="  세로").pack(side="left")
+        self.ypos_var = tk.StringVar(value="85")
+        self.ypos_entry = ttk.Entry(f, textvariable=self.ypos_var, width=5)
+        self.ypos_entry.pack(side="left", padx=2)
+        ttk.Label(f, text="% (0=맨 위, 100=맨 아래)   가로").pack(side="left")
+        self.xpos_var = tk.StringVar(value="50")
+        ttk.Entry(f, textvariable=self.xpos_var, width=5).pack(side="left", padx=2)
+        ttk.Label(f, text="% (50=가운데)").pack(side="left")
+        ttk.Button(f, text="위치 미리보기", command=self._preview_position).pack(side="left", padx=8)
         r += 1
 
         ttk.Label(root, text="구간 (9:16)").grid(row=r, column=0, sticky="w", **pad)
@@ -128,6 +188,8 @@ class App(tk.Tk):
         self.device_var = tk.StringVar(value="auto")
         ttk.Combobox(f, textvariable=self.device_var, values=["auto", "cpu", "cuda"], width=6,
                      state="readonly").pack(side="left", padx=4)
+        self.vocals_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(f, text="보컬 분리 후 정렬(반주 큰 곡 · Demucs 설치 필요)", variable=self.vocals_var).pack(side="left", padx=8)
         r += 1
 
         # 폰트(시스템 폰트 폴더에서 선택)
@@ -177,6 +239,10 @@ class App(tk.Tk):
         ttk.Label(f, text="FPS").pack(side="left")
         self.fps_var = tk.StringVar(value="30")
         ttk.Combobox(f, textvariable=self.fps_var, values=["24", "25", "30", "60"], width=4).pack(side="left", padx=4)
+        ttk.Label(f, text="  모바일 캡컷용 크로마키 mp4").pack(side="left")
+        self.chroma_var = tk.StringVar(value=CHROMA_LABELS[0][0])
+        ttk.Combobox(f, textvariable=self.chroma_var, values=[n for n, _ in CHROMA_LABELS], width=11,
+                     state="readonly").pack(side="left", padx=4)
         r += 1
         f = ttk.Frame(root)
         f.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
@@ -234,7 +300,8 @@ class App(tk.Tk):
         of.grid(row=r, column=0, columnspan=3, sticky="ew", **pad)
         of.columnconfigure(1, weight=1)
         self.output_rows = {}
-        for i, (key, label) in enumerate([("mov", "MOV"), ("srt", "SRT"), ("json", "timings.json"), ("preview", "미리보기 mp4")]):
+        for i, (key, label) in enumerate([("mov", "MOV"), ("srt", "SRT"), ("json", "timings.json"), ("preview", "미리보기 mp4"),
+                                         ("chroma", "크로마키 mp4")]):
             ttk.Label(of, text=label, width=13).grid(row=i, column=0, sticky="w", pady=1)
             var = tk.StringVar(value="")
             ttk.Entry(of, textvariable=var, state="readonly").grid(row=i, column=1, sticky="ew", padx=4, pady=1)
@@ -244,10 +311,11 @@ class App(tk.Tk):
             self.output_rows[key] = (var, btn)
         r += 1
 
-        self.log_box = scrolledtext.ScrolledText(root, height=9, state="disabled", font=("Consolas", 9))
+        self.log_box = scrolledtext.ScrolledText(root, height=6, state="disabled", font=("Consolas", 9))
         self.log_box.grid(row=r, column=0, columnspan=3, sticky="nsew", **pad)
         root.rowconfigure(r, weight=1)
         self._on_aspect()
+        self._on_position()
         self._update_font_preview()  # 색상 변수까지 만들어진 뒤에 첫 미리보기
 
     def _color_row(self, parent, row, label, var):
@@ -353,7 +421,7 @@ class App(tk.Tk):
             path = result.get(key)
             exists = bool(path) and os.path.exists(path)
             if not path:
-                var.set("(생성 안 함)" if key == "preview" else "")
+                var.set("(생성 안 함)" if key in ("preview", "chroma") else "")
             else:
                 var.set(path if exists else f"{path}  (파일 없음)")
             btn.configure(state="normal" if exists else "disabled")
@@ -413,6 +481,9 @@ class App(tk.Tk):
             "outline_color": self.outline_color.get(), "codec": self.codec_var.get(), "fps": self.fps_var.get(),
             "show_next": self.next_var.get(), "audio_in_mov": self.audio_var_in.get(),
             "preview_mp4": self.preview_var.get(), "out_dir": self.out_var.get(),
+            "position": self.pos_var.get(), "y_percent": self.ypos_var.get(), "x_percent": self.xpos_var.get(),
+            "sync_offset": self.offset_var.get(), "separate_vocals": self.vocals_var.get(),
+            "chroma": self.chroma_var.get(),
         }
 
     def _restore_settings(self):
@@ -458,9 +529,18 @@ class App(tk.Tk):
             self.audio_var_in.set(bool(st.get("audio_in_mov", False)))
             self.preview_var.set(bool(st.get("preview_mp4", False)))
             self.out_var.set(st.get("out_dir", ""))
+            if st.get("position") in dict(POSITION_LABELS):
+                self.pos_var.set(st["position"])
+            self.ypos_var.set(str(st.get("y_percent", "85")))
+            self.xpos_var.set(str(st.get("x_percent", "50")))
+            self.offset_var.set(str(st.get("sync_offset", "0")))
+            self.vocals_var.set(bool(st.get("separate_vocals", False)))
+            if st.get("chroma") in dict(CHROMA_LABELS):
+                self.chroma_var.set(st["chroma"])
         except Exception as e:
             self._log(f"[설정] 복원 중 일부 항목을 건너뜀: {e}")
         self._on_aspect()
+        self._on_position()
         self._refresh_color_widgets()
         self._update_font_preview()
 
@@ -570,6 +650,110 @@ class App(tk.Tk):
         self.start_entry.configure(state=state)
         self.end_entry.configure(state=state)
 
+    def _on_position(self):
+        self.ypos_entry.configure(state="normal" if self.pos_var.get() == "직접 지정" else "disabled")
+
+    def _build_style(self):
+        try:
+            size = int(self.size_var.get() or 0)
+        except ValueError:
+            raise ValueError("글자 크기는 정수여야 합니다.")
+        try:
+            ypos = float(self.ypos_var.get() or 85)
+            xpos = float(self.xpos_var.get() or 50)
+        except ValueError:
+            raise ValueError("자막 위치(세로·가로 %)는 숫자여야 합니다.")
+        if not (0 <= ypos <= 100 and 0 <= xpos <= 100):
+            raise ValueError("자막 위치(세로·가로 %)는 0~100 사이여야 합니다.")
+        font = self._selected_font()
+        if font is None:
+            raise ValueError("폰트를 선택하세요.")
+        return RenderStyle(
+            font_path=font.path, font_index=font.index, font_size=size,
+            base_color=self.base_color.get(), highlight_color=self.hl_color.get(),
+            outline_color=self.outline_color.get(), show_next=self.next_var.get(),
+            position=dict(POSITION_LABELS).get(self.pos_var.get(), "bottom"), y_percent=ypos, x_percent=xpos,
+        )
+
+    def _sample_lines(self):
+        """미리보기에 쓸 두 줄(입력한 가사의 가장 긴 줄과 그 다음 줄, 없으면 예시)."""
+        rows = parse_lyrics(self.lyrics_text.get("1.0", "end")) or [["노래방", "자막", "위치", "미리보기"], ["다음", "줄은", "이렇게", "보입니다"]]
+        i = max(range(len(rows)), key=lambda k: sum(len(w) for w in rows[k]))
+        nxt = rows[i + 1] if i + 1 < len(rows) else rows[i - 1] if len(rows) > 1 else None
+
+        def mk(words):
+            return Line([Word(w, k * 1.0, k + 1.0) for k, w in enumerate(words)])
+
+        return mk(rows[i]), (mk(nxt) if nxt else None)
+
+    def _preview_position(self):
+        """현재 설정(비율·위치·폰트·색)으로 정지 화면 한 장을 그려 새 창에 보여준다."""
+        if ImageTk is None:
+            messagebox.showinfo("위치 미리보기", "이 환경에서는 미리보기 이미지를 표시할 수 없습니다.", parent=self)
+            return
+        try:
+            style = self._build_style()
+            aspect = self.aspect_var.get()
+            w, h = ASPECTS[aspect][self.res_var.get()]
+            line, nxt = self._sample_lines()
+            img = render_still(line, nxt, w, h, style)
+        except Exception as e:
+            messagebox.showerror("위치 미리보기", str(e), parent=self)
+            return
+        scale = min(960 / w, 620 / h)
+        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        win = tk.Toplevel(self)
+        win.title(f"위치 미리보기 — {aspect} {self.pos_var.get()}")
+        win._photo = ImageTk.PhotoImage(img)
+        ttk.Label(win, image=win._photo).pack()
+        note = "실제 출력은 배경이 투명합니다."
+        if aspect == "9:16":
+            note += " 쇼츠는 아래쪽 약 20%와 오른쪽 가장자리가 제목·버튼에 가려지니 그 위에 두세요."
+        ttk.Label(win, text=note, foreground="#666").pack(pady=4)
+
+    def _open_sync_editor(self):
+        """타이밍 파일(없으면 가사만으로 임시 배치)을 싱크 보정 창에서 연다."""
+        from .sync_editor import SyncEditor
+
+        audio = self.audio_var.get().strip()
+        if not audio or not os.path.exists(audio):
+            messagebox.showwarning("싱크 보정", "먼저 음원 파일을 선택하세요.", parent=self)
+            return
+        timings = self.timings_var.get().strip()
+        note, language = "", None
+        try:
+            if timings and os.path.exists(timings):
+                with open(timings, encoding="utf-8") as f:
+                    data = json.load(f)
+                lines, language, save_path = lines_from_dict(data), data.get("language"), timings
+            else:
+                rows = parse_lyrics(self.lyrics_text.get("1.0", "end"))
+                if not rows:
+                    messagebox.showwarning("싱크 보정", "가사를 입력하거나 타이밍 파일을 지정하세요.", parent=self)
+                    return
+                from .ffmpeg_utils import load_audio
+
+                duration = len(load_audio(audio)) / 16000.0
+                lines = spread_lines_evenly(rows, duration)
+                out_dir = self.out_var.get().strip() or os.path.dirname(os.path.abspath(audio))
+                save_path = os.path.join(out_dir, os.path.splitext(os.path.basename(audio))[0] + ".timings.json")
+                note = ("AI 정렬 결과가 없어 가사를 곡 길이에 고르게 임시 배치했습니다. "
+                        "1번 줄을 고르고 [탭 싱크 시작]으로 처음부터 찍으세요.")
+                if os.path.exists(save_path):
+                    note += "\n※ 저장하면 같은 이름의 기존 타이밍 파일을 덮어씁니다."
+        except Exception as e:
+            messagebox.showerror("싱크 보정", str(e), parent=self)
+            return
+        if not lines:
+            messagebox.showwarning("싱크 보정", "타이밍 파일에 가사 줄이 없습니다.", parent=self)
+            return
+
+        def saved(path):
+            self.timings_var.set(path)
+            self._log(f"[싱크] 보정한 타이밍 저장 → {path}")
+
+        SyncEditor(self, audio, lines, save_path, language=language, on_saved=saved, note=note)
+
     def _log(self, msg):
         self.log_queue.put(("log", msg))
 
@@ -602,6 +786,8 @@ class App(tk.Tk):
                     msg = f"완료! MOV 파일: {payload.get('mov')}"
                     if payload.get("preview"):
                         msg += f"\n미리보기 mp4: {payload['preview']}"
+                    if payload.get("chroma"):
+                        msg += f"\n크로마키 mp4: {payload['chroma']}"
                     messagebox.showinfo("완료", msg, parent=self)
                 elif kind == "preview_done":
                     self.outputs["preview"] = payload
@@ -636,24 +822,22 @@ class App(tk.Tk):
         lang = dict(LANGUAGES).get(self.lang_var.get(), "auto")
         codec = dict(CODEC_LABELS).get(self.codec_var.get(), "prores4444")
         try:
-            size = int(self.size_var.get() or 0)
             fps = int(self.fps_var.get() or 30)
         except ValueError:
-            raise ValueError("글자 크기와 FPS는 정수여야 합니다.")
-        font = self._selected_font()
-        if font is None:
-            raise ValueError("폰트를 선택하세요.")
-        style = RenderStyle(
-            font_path=font.path, font_index=font.index, font_size=size,
-            base_color=self.base_color.get(), highlight_color=self.hl_color.get(),
-            outline_color=self.outline_color.get(), show_next=self.next_var.get(),
-        )
+            raise ValueError("FPS는 정수여야 합니다.")
+        try:
+            offset = float(self.offset_var.get() or 0)
+        except ValueError:
+            raise ValueError("전체 싱크 밀기는 숫자(초)여야 합니다. 예: 0.3 또는 -0.2")
+        style = self._build_style()
         return JobOptions(
             audio_path=audio, lyrics_text=lyrics, aspect=aspect, resolution=self.res_var.get(),
             clip_start=clip_start, clip_end=clip_end, language=lang, model_name=self.model_var.get(),
             device=self.device_var.get(), fps=fps, codec=codec, include_audio=self.audio_var_in.get(),
             preview_mp4=self.preview_var.get(),
             out_dir=self.out_var.get().strip(), timings_json=timings, style=style,
+            chroma=dict(CHROMA_LABELS).get(self.chroma_var.get(), ""),
+            separate_vocals=self.vocals_var.get(), sync_offset=offset,
         )
 
     def _start(self):

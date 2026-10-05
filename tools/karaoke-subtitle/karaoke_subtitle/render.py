@@ -66,6 +66,9 @@ class RenderStyle:
     outline_color: str = "#000000"
     outline_ratio: float = 0.08   # 외곽선 두께 = 글자 크기 × 비율
     bottom_margin_ratio: float = 0.10
+    position: str = "bottom"      # "bottom" | "middle" | "top" | "custom"
+    y_percent: float = 85.0       # position="custom"일 때 현재 줄 중심의 세로 위치(0=맨 위, 100=맨 아래)
+    x_percent: float = 50.0       # 줄 중심의 가로 위치(0=왼쪽, 100=오른쪽)
     max_width_ratio: float = 0.90
     show_next: bool = True        # 다음 줄 미리보기
     next_scale: float = 0.7
@@ -153,6 +156,65 @@ def _no_window_flags():
     return {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 
 
+POSITIONS = ["bottom", "middle", "top", "custom"]
+_POSITION_Y = {"middle": 50.0, "top": 14.0}
+
+
+def layout_line(style, width, height, art, next_art=None):
+    """현재 줄과 다음 줄 미리보기의 붙여넣기 좌표를 계산한다.
+
+    반환: ((x, y), (nx, ny) | None). 글자가 화면 밖으로 나가지 않게 가장자리에서 잘라 맞춘다.
+    다음 줄은 기본적으로 현재 줄 위에 두고, 위쪽 공간이 모자라면 아래에 둔다.
+    """
+    edge = int(min(width, height) * 0.02)
+    if style.position in _POSITION_Y or style.position == "custom":
+        pct = style.y_percent if style.position == "custom" else _POSITION_Y[style.position]
+        y = int(height * min(max(pct, 0.0), 100.0) / 100.0 - art.h / 2)
+    else:  # bottom(기본): 아래 여백 기준
+        y = height - int(height * style.bottom_margin_ratio) - art.h
+    y = min(max(y, edge), max(edge, height - edge - art.h))
+
+    def place_x(a):
+        cx = width * min(max(style.x_percent, 0.0), 100.0) / 100.0
+        return int(min(max(cx - a.w / 2, edge), max(edge, width - edge - a.w)))
+
+    x = place_x(art)
+    nxt = None
+    if next_art is not None:
+        gap = int(art.font_size * 0.25)
+        ny = y - next_art.h - gap
+        if ny < edge:
+            ny = y + art.h + gap
+        nxt = (place_x(next_art), ny)
+    return (x, y), nxt
+
+
+def render_still(line, next_line, width, height, style=None, t=None, bg_color="#3A5F8A"):
+    """위치·색 확인용 정지 화면 한 장(RGB)을 만든다. t가 없으면 줄의 55% 지점."""
+    style = style or RenderStyle()
+    font_path = style.font_path or default_font_path()
+    if not font_path or not os.path.exists(font_path):
+        raise RuntimeError("폰트 파일을 찾을 수 없습니다. 폰트(.ttf/.ttc)를 지정하세요.")
+    base_size = style.font_size or int(width * (0.052 if width >= height else 0.07))
+    limit = width * style.max_width_ratio
+    art = LineArt(line, font_path, base_size, style, limit)
+    nx_art = None
+    if style.show_next and next_line is not None:
+        nx_art = LineArt(next_line, font_path, base_size, style, limit, scale=style.next_scale,
+                         alpha=style.next_alpha, highlight=False)
+    frame = Image.new("RGBA", (width, height), hex_to_rgba(bg_color))
+    (x, y), nxt = layout_line(style, width, height, art, nx_art)
+    if nxt:
+        frame.alpha_composite(nx_art.base, nxt)
+    frame.alpha_composite(art.base, (x, y))
+    if t is None:
+        t = line.start + (line.end - line.start) * 0.55
+    sx = art.sweep_x(t)
+    if sx > 0:
+        frame.alpha_composite(art.hl.crop((0, 0, min(sx, art.w), art.h)), (x, y))
+    return frame.convert("RGB")
+
+
 def render_video(lines, display_times, out_path, width, height, fps=30, style=None,
                  codec="prores4444", audio_path=None, audio_offset=0.0, duration=None,
                  log=print, progress=None):
@@ -194,7 +256,6 @@ def render_video(lines, display_times, out_path, width, height, fps=30, style=No
                             **_no_window_flags())
 
     blank = Image.new("RGBA", (width, height), (0, 0, 0, 0)).tobytes()
-    bottom = height - int(height * style.bottom_margin_ratio)
     # last_key는 '아직 아무 프레임도 없음'을 뜻하는 고유 값으로 시작한다(None은 '빈 화면' 키로 쓰임).
     last_key, last_bytes = object(), blank
     active = 0
@@ -215,11 +276,10 @@ def render_video(lines, display_times, out_path, width, height, fps=30, style=No
                 key = (cur, sx)
                 if key != last_key:
                     frame = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-                    x = (width - art.w) // 2
-                    y = bottom - art.h
                     nx_art = nexts[cur + 1] if style.show_next and cur + 1 < len(lines) else None
-                    if nx_art is not None:
-                        frame.paste(nx_art.base, ((width - nx_art.w) // 2, y - nx_art.h - int(art.font_size * 0.25)))
+                    (x, y), nxt = layout_line(style, width, height, art, nx_art)
+                    if nxt:
+                        frame.paste(nx_art.base, nxt)
                     frame.paste(art.base, (x, y))
                     if sx > 0:
                         frame.paste(art.hl.crop((0, 0, min(sx, art.w), art.h)), (x, y))
@@ -249,26 +309,39 @@ def render_video(lines, display_times, out_path, width, height, fps=30, style=No
 PREVIEW_SIZES = {"16:9": (1920, 1080), "9:16": (1080, 1920)}
 
 
+CHROMA_COLORS = {"green": "00FF00", "blue": "0000FF", "magenta": "FF00FF"}
+
+
+def render_chroma_mp4(mov_path, out_path, aspect, size, fps=30, color="green", audio_path=None,
+                      audio_offset=0.0, duration=None, log=print):
+    """투명 MOV를 단색(크로마키) 배경에 합성한 mp4. 알파 MOV를 못 여는 모바일 캡컷용."""
+    if color not in CHROMA_COLORS:
+        raise ValueError(f"크로마키 색은 {', '.join(CHROMA_COLORS)} 중 하나여야 합니다: {color}")
+    return render_preview_mp4(mov_path, out_path, aspect, fps=fps, audio_path=audio_path,
+                              audio_offset=audio_offset, duration=duration, bg_color=CHROMA_COLORS[color],
+                              size=size, crf=14, label="크로마키", log=log)
+
+
 def render_preview_mp4(mov_path, out_path, aspect, fps=30, audio_path=None, audio_offset=0.0,
-                       duration=None, bg_color="808080", log=print):
-    """투명 MOV를 회색 배경 위에 합성한 1080p H.264 미리보기 mp4를 만든다(구간 오디오 포함)."""
+                       duration=None, bg_color="808080", size=None, crf=20, label="미리보기", log=print):
+    """투명 MOV를 단색 배경 위에 합성한 H.264 mp4를 만든다(구간 오디오 포함). 기본은 회색 1080p 미리보기."""
     ffmpeg = find_ffmpeg()
-    w, h = PREVIEW_SIZES.get(aspect, (1920, 1080))
+    w, h = size or PREVIEW_SIZES.get(aspect, (1920, 1080))
     cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
            "-f", "lavfi", "-i", f"color=c=0x{bg_color}:s={w}x{h}:r={fps}",
            "-i", mov_path]
     if audio_path:
         cmd += ["-ss", f"{audio_offset:.3f}", "-i", audio_path]
     cmd += ["-filter_complex", f"[1:v]scale={w}:{h}:flags=lanczos[sub];[0:v][sub]overlay=shortest=1[v]",
-            "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]
+            "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-pix_fmt", "yuv420p"]
     if audio_path:
         cmd += ["-map", "2:a", "-c:a", "aac", "-b:a", "192k"]
     if duration:
         cmd += ["-t", f"{duration:.3f}"]
     cmd += ["-shortest", "-movflags", "+faststart", out_path]
-    log(f"[미리보기] {w}x{h} mp4 인코딩 중")
+    log(f"[{label}] {w}x{h} mp4 인코딩 중")
     proc = subprocess.run(cmd, capture_output=True, **_no_window_flags())
     if proc.returncode != 0:
         err = proc.stderr.decode("utf-8", "replace").strip().splitlines()
-        raise RuntimeError("미리보기 mp4 생성 실패: " + (err[-1] if err else f"코드 {proc.returncode}"))
+        raise RuntimeError(f"{label} mp4 생성 실패: " + (err[-1] if err else f"코드 {proc.returncode}"))
     return out_path

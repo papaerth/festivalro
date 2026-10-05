@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 
 from .ffmpeg_utils import load_audio
 from .lyrics import parse_lyrics
-from .render import ASPECTS, RenderStyle, render_preview_mp4, render_video
+from .render import ASPECTS, CHROMA_COLORS, POSITIONS, RenderStyle, render_chroma_mp4, render_preview_mp4, render_video
 from .srt import write_srt
-from .timing import clip_lines, compute_display_times, lines_from_dict, lines_to_dict
+from .timing import clip_lines, compute_display_times, lines_from_dict, lines_to_dict, shift_lines
 
 
 @dataclass
@@ -27,6 +27,9 @@ class JobOptions:
     codec: str = "prores4444"
     include_audio: bool = False
     preview_mp4: bool = False     # 회색 배경 합성 1080p 미리보기 mp4도 생성
+    chroma: str = ""              # "green" | "blue" | "magenta": 크로마키 배경 mp4도 생성(모바일 캡컷용)
+    separate_vocals: bool = False  # 정렬 전에 Demucs로 보컬만 분리(반주가 큰 곡의 정확도 향상)
+    sync_offset: float = 0.0      # 자막 전체를 이 초만큼 밀기(+는 늦게, -는 빨리). timings.json은 그대로 둠
     out_dir: str = ""
     base_name: str = ""
     timings_json: str = ""        # 이전 정렬 결과 재사용(WhisperX 생략)
@@ -61,6 +64,10 @@ def run_job(opts, log=print, progress=None):
     if opts.resolution not in ASPECTS[opts.aspect]:
         raise ValueError(f"해상도는 {', '.join(ASPECTS[opts.aspect])} 중 하나여야 합니다: {opts.resolution}")
     width, height = ASPECTS[opts.aspect][opts.resolution]
+    if opts.style.position not in POSITIONS:
+        raise ValueError(f"자막 위치는 {', '.join(POSITIONS)} 중 하나여야 합니다: {opts.style.position}")
+    if opts.chroma and opts.chroma not in CHROMA_COLORS:
+        raise ValueError(f"크로마키 색은 {', '.join(CHROMA_COLORS)} 중 하나여야 합니다: {opts.chroma}")
 
     out_dir = opts.out_dir or os.path.dirname(os.path.abspath(opts.audio_path))
     os.makedirs(out_dir, exist_ok=True)
@@ -89,11 +96,19 @@ def run_job(opts, log=print, progress=None):
         if not lyric_lines:
             raise ValueError("가사가 비어 있습니다.")
         log(f"[입력] 가사 {len(lyric_lines)}줄, {sum(len(l) for l in lyric_lines)}단어")
-        from .align import align_lyrics
+        from .align import align_lyrics, resolve_device
 
-        lines, language = align_lyrics(audio, lyric_lines, language=opts.language,
+        align_audio, a0 = audio, 0.05
+        if opts.separate_vocals:
+            from .vocals import separate_vocals
+
+            align_audio = separate_vocals(opts.audio_path, device=resolve_device(opts.device), log=log,
+                                          progress=lambda f, m: prog(0.03 + f * 0.17, m))
+            a0 = 0.2
+        lines, language = align_lyrics(align_audio, lyric_lines, language=opts.language,
                                        model_name=opts.model_name, device=opts.device,
-                                       log=log, progress=lambda f, m: prog(0.05 + f * 0.45, m))
+                                       log=log, progress=lambda f, m: prog(a0 + f * (0.5 - a0), m))
+        del align_audio
     del audio
     if not lines or not any(ln.words for ln in lines):
         raise RuntimeError("단어 타이밍이 비어 있어 자막을 만들 수 없습니다. 가사와 음원을 확인하세요.")
@@ -102,6 +117,10 @@ def run_job(opts, log=print, progress=None):
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(lines_to_dict(lines, language), f, ensure_ascii=False, indent=1)
     log(f"[저장] 단어 타이밍 → {json_path}")
+
+    if opts.sync_offset:
+        lines = shift_lines(lines, opts.sync_offset)
+        log(f"[싱크] 자막 전체를 {opts.sync_offset:+.2f}초 이동")
 
     # 2) 구간 자르기(9:16)
     clip_start, clip_end = 0.0, duration
@@ -119,6 +138,10 @@ def run_job(opts, log=print, progress=None):
             f"가사는 {lines[0].start:.1f}s ~ {lines[-1].end:.1f}s 사이에 있습니다. 구간을 다시 지정하세요."
         )
     shows = compute_display_times(clipped, lead_in=opts.style.lead_in, tail=opts.style.tail, duration=clip_len)
+
+    if opts.chroma and opts.style.show_next and opts.style.next_alpha < 1.0:
+        # 반투명 글자는 크로마키 배경색이 비쳐 키를 뺄 때 얼룩지므로 불투명하게 그린다
+        opts.style.next_alpha = 1.0
 
     # 3) MOV
     mov_path = os.path.join(out_dir, f"{base}{suffix}.mov")
@@ -147,5 +170,14 @@ def run_job(opts, log=print, progress=None):
                            audio_offset=clip_start, duration=clip_len, log=log)
         log(f"[저장] 미리보기 → {preview_path}")
         result["preview"] = preview_path
+    # 6) 크로마키 mp4 (선택, 모바일 캡컷용)
+    if opts.chroma:
+        prog(0.992, "크로마키 mp4 생성")
+        chroma_path = os.path.join(out_dir, f"{base}{suffix}_chroma.mp4")
+        render_chroma_mp4(mov_path, chroma_path, opts.aspect, (width, height), fps=opts.fps, color=opts.chroma,
+                          audio_path=opts.audio_path if opts.include_audio else None,
+                          audio_offset=clip_start, duration=clip_len, log=log)
+        log(f"[저장] 크로마키 → {chroma_path}")
+        result["chroma"] = chroma_path
     prog(1.0, "완료")
     return result
