@@ -6,3 +6,4 @@ whisperx>=3.1
 pillow>=10.0
 numpy
 imageio-ffmpeg>=0.5
+# 선택: 보컬 분리 후 정렬 기능을 쓰려면  pip install demucs

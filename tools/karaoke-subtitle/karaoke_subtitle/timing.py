@@ -340,3 +340,108 @@ def clip_lines(lines, clip_start, clip_end):
             words.append(Word(w.text, s, max(e, s)))
         out.append(Line(words))
     return out
+
+
+# ---------------------------------------------------------------------------
+# 4단계: 싱크 보정(전체 밀기, 줄 단위 이동, AI 없이 직접 찍기용 초기 배치)
+# ---------------------------------------------------------------------------
+
+def shift_lines(lines, offset):
+    """모든 줄을 offset초만큼 옮긴 새 리스트(음수면 앞당김). 0초 앞으로는 넘어가지 않는다."""
+    if not offset:
+        return lines
+    out = []
+    for ln in lines:
+        words = []
+        for w in ln.words:
+            s = max(0.0, w.start + offset)
+            words.append(Word(w.text, s, max(s + 0.01, w.end + offset)))
+        out.append(Line(words))
+    return out
+
+
+def move_line_start(lines, index, new_start, ripple=False):
+    """index번 줄의 시작을 new_start로 옮긴다(줄 안 단어 간격은 유지). 제자리에서 수정.
+
+    ripple=True면 뒤의 줄들도 같은 만큼 함께 옮긴다. 앞 줄과 겹치면 앞 줄 끝을 당겨 맞춘다.
+    """
+    new_start = max(0.0, new_start)
+    delta = new_start - lines[index].start
+    last = len(lines) if ripple else index + 1
+    for ln in lines[index:last]:
+        for w in ln.words:
+            w.start = max(0.0, w.start + delta)
+            w.end = max(w.start + 0.01, w.end + delta)
+    normalize_lines(lines)
+    return lines
+
+
+def set_line_span(lines, index, start, end):
+    """index번 줄을 [start, end]에 맞춰 단어 간격 비율을 유지한 채 늘이거나 줄인다. 제자리에서 수정."""
+    ln = lines[index]
+    old_s, old_len = ln.start, max(ln.end - ln.start, 1e-6)
+    scale = max(end - start, 0.05 * len(ln.words)) / old_len
+    for w in ln.words:
+        s = start + (w.start - old_s) * scale
+        e = start + (w.end - old_s) * scale
+        w.start, w.end = s, max(e, s + 0.01)
+    return lines
+
+
+def normalize_lines(lines, min_dur=0.03):
+    """줄 순서대로 시각이 겹치지 않게 다듬는다(시작 시각을 더 신뢰). 제자리에서 수정."""
+    for prev, cur in zip(lines, lines[1:]):
+        if cur.start < prev.end:
+            if cur.start > prev.start + min_dur * len(prev.words):
+                _squeeze(prev, cur.start, min_dur)
+            else:
+                # 앞 줄보다 먼저 시작하게 옮겨졌다면 뒤 줄을 앞 줄 끝으로 민다
+                d = prev.end - cur.start
+                for w in cur.words:
+                    w.start += d
+                    w.end += d
+    return lines
+
+
+def _squeeze(line, new_end, min_dur):
+    """줄의 끝을 new_end로 당긴다(단어 간격 비율 유지)."""
+    s0 = line.start
+    scale = max(new_end - s0, min_dur * len(line.words)) / max(line.end - s0, 1e-6)
+    for w in line.words:
+        s = s0 + (w.start - s0) * scale
+        e = s0 + (w.end - s0) * scale
+        w.start, w.end = s, max(e, s + 0.005)
+
+
+def spread_lines_evenly(lyric_lines, duration, sec_per_char=0.28, lead=5.0):
+    """정렬 없이 가사만으로 임시 타이밍을 만든다(직접 싱크 찍기의 출발점).
+
+    줄 길이는 글자 수 × sec_per_char, 줄 시작은 곡 길이에 고르게 배치한다.
+    """
+    n = len(lyric_lines)
+    if n == 0:
+        return []
+    usable = max(duration - lead, 1.0)
+    step = usable / n
+    lines = []
+    for i, words in enumerate(lyric_lines):
+        start = min(lead, duration * 0.1) + i * step
+        length = min(step * 0.9, max(0.6, sum(len(w) for w in words) * sec_per_char))
+        lines.append(Line(fill_missing_word_times(words, [(None, None)] * len(words), (start, start + length))))
+    return lines
+
+
+def retime_line_by_tap(lines, index, start, next_start=None, sec_per_char=0.3):
+    """탭으로 찍은 시작 시각을 index번 줄에 적용한다. 제자리에서 수정.
+
+    줄 길이는 원래 길이를 유지하되, 다음 줄 시작(next_start)을 넘지 않게 줄인다.
+    """
+    ln = lines[index]
+    length = ln.end - ln.start
+    if length <= 0.05:
+        length = max(0.6, sum(len(w.text) for w in ln.words) * sec_per_char)
+    end = start + length
+    if next_start is not None and next_start > start:
+        end = min(end, next_start - 0.02)
+    set_line_span(lines, index, start, max(end, start + 0.05 * len(ln.words)))
+    return lines

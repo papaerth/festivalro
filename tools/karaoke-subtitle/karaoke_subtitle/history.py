@@ -64,6 +64,8 @@ def add_entry(result, opts):
         "srt": result.get("srt"),
         "json": result.get("json"),
         "preview": result.get("preview"),
+        "chroma": result.get("chroma"),
+        "sample": result.get("sample"),
         "out_dir": result.get("out_dir"),
         "fps": opts.fps,
     }
