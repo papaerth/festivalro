@@ -246,8 +246,8 @@ class App(tk.Tk):
         r += 1
         f = ttk.Frame(root)
         f.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
-        self.next_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(f, text="다음 줄 미리보기", variable=self.next_var).pack(side="left")
+        self.next_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(f, text="다음 줄 미리보기(위에 작게)", variable=self.next_var).pack(side="left")
         self.audio_var_in = tk.BooleanVar(value=False)
         ttk.Checkbutton(f, text="MOV에 (구간) 오디오 포함", variable=self.audio_var_in).pack(side="left", padx=12)
         self.preview_var = tk.BooleanVar(value=True)
@@ -529,7 +529,7 @@ class App(tk.Tk):
             if st.get("codec") in dict(CODEC_LABELS):
                 self.codec_var.set(st["codec"])
             self.fps_var.set(str(st.get("fps", "30")))
-            self.next_var.set(bool(st.get("show_next", True)))
+            self.next_var.set(bool(st.get("show_next", False)))
             self.audio_var_in.set(bool(st.get("audio_in_mov", False)))
             self.preview_var.set(bool(st.get("preview_mp4", False)))
             self.out_var.set(st.get("out_dir", ""))
@@ -836,6 +836,11 @@ class App(tk.Tk):
         audio = self.audio_var.get().strip()
         if not audio:
             raise ValueError("음원 파일을 선택하세요.")
+        if self.lang_var.get() in (LANGUAGES[0][0], "auto") and not self.timings_var.get().strip():
+            from .lyrics import guess_language
+            g = guess_language(self.lyrics_text.get("1.0", "end"))
+            if g:
+                self._log(f"[안내] 언어 자동 감지 대신 가사 글자로 '{g}'를 사용합니다.")
         lyrics = self.lyrics_text.get("1.0", "end")
         timings = self.timings_var.get().strip()
         if not timings and not lyrics.strip():
