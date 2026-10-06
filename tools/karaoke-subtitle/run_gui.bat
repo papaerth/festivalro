@@ -1,9 +1,8 @@
 @echo off
-chcp 65001 >nul
+rem 노래방 자막 생성기 실행 (명령창 없이 프로그램 창만 띄움)
 cd /d "%~dp0"
-if exist ".venv\Scripts\python.exe" (
-  ".venv\Scripts\python.exe" main.py
+if exist ".venv\Scripts\pythonw.exe" (
+  start "" ".venv\Scripts\pythonw.exe" main.py
 ) else (
-  python main.py
+  start "" pythonw main.py
 )
-if errorlevel 1 pause

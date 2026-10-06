@@ -39,10 +39,15 @@ ffmpeg는 `imageio-ffmpeg` 패키지에 포함된 바이너리를 자동으로 �
 
 ## 실행
 
+탐색기에서 `run_gui.bat`을 더블클릭하면 명령창 없이 프로그램 창만 뜹니다. 바탕화면에 바로 가기를 만들어 두면 편합니다.
+
+명령 프롬프트에서 실행하려면(로그를 보고 싶을 때):
 ```bat
-run_gui.bat
+.venv\Scripts\activate
+python main.py
 ```
-또는 `python main.py`
+
+실행 자체가 실패하면(패키지 누락 등) 알림 상자가 뜨고 `%APPDATA%\karaoke-subtitle\crash.log`에 내용이 남습니다.
 
 ### GUI 사용 순서
 1. **음원 파일** 선택 (mp3/wav/m4a …)
