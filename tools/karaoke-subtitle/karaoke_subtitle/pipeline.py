@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from .ffmpeg_utils import load_audio
 from .lyrics import parse_lyrics
-from .render import ASPECTS, CHROMA_COLORS, POSITIONS, RenderStyle, render_chroma_mp4, render_preview_mp4, render_video
+from .render import ASPECTS, CHROMA_COLORS, POSITIONS, RenderStyle, extract_sample_frame, render_chroma_mp4, render_preview_mp4, render_video
 from .srt import write_srt
 from .timing import clip_lines, compute_display_times, lines_from_dict, lines_to_dict, shift_lines
 
@@ -161,6 +161,24 @@ def run_job(opts, log=print, progress=None):
               "audio": opts.audio_path, "aspect": opts.aspect, "resolution": opts.resolution, "fps": opts.fps,
               "clip_start": clip_start if opts.aspect == "9:16" else None,
               "clip_end": clip_end if opts.aspect == "9:16" else None}
+
+    # 4-1) 확인용 프레임: 첫 줄이 반쯤 채워진 시점의 MOV 프레임을 회색 배경에 합성
+    if clipped:
+        first = clipped[0]
+        log(f"[확인] 자막 {len(clipped)}줄, 첫 줄 {first.start:.1f}s~{first.end:.1f}s \"{first.text}\", "
+            f"마지막 줄 {clipped[-1].start:.1f}s~{clipped[-1].end:.1f}s")
+        try:
+            sample_path = os.path.join(out_dir, f"{base}{suffix}_sample.png")
+            _, visible = extract_sample_frame(mov_path, sample_path, first.start + (first.end - first.start) * 0.55,
+                                              opts.aspect)
+            result["sample"] = sample_path
+            result["sample_visible"] = visible
+            if visible:
+                log(f"[저장] 확인용 프레임 → {sample_path}")
+            else:
+                log("[경고] 확인용 프레임에 자막이 보이지 않습니다. 폰트·타이밍을 확인하세요.")
+        except Exception as e:
+            log(f"[경고] 확인용 프레임 생성 실패: {e}")
 
     # 5) 미리보기 mp4 (선택)
     if opts.preview_mp4:

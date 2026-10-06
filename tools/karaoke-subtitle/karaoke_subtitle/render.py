@@ -335,7 +335,12 @@ def render_preview_mp4(mov_path, out_path, aspect, fps=30, audio_path=None, audi
     cmd += ["-filter_complex", f"[1:v]scale={w}:{h}:flags=lanczos[sub];[0:v][sub]overlay=shortest=1[v]",
             "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-pix_fmt", "yuv420p"]
     if audio_path:
-        cmd += ["-map", "2:a", "-c:a", "aac", "-b:a", "192k"]
+        # mp4에 그대로 담을 수 있는 형식(mp3/aac)은 재압축 없이 복사해 음질을 유지한다
+        ext = os.path.splitext(audio_path)[1].lower()
+        if ext in (".mp3", ".m4a", ".aac", ".mp4"):
+            cmd += ["-map", "2:a", "-c:a", "copy"]
+        else:
+            cmd += ["-map", "2:a", "-c:a", "aac", "-b:a", "320k"]
     if duration:
         cmd += ["-t", f"{duration:.3f}"]
     cmd += ["-shortest", "-movflags", "+faststart", out_path]
@@ -345,3 +350,28 @@ def render_preview_mp4(mov_path, out_path, aspect, fps=30, audio_path=None, audi
         err = proc.stderr.decode("utf-8", "replace").strip().splitlines()
         raise RuntimeError(f"{label} mp4 생성 실패: " + (err[-1] if err else f"코드 {proc.returncode}"))
     return out_path
+
+
+def extract_sample_frame(mov_path, out_png, t, aspect, size=None, bg_color="#808080"):
+    """완성 MOV의 t초 프레임을 단색 배경에 합성해 PNG 한 장으로 뽑는다.
+
+    ffmpeg로 해당 프레임만 RGBA 원본으로 받아 PIL에서 합성한다(필터그래프 타이밍 문제 회피).
+    반환: (경로, 자막이 보이는지 여부). 프레임이 단색뿐이면 False.
+    """
+    ffmpeg = find_ffmpeg()
+    w, h = size or PREVIEW_SIZES.get(aspect, (1920, 1080))
+    cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
+           "-ss", f"{max(0.0, t):.3f}", "-i", mov_path,
+           "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{w}x{h}", "-"]
+    proc = subprocess.run(cmd, capture_output=True, **_no_window_flags())
+    if proc.returncode != 0 or len(proc.stdout) < w * h * 4:
+        err = proc.stderr.decode("utf-8", "replace").strip().splitlines()
+        raise RuntimeError("확인용 프레임 추출 실패: " + (err[-1] if err else f"코드 {proc.returncode}"))
+    overlay = Image.frombytes("RGBA", (w, h), proc.stdout[: w * h * 4])
+    frame = Image.new("RGBA", (w, h), hex_to_rgba(bg_color))
+    frame.alpha_composite(overlay)
+    frame = frame.convert("RGB")
+    frame.save(out_png)
+    extrema = frame.getextrema()
+    visible = any(hi - lo > 8 for lo, hi in extrema)
+    return out_png, visible

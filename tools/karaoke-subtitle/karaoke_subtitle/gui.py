@@ -301,7 +301,7 @@ class App(tk.Tk):
         of.columnconfigure(1, weight=1)
         self.output_rows = {}
         for i, (key, label) in enumerate([("mov", "MOV"), ("srt", "SRT"), ("json", "timings.json"), ("preview", "미리보기 mp4"),
-                                         ("chroma", "크로마키 mp4")]):
+                                         ("chroma", "크로마키 mp4"), ("sample", "확인용 프레임")]):
             ttk.Label(of, text=label, width=13).grid(row=i, column=0, sticky="w", pady=1)
             var = tk.StringVar(value="")
             ttk.Entry(of, textvariable=var, state="readonly").grid(row=i, column=1, sticky="ew", padx=4, pady=1)
@@ -309,6 +309,9 @@ class App(tk.Tk):
                              command=(self._play_output if key == "mov" else (lambda k=key: self._open_path(self.outputs.get(k)))))
             btn.grid(row=i, column=2, pady=1)
             self.output_rows[key] = (var, btn)
+        # 확인용 프레임 축소 이미지(생성 직후 자막이 실제로 찍혔는지 바로 확인)
+        self.sample_label = ttk.Label(of, text="", foreground="#666")
+        self.sample_label.grid(row=len(self.output_rows), column=0, columnspan=3, sticky="w", pady=(4, 2))
         r += 1
 
         self.log_box = scrolledtext.ScrolledText(root, height=6, state="disabled", font=("Consolas", 9))
@@ -421,10 +424,11 @@ class App(tk.Tk):
             path = result.get(key)
             exists = bool(path) and os.path.exists(path)
             if not path:
-                var.set("(생성 안 함)" if key in ("preview", "chroma") else "")
+                var.set("(생성 안 함)" if key in ("preview", "chroma", "sample") else "")
             else:
                 var.set(path if exists else f"{path}  (파일 없음)")
             btn.configure(state="normal" if exists else "disabled")
+        self._show_sample_image(result.get("sample"))
         mov = result.get("mov")
         out_dir = result.get("out_dir")
         self.play_btn.configure(state="normal" if mov and os.path.exists(mov) else "disabled")
@@ -552,11 +556,28 @@ class App(tk.Tk):
             pass
         self.destroy()
 
+    def _show_sample_image(self, path):
+        """확인용 프레임을 가로 480px로 줄여 출력 파일 영역 아래에 표시한다."""
+        if not path or not os.path.exists(path) or ImageTk is None:
+            self.sample_label.configure(image="", text="")
+            self._sample_photo = None
+            return
+        try:
+            with Image.open(path) as img:
+                img = img.convert("RGB")
+                scale = 480 / img.width
+                img = img.resize((480, max(1, int(img.height * scale))))
+                self._sample_photo = ImageTk.PhotoImage(img)
+            self.sample_label.configure(image=self._sample_photo, text="")
+        except Exception as e:
+            self.sample_label.configure(image="", text=f"확인용 프레임 표시 실패: {e}")
+
     def _clear_outputs(self):
         self.outputs = {}
         for var, btn in self.output_rows.values():
             var.set("")
             btn.configure(state="disabled")
+        self._show_sample_image(None)
         self.play_btn.configure(state="disabled")
         self.folder_btn.configure(state="disabled")
 
@@ -788,6 +809,9 @@ class App(tk.Tk):
                         msg += f"\n미리보기 mp4: {payload['preview']}"
                     if payload.get("chroma"):
                         msg += f"\n크로마키 mp4: {payload['chroma']}"
+                    if payload.get("sample") and payload.get("sample_visible") is False:
+                        msg += ("\n\n주의: 확인용 프레임에 자막이 보이지 않습니다.\n"
+                                "로그 창의 [확인] 줄에 적힌 첫 줄 시각과 폰트를 확인하세요.")
                     messagebox.showinfo("완료", msg, parent=self)
                 elif kind == "preview_done":
                     self.outputs["preview"] = payload
