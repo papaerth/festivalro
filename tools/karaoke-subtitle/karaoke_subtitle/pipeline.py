@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 
 from .ffmpeg_utils import load_audio
-from .lyrics import parse_lyrics
+from .lyrics import guess_language, parse_lyrics
 from .render import ASPECTS, CHROMA_COLORS, POSITIONS, RenderStyle, extract_sample_frame, render_chroma_mp4, render_preview_mp4, render_video
 from .srt import write_srt
 from .timing import clip_lines, compute_display_times, lines_from_dict, lines_to_dict, shift_lines
@@ -105,7 +105,13 @@ def run_job(opts, log=print, progress=None):
             align_audio = separate_vocals(opts.audio_path, device=resolve_device(opts.device), log=log,
                                           progress=lambda f, m: prog(0.03 + f * 0.17, m))
             a0 = 0.2
-        lines, language = align_lyrics(align_audio, lyric_lines, language=opts.language,
+        language_hint = opts.language
+        if language_hint in (None, "", "auto"):
+            guessed = guess_language(opts.lyrics_text)
+            if guessed:
+                language_hint = guessed
+                log(f"[입력] 가사 글자로 언어를 {guessed}로 정했습니다(자동 감지 대신)")
+        lines, language = align_lyrics(align_audio, lyric_lines, language=language_hint,
                                        model_name=opts.model_name, device=opts.device,
                                        log=log, progress=lambda f, m: prog(a0 + f * (0.5 - a0), m))
         del align_audio

@@ -70,7 +70,7 @@ class RenderStyle:
     y_percent: float = 85.0       # position="custom"일 때 현재 줄 중심의 세로 위치(0=맨 위, 100=맨 아래)
     x_percent: float = 50.0       # 줄 중심의 가로 위치(0=왼쪽, 100=오른쪽)
     max_width_ratio: float = 0.90
-    show_next: bool = True        # 다음 줄 미리보기
+    show_next: bool = False       # 다음 줄 미리보기(위에 작게 다음 줄 표시)
     next_scale: float = 0.7
     next_alpha: float = 0.8
     lead_in: float = 0.6
@@ -339,8 +339,11 @@ def render_preview_mp4(mov_path, out_path, aspect, fps=30, audio_path=None, audi
         ext = os.path.splitext(audio_path)[1].lower()
         if ext in (".mp3", ".m4a", ".aac", ".mp4"):
             cmd += ["-map", "2:a", "-c:a", "copy"]
+            log(f"[{label}] 오디오: 원본 스트림 복사")
         else:
-            cmd += ["-map", "2:a", "-c:a", "aac", "-b:a", "320k"]
+            # wav·flac 등은 무손실 ALAC로 담는다(Windows 10 이후 기본 플레이어 재생 가능)
+            cmd += ["-map", "2:a", "-c:a", "alac"]
+            log(f"[{label}] 오디오: 무손실(ALAC) 변환")
     if duration:
         cmd += ["-t", f"{duration:.3f}"]
     cmd += ["-shortest", "-movflags", "+faststart", out_path]
