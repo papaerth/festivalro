@@ -1,0 +1,116 @@
+# 연템저장소 쇼츠 제작기 설정 (SPEC.md 5장 규격표)
+# 규격값은 여기서 바꾼다. API 키는 .env 에만 둔다.
+
+canvas:
+  width: 1080
+  height: 1920
+  fps: 30
+
+# ──────────────────────────────────────────────────────────────
+# 캡컷 좌표 → 픽셀 환산식
+#   픽셀 x = width/2  + (캡컷 x) × position_scale + offset_x
+#   픽셀 y = height/2 − (캡컷 y) × position_scale + offset_y   (캡컷은 위가 +, 화면은 아래가 +)
+#   글자 크기(px)  = (캡컷 크기) × font_scale
+#   줄간격(px)     = (캡컷 줄간격) × line_spacing_scale
+#   테두리(px)     = (캡컷 테두리) × outline_scale
+# 첫 실행 때 기존 영상과 나란히 놓고 아래 숫자를 고친다. 한 번 맞춘 뒤 고정.
+# 확인용 이미지: output/check.png (자막 포함), output/thumbnail.png (썸네일 문구·출처만)
+# ──────────────────────────────────────────────────────────────
+capcut:
+  position_scale: 0.5        # 캡컷 y=1320 → 960 − 660 = 300px (위에서), y=−1380 → 1650px
+  offset_x: 0
+  offset_y: 0
+  font_scale: 7.0            # 캡컷 크기 12 → 84px
+  line_spacing_scale: 7.0    # 캡컷 줄간격 −3 → −21px
+  outline_scale: 1.0         # 캡컷 테두리 2 → 2px
+  line_height_ratio: 1.2     # 여러 줄일 때 줄 높이 = 글자 크기 × 이 값 (+ 줄간격)
+
+# 폰트 파일 (assets/fonts/ 안의 파일명). 없으면 fallback 으로 대체하고 경고.
+fonts:
+  dir: assets/fonts
+  files:
+    cafe24_danjunghae: Cafe24Danjunghae.ttf   # 카페24 단정해
+    haengbok: Haengbok.ttf                     # 행복
+    geurim: Geurim.ttf                         # 그림
+  fallback: NanumGothic-Bold.ttf
+
+# 글자 요소 규격 (좌표·크기는 캡컷 기준값 그대로 적는다)
+texts:
+  thumbnail_top:            # 썸네일 윗줄
+    font: cafe24_danjunghae
+    size: 13
+    x: 0
+    y: 1320
+    line_spacing: -3
+    color: "#FFFFFF"
+    outline_color: "#000000"
+    outline: 2
+    bold: false
+  thumbnail_bottom:         # 썸네일 아랫줄 (윗줄 바로 아래에 자동 배치)
+    font: cafe24_danjunghae
+    size: 16
+    x: 0
+    line_spacing: -3
+    color: "#FFD233"
+    outline_color: "#000000"
+    outline: 2
+    bold: false
+  source:                   # 출처
+    font: geurim
+    size: 8
+    x: 0
+    y: -1380
+    color: "#FFFFFF"
+    outline_color: "#000000"
+    outline: 0
+    bold: true
+    format: "출처 : {source}"
+  subtitle:                 # 자막
+    font: haengbok
+    size: 12
+    x: 0
+    y: 900
+    line_spacing: -3
+    color: "#FFFFFF"
+    outline_color: "#000000"
+    outline: 2
+    bold: false
+    mode: cumulative        # cumulative: 구절 안에서 단어가 하나씩 쌓임 / single: 한 번에 한 단어만
+    max_chars: 14           # 한 구절(한 줄) 최대 글자 수. 넘으면 다음 구절로
+
+# 영상 처리 기본값
+video:
+  speed: 1.1                # 배속
+  mirror: true              # 좌우 미러링
+  zoom: 1.15                # 확대 크롭 (중앙 기준)
+  contrast: 0.08            # 대비 (캡컷 20 근사)
+  saturation: 0.10          # 채도 (캡컷 20 근사)
+  crf: 18
+  preset: medium
+  audio_bitrate: 192k
+
+# 음성 정리 (4단계)
+audio:
+  remove_music: true        # Demucs 배경음악 제거
+  silence_db: -35
+  silence_min: 0.4
+  crossfade_ms: 60
+  fillers: [그런데, 그리고, 어, 음, 근데, 약간]
+
+# 길이 제한 (초)
+limits:
+  segments_total: 20        # 원본 구간 합 (배속 적용 후). 넘으면 경고
+  total_with_tts: 25        # TTS 포함 최대. 넘으면 마지막 구간부터 잘라 맞춤 (6단계)
+
+# TTS (6단계)
+tts:
+  voice: kanna
+  speed: 1.3
+  max_seconds: 4
+  image_zoom_seconds: 0.3
+
+# 효과음 (7단계)
+sfx:
+  per_cut: 1
+  max_count: 5
+  gain_db: -12

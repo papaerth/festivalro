@@ -22,6 +22,7 @@
   - `seoLanding.js`, `season.js`, `curated.js`, `related.js`, `popular.js`
 - `data/` — 정적 데이터: `curated/*.json`(축제별 큐레이션), `markets/markets.json`, `season/bloom.json·foliage.json`, `permanent-fireworks.js`
 - `supabase/*.sql` — DB 스키마·크론 로그·헬스 테이블
+- `tools/` — 사이트와 별개인 로컬 Python 도구. `karaoke-subtitle`(노래방 자막), `shorts-maker`(연예인 추천템 쇼츠 제작기, 명세 `tools/shorts-maker/SPEC.md`, 단계별 구현 중)
 - `vercel.json` — Vercel cron(refresh 18:00 UTC, digest 12:00 UTC)
 
 ## 환경변수

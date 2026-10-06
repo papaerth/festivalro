@@ -1,0 +1,11 @@
+# 연템저장소 쇼츠 제작기 의존성 (1단계)
+# ffmpeg/ffprobe는 시스템에 설치돼 있어야 한다 (PATH)
+typer>=0.12
+pyyaml>=6.0
+pillow>=10.0
+# --- 아래는 2단계 이후 ---
+# faster-whisper
+# demucs
+# anthropic
+# elevenlabs
+# python-dotenv

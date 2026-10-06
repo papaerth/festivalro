@@ -1,0 +1,18 @@
+# 편별 입력 영상·이미지와 생성 결과는 올리지 않는다 (brief.txt, candidates.md만 추적)
+episodes/*/input/*
+!episodes/*/input/brief.txt
+episodes/*/output/
+episodes/*/transcript.json
+
+# 사용자 폰트(카페24 단정해·행복·그림 등 재배포 불가)와 효과음은 각자 넣는다
+assets/fonts/*
+!assets/fonts/README.md
+!assets/fonts/NanumGothic-Bold.ttf
+!assets/fonts/NanumGothic-OFL.txt
+assets/sfx/*
+!assets/sfx/README.md
+
+.env
+.venv/
+__pycache__/
+*.pyc
