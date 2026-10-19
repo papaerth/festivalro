@@ -29,3 +29,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 .env*
+
+# 영상 자동화 도구 — OpenMontage는 별도 저장소(AGPL) 클론이라 커밋하지 않음 (scripts/setup-video-tools.sh 로 재설치)
+/OpenMontage/
