@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+*.tsbuildinfo
+next-env.d.ts
+.env
+.env.local
+.env*.local
+prisma/*.db
+prisma/*.db-journal
+test-results
+
+# keep the example env file even though the parent repo ignores .env*
+!.env.example

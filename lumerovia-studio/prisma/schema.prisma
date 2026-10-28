@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model StylePreset {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  nameKo      String
+  description String   @default("")
+  prompt      String
+  excludes    String   @default("")
+  bpm         Int      @default(76)
+  timeSig     String   @default("4/4")
+  vocal       String   @default("")
+  genreTags   String   @default("")
+  isDefault   Boolean  @default(false)
+  isBuiltin   Boolean  @default(false)
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Project {
+  id               String   @id @default(cuid())
+  title            String   @default("")
+  titleKo          String   @default("")
+  story            String   @default("")
+  emotion          String   @default("nostalgia")
+  referenceLyrics  String   @default("")
+  referenceRights  String   @default("unknown")
+  referenceNotes   String   @default("")
+  lyrics           String   @default("")
+  stylePrompt      String   @default("")
+  styleKey         String   @default("C")
+  styleOptions     String   @default("[]")
+  excludeStyles    String   @default("")
+  titleCandidates  String   @default("[]")
+  bpm              Int      @default(76)
+  vocal            String   @default("")
+  genre            String   @default("Cinematic Nostalgic Soft Rock")
+  landscape        String   @default("")
+  videoConcept     String   @default("")
+  status           String   @default("draft")
+  currentStep      Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  versions         ProjectVersion[]
+}
+
+model ProjectVersion {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label     String   @default("")
+  snapshot  String
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
+}
