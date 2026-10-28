@@ -36,6 +36,3 @@
 - 데이터 출처 표기(KOPIS 등 이용조건)를 제거하지 말 것
 - 큰 변경(메이저 업그레이드, 스키마 변경, 배포 설정)은 먼저 사용자에게 설명하고 확인
 - `RECOVERY.md`(로컬 환경 복구), `SECURITY.md`(월간 보안 점검 절차) 참고
-
-## 하위 프로젝트: `lumerovia-studio/`
-LUMEROVIA(영어 음악 브랜드) AI 음악 제작 스튜디오. festivalro와 **독립된** Next.js 15 + TypeScript + Tailwind + Prisma(SQLite) 앱으로, 자체 `package.json`을 가진다. 작업 시 `cd lumerovia-studio` 후 `npm install && npx prisma db push && npm run dev`(포트 3100). 검증은 `npx next build` + 서버 실행 후 `npm run test:api` / `npm run test:e2e`. 자세한 내용은 `lumerovia-studio/README.md`.
