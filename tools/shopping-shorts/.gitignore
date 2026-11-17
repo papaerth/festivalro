@@ -1,0 +1,10 @@
+# 원본 영상·작업물·완성본·모델·키는 저장소에 올리지 않는다
+/input/
+/work/
+/output/
+/models
+/fonts/
+.env
+.venv/
+__pycache__/
+*.pyc

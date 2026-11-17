@@ -1,0 +1,24 @@
+{
+  "product": "브랜드 제품명",
+  "brand": "브랜드",
+  "channel": "원본 채널명",
+  "source_text": "출처 : 유튜브 '원본 채널명'",
+  "image_source_text": "",
+  "title": ["화장 다 떴을 때", "덧바르지 마세요"],
+  "crop": {"size": 840, "y0": 0, "x_min": 130, "x_max": 1180},
+  "timeline": [
+    {"type": "cut", "a": 312.40, "b": 314.95, "x0": 300, "sfx": "whoosh",
+     "subs": [{"t": 312.45, "text": "화장이 떴을 때"}, {"t": 313.60, "text": "덧바르면", "sfx": "ding"}, {"t": 314.20, "text": "안 돼요!", "em": true}]},
+    {"type": "tts", "text": "그럼 어떻게 해야 할까요", "audio": "tts1.mp3", "still_t": 298.0, "x0": 320, "sfx": "pop"},
+    {"type": "cut", "a": 318.10, "b": 321.30, "x0": 260,
+     "subs": [{"t": 318.15, "text": "그 건조한"}, {"t": 318.90, "text": "부분을 이렇게"}, {"t": 320.10, "text": "닦아내요"}]},
+    {"type": "tts", "text": "10년째 안 바꾼 이유", "audio": "tts2.mp3", "image": "img1.jpg"},
+    {"type": "cut", "a": 290.05, "b": 293.60, "x0": 300, "sfx": "sparkle",
+     "subs": [{"t": 290.10, "text": "제가 진짜"}, {"t": 291.00, "text": "10년 넘게 쓴"}, {"t": 292.40, "text": "제품명이에요", "em": true}]}
+  ],
+  "cards": [
+    {"seg": 2, "offset": 0.1, "dur": 2.4, "text": "댓글 원문 그대로", "likes": "1.2천", "heart": true, "pos": "top"},
+    {"seg": 4, "offset": 0.2, "dur": 2.4, "text": "두 번째 댓글 원문", "likes": "384", "pos": "top"}
+  ],
+  "thumbnail": {"t": 313.2, "x0": 300}
+}

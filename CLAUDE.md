@@ -23,6 +23,7 @@
 - `data/` — 정적 데이터: `curated/*.json`(축제별 큐레이션), `markets/markets.json`, `season/bloom.json·foliage.json`, `permanent-fireworks.js`
 - `supabase/*.sql` — DB 스키마·크론 로그·헬스 테이블
 - `vercel.json` — Vercel cron(refresh 18:00 UTC, digest 12:00 UTC)
+- `tools/` — 사이트와 무관한 별도 파이썬 도구. `karaoke-subtitle/`(노래방 자막), `shopping-shorts/`(쇼핑 쇼츠 자동 제작, 그 폴더의 `CLAUDE.md`·`RULES.md` 참고, `/shorts` 명령)
 
 ## 환경변수
 `.env.local.example` 참고. **키가 없어도 내장 샘플 데이터로 동작**하도록 설계되어 있으므로, 원격 세션에서 `.env.local`이 없어도 빌드·대부분 기능은 정상.
