@@ -15,7 +15,18 @@ export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 export NEXT_TELEMETRY_DISABLED=1
 
 # npm install(캐시 활용, 멱등). lockfile 이 있으므로 동일 버전으로 설치됩니다.
+# 원격 컨테이너의 npm 은 package-lock.json 의 libc 항목을 지워 매 세션 변경을 만든다.
+# 설치 전에 lockfile 이 깨끗했다면 설치 뒤에 원래대로 되돌린다(직접 고친 내용은 건드리지 않음).
+lock_was_clean=false
+if git diff --quiet -- package-lock.json 2>/dev/null; then
+  lock_was_clean=true
+fi
+
 npm install --no-audit --no-fund
+
+if [ "$lock_was_clean" = true ]; then
+  git checkout -- package-lock.json 2>/dev/null || true
+fi
 
 # 세션 전체에 적용할 환경변수
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
