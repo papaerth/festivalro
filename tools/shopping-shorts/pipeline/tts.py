@@ -71,6 +71,19 @@ def synth(text: str, out_path) -> Path:
     return out_path
 
 
+def says(path: Path, text: str) -> bool:
+    """음성 파일이 실제로 그 문구를 말하는지 음성 인식으로 확인한다(다른 문구의 옛 음성을 걸러낸다)."""
+    import difflib
+    import re
+    from pipeline import asr_words
+    try:
+        heard = "".join(w["w"] for w in asr_words.transcribe_file(path)["words"])
+    except Exception:   # 확인할 수 없으면 있는 파일을 그대로 쓴다
+        return True
+    norm = lambda x: re.sub(r"[^0-9A-Za-z가-힣]", "", x)  # noqa: E731
+    return difflib.SequenceMatcher(None, norm(heard), norm(text)).ratio() >= 0.45
+
+
 def ensure(plan: dict, inp_dir: Path, work_dir: Path) -> list[str]:
     """plan의 TTS 구간마다 음성 파일을 준비한다. 문구가 그대로면 다시 만들지 않는다."""
     memo_p = work_dir / "tts.json"
@@ -80,8 +93,14 @@ def ensure(plan: dict, inp_dir: Path, work_dir: Path) -> list[str]:
         if s.get("type") != "tts":
             continue
         dst = inp_dir / s["audio"]
-        if dst.exists() and (s["audio"] not in memo or memo[s["audio"]] == s["text"]):
-            continue  # 사용자가 직접 넣은 파일(덮어쓰지 않는다)이거나, 같은 문구로 이미 만든 파일
+        if dst.exists() and memo.get(s["audio"]) == s["text"]:
+            continue  # 같은 문구로 이미 만든 파일
+        if dst.exists() and s["audio"] not in memo:
+            # 기록에 없는 파일: 사용자가 직접 넣었거나, 이전 설계 때의 음성이 남은 것.
+            # 키가 없으면 그대로 쓰고, 있으면 문구와 맞는지 들어 보고 다를 때만 새로 만든다.
+            if not available() or says(dst, s["text"]):
+                continue
+            util.log(f"[TTS] {s['audio']} 의 음성이 문구와 달라 새로 만듭니다.")
         util.log(f"[TTS] {s['audio']}: {s['text']}")
         synth(s["text"], dst)
         memo[s["audio"]] = s["text"]

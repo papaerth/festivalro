@@ -144,7 +144,23 @@ def vidiq_block(vidiq: str, limit: int = 20000) -> str:
             + vidiq[:limit] + "\n")
 
 
-def analyze(meta: dict, asr: dict, sheets: list, info: dict, yt: dict, vidiq: str = "") -> dict:
+def feedback_block(feedback: str, prev_plan: dict | None = None, prev_copy: dict | None = None) -> str:
+    """사용자의 수정 요청(과 고칠 대상인 이전 설계)을 프롬프트에 넣을 글로."""
+    feedback = (feedback or "").strip()
+    if not feedback:
+        return ""
+    out = ("\n[사용자의 수정 요청 — 이전 완성본을 보고 직접 적은 요청입니다. 제작 규칙과 부딪치지 않는 한 그대로 반영하고, "
+           "부딪치면 규칙 안에서 가장 가까운 방법을 택합니다]\n" + feedback[:4000] + "\n")
+    if prev_plan:
+        keep = {k: prev_plan.get(k) for k in ("title", "crop", "timeline", "cards", "thumbnail")}
+        out += ("\n[이전 설계 — 요청이 닿지 않는 부분은 이대로 둡니다]\n" + json.dumps(keep, ensure_ascii=False) + "\n")
+        if prev_copy:
+            out += "[이전 제목·문구]\n" + json.dumps(
+                {k: prev_copy.get(k) for k in ("combos", "description", "pin_question")}, ensure_ascii=False) + "\n"
+    return out
+
+
+def analyze(meta: dict, asr: dict, sheets: list, info: dict, yt: dict, vidiq: str = "", feedback: str = "") -> dict:
     ask = f"""원본 영상을 분석해 쇼츠 소재가 될 제품을 고릅니다.
 
 영상 정보: 길이 {meta['duration']:.0f}초, {meta['width']}×{meta['height']}
@@ -152,7 +168,7 @@ def analyze(meta: dict, asr: dict, sheets: list, info: dict, yt: dict, vidiq: st
 사용자가 정한 제품: {info.get('product') or '(없음 — 규칙 1에 따라 고릅니다)'}
 
 위 이미지는 일정 간격으로 뽑은 프레임 시트이고 각 프레임 위에 원본 시각이 적혀 있습니다.
-{vidiq_block(vidiq)}
+{vidiq_block(vidiq)}{feedback_block(feedback)}
 [전체 대사 — 음성 인식, 시각 포함]
 {asr_words.as_text(asr)}
 
@@ -193,11 +209,13 @@ DESIGN_SCHEMA = _obj({
     "description": _obj({"hook_line": S, "body_lines": _arr(S), "closing_line": S, "hashtags": _arr(S)}),
     "pin_question": S,
     "notes": S,
+    "revision": S,
 })
 
 
 def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, info: dict, yt: dict,
-                   images: list[str], crop_default: int, vidiq: str = "") -> list:
+                   images: list[str], crop_default: int, vidiq: str = "", feedback: str = "",
+                   prev_plan: dict | None = None, prev_copy: dict | None = None) -> list:
     pick = analysis["pick"]
     bi = analysis.get("burned_in") or {}
     ask = f"""'{pick.get('brand', '')} {pick['name']}' 로 쇼츠 한 편을 설계합니다.
@@ -215,7 +233,7 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
 후킹 순간: {json.dumps(analysis.get('hooks', [])[:10], ensure_ascii=False)}
 제품 정보: {json.dumps(next((p for p in analysis.get('products', []) if p.get('name') == pick['name']), {}), ensure_ascii=False)}
 
-{vidiq_block(vidiq, 8000)}
+{vidiq_block(vidiq, 8000)}{feedback_block(feedback, prev_plan, prev_copy)}
 [인기 댓글 — 카드에는 번호(#)로 고릅니다. 원문과 좋아요 수는 프로그램이 그대로 넣습니다]
 {comments_text(yt.get('comments') or [])}
 
@@ -236,6 +254,7 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
 - pin_question: 핀 댓글의 시청자 참여 질문 한 줄.
 - notes: 완성본을 받은 사용자가 직접 확인해야 할 점만 짧게(두세 줄). 설계를 고친 과정, 차순위 후보,
   인포크 번호처럼 프로그램이 따로 알리는 내용은 쓰지 않습니다. 없으면 "".
+- revision: 사용자의 수정 요청이 있을 때만, 요청마다 어떻게 반영했는지 한 줄씩(반영하지 못한 것은 이유와 함께). 요청이 없으면 "".
 
 완성 길이는 컷 길이 합 ÷ 1.1 + TTS 길이(대략 글자당 0.15초 + 0.3초)로 어림합니다."""
     return _sheets(sheets, "제품 구간 프레임 시트") + [{"type": "text", "text": ask}]
@@ -286,7 +305,8 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
     }
     copy = {"product": product,
             "combos": [{"top": [c["top1"], c["top2"]], "title": c["title"]} for c in d["combos"][:3]],
-            "description": d["description"], "pin_question": d["pin_question"], "notes": d["notes"]}
+            "description": d["description"], "pin_question": d["pin_question"], "notes": d["notes"],
+            "revision": d.get("revision", "")}
     return plan, copy
 
 

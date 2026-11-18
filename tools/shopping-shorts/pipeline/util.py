@@ -272,6 +272,12 @@ class Episode:
         p = self.inp / "vidiq.txt"
         return p.read_text(encoding="utf-8", errors="replace").strip() if p.exists() else ""
 
+    @property
+    def feedback(self) -> str:
+        """완성본을 보고 사용자가 적은 수정 요청(input/<편>/feedback.txt). 없으면 빈 문자열."""
+        p = self.inp / "feedback.txt"
+        return p.read_text(encoding="utf-8", errors="replace").strip() if p.exists() else ""
+
     def set_info(self, **kw):
         d = read_json(self.inp / "info.json", {}) or {}
         d.update({k: v for k, v in kw.items() if v})

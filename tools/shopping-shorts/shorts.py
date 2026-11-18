@@ -74,7 +74,7 @@ def stage_analyze(ep: Episode):
     vidiq = ep.vidiq
     if vidiq:
         log("[분석] 붙여 넣은 vidIQ 분석을 함께 봅니다.")
-    an = brain.analyze(meta, asr, sorted(ep.work.glob("overview_*.jpg")), ep.info, yt, vidiq)
+    an = brain.analyze(meta, asr, sorted(ep.work.glob("overview_*.jpg")), ep.info, yt, vidiq, ep.feedback)
     util.write_json(ep.w("analysis.json"), an)
     log(f"[분석] 선정: {an['pick'].get('brand', '')} {an['pick']['name']} — {an['pick']['reason']}")
     return an
@@ -110,7 +110,15 @@ def stage_design(ep: Episode, max_rounds: int = 3):
     asr = util.read_json(ep.w("words.json"))
     zoom_asr, sheets, crop_default = stage_zoom(ep)
     images = [p.name for p in ep.images()]
-    content = brain.design_request(meta, an, zoom_asr, sheets, ep.info, yt, images, crop_default, ep.vidiq)
+    feedback, prev_plan, prev_copy = ep.feedback, None, None
+    if feedback:
+        log("[설계] 수정 요청을 반영합니다.")
+        prev_plan, prev_copy = util.read_json(ep.w("plan.prev.json")), util.read_json(ep.w("copy.prev.json"))
+        product = ep.info["product"] or f"{an['pick'].get('brand', '')} {an['pick']['name']}".strip()
+        if not prev_plan or prev_plan.get("product") != product:
+            prev_plan = prev_copy = None      # 제품이 바뀌었으면 이전 설계는 참고하지 않는다
+    content = brain.design_request(meta, an, zoom_asr, sheets, ep.info, yt, images, crop_default, ep.vidiq,
+                                   feedback, prev_plan, prev_copy)
     history, plan, copy, res = None, None, None, None
     for rnd in range(1, max_rounds + 2):
         log(f"[설계] {'컷 설계 중…' if rnd == 1 else f'규칙 검사에서 걸린 부분 고치는 중… ({rnd - 1}차)'}")
@@ -228,29 +236,42 @@ def stage_copy(ep: Episode) -> Path:
     ep.out.mkdir(parents=True, exist_ok=True)
     (ep.out / f"{name}_업로드문구.txt").write_text("\n".join(L).rstrip() + "\n", encoding="utf-8")
 
-    R = [f"■ 만든 것 — {product} ({q.get('duration', '?')}초)",
-         f"  {name}_배경음O.mp4 · {name}_배경음X.mp4 · {name}_썸네일.jpg · {name}_업로드문구.txt", "",
-         "■ 사람이 확인할 것",
-         "  - 유튜브 업로드 화면에서 제품 태그 검색이 되는지 (안 되면 아래 차순위 후보로)",
-         "  - 배경음X 버전에서 목소리가 뭉개지지 않았는지 직접 들어 보기"]
+    checks_ = ["유튜브 업로드 화면에서 제품 태그 검색이 되는지 (안 되면 아래 차순위 후보로)",
+               "배경음X 버전에서 목소리가 뭉개지지 않았는지 직접 들어 보기"]
     if not ep.info["inpock"]:
-        R.append("  - 인포크 번호가 없어 설명·핀 댓글에 '(번호)'로 비워 두었습니다")
+        checks_.append("인포크 번호가 없어 설명·핀 댓글에 '(번호)'로 비워 두었습니다")
     if an.get("paid_ad"):
-        R.append(f"  - 원본이 유료 광고 영상입니다: {an.get('paid_ad_note', '')}")
+        checks_.append(f"원본이 유료 광고 영상입니다: {an.get('paid_ad_note', '')}")
     if not plan.get("cards"):
         why = (yt.get("error") or "댓글 없음").strip().splitlines()[-1][:120]
-        R.append(f"  - 댓글 카드를 넣지 못했습니다: {why}")
-    for i in q.get("issues", []):
-        R.append(f"  - [검수] {i}")
-    for n in q.get("notes", []):
-        R.append(f"  - {n}")
-    if copy.get("notes"):
-        R.append(f"  - {copy['notes']}")
-    for w in copy.get("warnings", []):
-        R.append(f"  - [권고] {w}")
+        checks_.append(f"댓글 카드를 넣지 못했습니다: {why}")
+    checks_ += [f"[검수] {i}" for i in q.get("issues", [])] + list(q.get("notes", []))
+    checks_ += [ln.strip() for ln in str(copy.get("notes") or "").splitlines() if ln.strip()]
+    checks_ += [f"[권고] {w}" for w in copy.get("warnings", [])]
+    pick = an.get("pick") or {}
+    data = {
+        "episode": ep.name, "product": product, "duration": q.get("duration"),
+        "files": [f"{name}_배경음O.mp4", f"{name}_배경음X.mp4", f"{name}_썸네일.jpg", f"{name}_업로드문구.txt"],
+        "pick_reason": pick.get("reason", ""),
+        "checks": checks_,
+        "feedback": ep.feedback,
+        "revision": [ln.strip() for ln in str(copy.get("revision") or "").splitlines() if ln.strip()],
+        "combos": [{"title": c.get("title", ""), "top": c.get("top", [])} for c in combos[:3]],
+        "alternates": [{"brand": a.get("brand", ""), "name": a.get("name", ""), "reason": a.get("reason", "")}
+                       for a in an.get("alternates", [])],
+    }
+    util.write_json(ep.out / "_보고.json", data)
+
+    R = [f"■ 만든 것 — {product} ({data['duration'] or '?'}초)", "  " + " · ".join(data["files"])]
+    if data["pick_reason"]:
+        R.append(f"  고른 이유: {data['pick_reason']}")
+    R += ["", "■ 사람이 확인할 것"] + [f"  - {c}" for c in checks_]
+    if data["feedback"]:
+        R += ["", "■ 수정 요청 반영"] + [f"  요청: {ln}" for ln in data["feedback"].splitlines() if ln.strip()]
+        R += [f"  - {ln}" for ln in data["revision"]] or ["  (반영 내용 설명 없음)"]
     R += ["", "■ 차순위 제품 후보"]
-    R += [f"  {i}. {a.get('brand', '')} {a.get('name', '')} — {a.get('reason', '')}"
-          for i, a in enumerate(an.get("alternates", []), 1)] or ["  (분석 파일에 후보가 없습니다)"]
+    R += [f"  {i}. {a['brand']} {a['name']} — {a['reason']}" for i, a in enumerate(data["alternates"], 1)] \
+        or ["  (분석 파일에 후보가 없습니다)"]
     rep = ep.out / f"{name}_보고.txt"
     rep.write_text("\n".join(R) + "\n", encoding="utf-8")
     return rep
@@ -260,17 +281,21 @@ def stage_copy(ep: Episode) -> Path:
 def clear_from(ep: Episode, stage: str):
     """stage 와 그 뒤 단계의 결과 파일을 지워 다시 만들게 한다."""
     for st in STAGES[STAGES.index(stage):]:
+        if st == "design":   # 수정 요청을 반영할 때 고칠 대상으로 쓰도록 이전 설계를 남겨 둔다
+            for f in ("plan", "copy"):
+                if ep.w(f"{f}.json").exists():
+                    ep.w(f"{f}.json").replace(ep.w(f"{f}.prev.json"))
+        if st == "tts":      # 프로그램이 만든 TTS 음성만 지운다(사용자가 넣은 파일은 기록에 없다)
+            for f in util.read_json(ep.w("tts.json"), {}) or {}:
+                (ep.inp / f).unlink(missing_ok=True)
         for f in STAGE_FILES.get(st, []):
             ep.w(f).unlink(missing_ok=True)
         if st == "prep":
             for p in ep.work.glob("overview_*.jpg"):
                 p.unlink()
-        if st == "tts":
-            memo = util.read_json(ep.w("tts.json"), {}) or {}
-            for f in memo:
-                (ep.inp / f).unlink(missing_ok=True)
         if st == "render":
             (ep.out / "_plan_resolved.json").unlink(missing_ok=True)
+            ep.w("review.json").unlink(missing_ok=True)
 
 
 def auto(ep: Episode, redo: str | None = None, review: bool = True, uvr_model=None):
