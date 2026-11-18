@@ -484,6 +484,18 @@ def run_gui(argv: list[str]):
     b_open.pack(side="left", padx=8)
     b_fold = ttk.Button(bar, text="입력 칸 줄이기 ▲", command=lambda: fold(not state.get("folded")))
     b_fold.pack(side="right")
+
+    def open_preview():
+        """글자체를 고르고 앱(쇼츠·틱톡·릴스)에서 보일 모습을 확인하는 창."""
+        try:
+            import preview_gui
+        except Exception as e:
+            messagebox.showerror("미리보기", f"미리보기 창을 열지 못했습니다.\n{e}\n\n[프로그램 업데이트]를 한 번 눌러 보세요.")
+            return
+        name = state["name"] or safe_episode(v_name.get())
+        state["preview_win"] = preview_gui.open_window(root, name, fam, lambda: run("render"))
+
+    ttk.Button(bar, text="미리보기 · 글자체", command=open_preview).pack(side="right", padx=8)
     ttk.Label(frm, textvariable=v_status, foreground=BLUE, font=(fam, 12, "bold"), wraplength=940,
               justify="left").grid(row=8, column=0, columnspan=3, sticky="w", **pad)
 

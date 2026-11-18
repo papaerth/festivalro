@@ -50,14 +50,47 @@ EMOJI = re.compile(
     "\U0000FE00-\U0000FE0F\U0000200D\U000020E3\U00002190-\U000021FF\U00003030\U0000303D\U00003297\U00003299]")
 
 
-def load_plan(path) -> dict:
-    plan = json.loads(Path(path).read_text(encoding="utf-8"))
+def apply_defaults(plan: dict, settings: dict | None = None) -> dict:
+    """plan에 고정 기본값과 사용자 설정(글자체·크기)을 채운다. plan에 직접 적은 값이 가장 우선."""
+    st = util.settings() if settings is None else settings
+    own_layout = plan.get("layout") or {}
     for k, v in DEFAULTS.items():
         if isinstance(v, dict):
             plan[k] = {**v, **(plan.get(k) or {})}
         else:
             plan.setdefault(k, v)
+    for key in ("title_size", "sub_size"):
+        if st.get(key) and key not in own_layout:
+            plan["layout"][key] = int(st[key])
+    for key in ("font_title", "font_sub"):
+        if st.get(key) and not plan.get(key):
+            plan[key] = st[key]
     return plan
+
+
+def load_plan(path) -> dict:
+    return apply_defaults(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def title_base(plan: dict):
+    """검은 9:16 바탕에 상단 제목 두 줄(윗줄 흰색, 아랫줄 노란색)을 그린 이미지."""
+    from PIL import Image
+    L = plan["layout"]
+    ft = plan.get("font_title") or plan.get("font_bold")
+    base = Image.new("RGB", (CW, CH), BLACK)
+    title = (plan.get("title") or ["", ""])[:2]
+    longest = max(title, key=lambda s: util.font(L["title_size"], True, ft).getlength(s)) if title else ""
+    tf = fit_font(longest, L["title_size"], CW - 90, True, ft)
+    for i, line in enumerate(title):
+        im = text_image(line, tf, WHITE if i == 0 else YELLOW, stroke_w=6, max_w=CW)
+        base.paste(im, (int(CW / 2 - im.width / 2), int(L["title_y"][i] - im.height / 2)), im)
+    return base
+
+
+def sub_image(text: str, em: bool, plan: dict):
+    """자막 한 덩이 이미지(흰색·검은 테두리, 강조는 노란색)."""
+    fnt = util.font(plan["layout"]["sub_size"], True, plan.get("font_sub") or plan.get("font_bold"))
+    return text_image(text, fnt, YELLOW if em else WHITE, stroke_w=6, max_w=CW - 60)
 
 
 def crop_of(plan: dict, meta: dict) -> tuple[int, int]:
@@ -430,9 +463,81 @@ def split_tts_text(text: str) -> list[str]:
     return [" ".join(words[:k]), " ".join(words[k:])]
 
 
+def card_y(card: dict, im, plan: dict) -> int:
+    L = plan["layout"]
+    pos = card.get("pos", "top")
+    if isinstance(pos, (int, float)):
+        return int(pos)
+    if pos == "bottom":
+        return L["sub_y"] - 70 - im.height
+    if pos == "mid":
+        return L["video_y"] + 540 - im.height // 2
+    return L["video_y"] + 6
+
+
+def preview_frame(plan: dict, src, base_dir, scene: dict | None = None, show_card: bool = False,
+                  meta: dict | None = None, cache: dict | None = None):
+    """완성본의 한 장면을 실제 렌더링과 같은 그리기 코드로 그린다(1080×1920 이미지).
+
+    scene: None/{"thumb": True} 는 썸네일, {"seg": 구간 순번, "sub": 자막 순번} 은 그 자막이 뜬 장면.
+    src 가 없으면 영상 자리를 회색으로 채운다(글자체만 볼 때)."""
+    from PIL import Image, ImageDraw
+    L = plan["layout"]
+    frame = title_base(plan)
+    scene = scene or {"thumb": True}
+    tl = plan.get("timeline") or []
+    seg = tl[scene["seg"]] if "seg" in scene and 0 <= scene["seg"] < len(tl) else None
+    sub = None
+    if seg and seg.get("type") == "cut":
+        subs = seg.get("subs") or []
+        sub = subs[min(scene.get("sub", 0), len(subs) - 1)] if subs else None
+        want = {"still_t": float(sub["t"]) + 0.15 if sub else float(seg["a"]) + 0.2, "x0": seg.get("x0", 0)}
+    elif seg:
+        chunks = split_tts_text(seg.get("text", ""))
+        sub = {"text": chunks[min(scene.get("sub", 0), len(chunks) - 1)], "em": seg.get("em", False)}
+        want = seg
+    else:
+        first = next((s for s in tl if s.get("type") == "cut"), None)
+        th = plan.get("thumbnail") or {}
+        want = {"still_t": float(th.get("t", (first["a"] + 0.3) if first else 0.0)),
+                "x0": th.get("x0", first.get("x0", 0) if first else 0)}
+    vid = None
+    if src:
+        meta = meta or util.probe(src)
+        size, y0 = crop_of(plan, meta)
+        key = (str(src), want.get("image"), want.get("still_t"), want.get("x0"), size, y0, plan["mirror"],
+               plan["color_filter"])
+        vid = (cache or {}).get(key)
+        if vid is None:
+            vid = still_image(want, src, size, y0, plan, Path(base_dir))
+            if cache is not None:
+                cache[key] = vid
+    if vid is None:   # 영상 없이 글자체만 볼 때
+        vid = Image.new("RGB", (1080, 1080), (96, 104, 116))
+        d = ImageDraw.Draw(vid)
+        d.ellipse([390, 240, 690, 540], fill=(150, 158, 170))
+        d.rounded_rectangle([280, 600, 800, 1180], radius=160, fill=(150, 158, 170))
+    frame.paste(vid, (0, L["video_y"]))
+    out = frame.convert("RGBA")
+    if seg is not None and sub and str(sub.get("text", "")).strip():
+        im = sub_image(sub["text"], bool(sub.get("em")), plan)
+        out.alpha_composite(im, (int(CW / 2 - im.width / 2), int(L["sub_y"] - im.height / 2)))
+    txt = plan.get("source_text", "")
+    if seg and seg.get("type") == "tts" and seg.get("image") and plan.get("image_source_text"):
+        txt = plan["image_source_text"]
+    if txt:
+        im = text_image(txt, util.font(L["source_size"], False, plan.get("font_regular")), (235, 235, 235), alpha=215)
+        out.alpha_composite(im, (int(CW / 2 - im.width / 2), int(L["source_y"] - im.height / 2)))
+    cards = plan.get("cards") or []
+    if show_card and cards and seg is not None:
+        c = next((c for c in cards if int(c.get("seg", -1)) == scene.get("seg")), cards[0])
+        im = card_image(c, plan, [], Path(base_dir))
+        out.alpha_composite(im, (int(CW / 2 - im.width / 2), max(0, min(card_y(c, im, plan), CH - im.height))))
+    return out.convert("RGB")
+
+
 # ------------------------------------------------------------------ 본체
 def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=False, only_thumbnail=False) -> dict:
-    from PIL import Image
     plan = load_plan(plan_path)
     src, out_dir = Path(src), Path(out_dir)
     base_dir = Path(assets) if assets else src.parent
@@ -440,17 +545,12 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
     meta = util.probe(src)
     size, y0 = crop_of(plan, meta)
     speed, L = float(plan["speed"]), plan["layout"]
-    fb, fr_ = plan.get("font_bold"), plan.get("font_regular")
+    fr_ = plan.get("font_regular")
     name = util.safe_name(name)
 
     # --- 상단 제목 + 바탕
-    base = Image.new("RGB", (CW, CH), BLACK)
+    base = title_base(plan)
     title = (plan.get("title") or ["", ""])[:2]
-    longest = max(title, key=lambda s: util.font(L["title_size"], True, fb).getlength(s)) if title else ""
-    tf = fit_font(longest, L["title_size"], CW - 90, True, fb)
-    for i, line in enumerate(title):
-        im = text_image(line, tf, WHITE if i == 0 else YELLOW, stroke_w=6, max_w=CW)
-        base.paste(im, (int(CW / 2 - im.width / 2), int(L["title_y"][i] - im.height / 2)), im)
 
     # --- 썸네일
     th = plan.get("thumbnail") or {}
@@ -529,7 +629,6 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
 
     # --- 자막·카드·효과음 배치
     overlays, subs_out, sfx_out, dropped = [], [], [], []
-    sub_font = util.font(L["sub_size"], True, fb)
     src_font = util.font(L["source_size"], False, fr_)
 
     def add_sfx(kind, t):
@@ -561,7 +660,7 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
             f0, f1 = int(round(t * FPS)), int(round(t_end * FPS))
             if f1 <= f0 or not str(sb.get("text", "")).strip():
                 continue
-            im = text_image(sb["text"], sub_font, YELLOW if sb.get("em") else WHITE, stroke_w=6, max_w=CW - 60)
+            im = sub_image(sb["text"], bool(sb.get("em")), plan)
             overlays.append(Overlay(im, CW / 2, L["sub_y"], f0, f1, fade_in=2))
             subs_out.append({"seg": r["i"], "start": round(f0 / FPS, 3), "end": round(f1 / FPS, 3),
                              "text": sb["text"], "kind": r["type"]})
@@ -582,15 +681,7 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
         t0 = segs[si]["f0"] / FPS + float(c.get("offset", 0.1))
         t1 = min(t0 + float(c.get("dur", 2.5)), total_f / FPS)
         im = card_image(c, plan, dropped, base_dir)
-        pos = c.get("pos", "top")
-        if isinstance(pos, (int, float)):
-            y = int(pos)
-        elif pos == "bottom":
-            y = L["sub_y"] - 70 - im.height
-        elif pos == "mid":
-            y = L["video_y"] + 540 - im.height // 2
-        else:
-            y = L["video_y"] + 6
+        y = card_y(c, im, plan)
         f0, f1 = int(round(t0 * FPS)), int(round(t1 * FPS))
         overlays.append(Overlay(im, 0, 0, f0, f1, fade_in=4, fade_out=4, top_left=(int(CW / 2 - im.width / 2), y)))
         cards_out.append({"seg": si, "start": round(f0 / FPS, 3), "end": round(f1 / FPS, 3),

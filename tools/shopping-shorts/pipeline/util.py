@@ -207,8 +207,18 @@ _REGULAR = [
 _font_cache: dict = {}
 
 
+def settings() -> dict:
+    """사용자가 창에서 고른 설정(글자체·글자 크기). tools/shopping-shorts/settings.json"""
+    return read_json(ROOT / "settings.json", {}) or {}
+
+
 def _resolve_font(explicit: str | None, cands: list[str]) -> tuple[str, int]:
     from PIL import ImageFont
+    if explicit and "::" in explicit:      # "파일경로::묶음 안 번호" 로 정확히 지정한 글꼴
+        path, _, idx = explicit.rpartition("::")
+        if os.path.exists(path):
+            return path, int(idx or 0)
+        explicit = None
     paths = [explicit] if explicit else []
     paths += [str(ROOT / c) if not os.path.isabs(c) and ":" not in c[:3] else c for c in cands]
     for p in paths:

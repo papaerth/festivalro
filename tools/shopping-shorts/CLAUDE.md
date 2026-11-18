@@ -70,6 +70,9 @@ python shorts.py auto <편>        # 또는 --all
 ## 스크립트
 - `gui.py` 바탕화면 아이콘으로 여는 창(영상·링크·vidIQ 분석을 받아 `shorts.py auto` 실행, 업데이트, 아이콘 만들기).
   표준 라이브러리만 쓴다(numpy 등을 읽지 않는다). `쇼츠만들기.bat`이 명령창 없이 연다.
+- `preview_gui.py` 미리보기 창(글자체·크기 고르기, 앱별 화면 요소 덧그리기). 고른 값은 `settings.json`(깃 제외)에 저장되고
+  `build.apply_defaults`가 읽는다(`font_title`, `font_sub`, `title_size`, `sub_size`. plan에 직접 적은 값이 우선).
+  `pipeline/fonts.py` 한글 글자체 목록 · `pipeline/platforms.py` 쇼츠·틱톡·릴스 화면 요소
 - `pipeline/asr_words.py` 음성 인식(어절별 시각) · `pipeline/sheets.py` 프레임 시트 · `pipeline/build.py` 렌더링
 - `pipeline/checks.py` 규칙 검사·쉼 제거 · `pipeline/qa.py` 완성본 검수
 - `pipeline/tts.py` 일레븐랩스 · `pipeline/comments.py` 댓글 · `pipeline/brain.py` Claude API 판단 단계
