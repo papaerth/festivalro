@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import random  # numpy.random 은 일부 윈도우 PC의 보안 정책(스마트 앱 컨트롤)에 막혀 쓰지 않는다
 import re
 import subprocess
 import sys
@@ -117,11 +118,11 @@ def fit_font(text: str, size: int, max_w: int, bold=True, explicit=None, min_siz
 
 
 def _mosaic(d, box, seed: int, block: int, palette):
-    rng = np.random.default_rng(seed)
+    rng = random.Random(seed)
     x0, y0, x1, y1 = box
     for y in range(y0, y1, block):
         for x in range(x0, x1, block):
-            c = palette[int(rng.integers(len(palette)))]
+            c = palette[rng.randrange(len(palette))]
             d.rectangle([x, y, min(x + block, x1) - 1, min(y + block, y1) - 1], fill=c)
 
 
@@ -220,8 +221,8 @@ def synth_sfx(kind: str) -> np.ndarray:
 
     if kind == "whoosh":   # 컷 전환 휙
         n = int(0.26 * SR)
-        rng = np.random.default_rng(7)
-        noise = rng.standard_normal(n).astype(np.float32)
+        rng = random.Random(7)
+        noise = np.array([rng.gauss(0.0, 1.0) for _ in range(n)], dtype=np.float32)
         y = np.zeros(n, np.float32)
         acc = 0.0
         for i in range(n):  # 차단 주파수가 올라가는 저역통과
