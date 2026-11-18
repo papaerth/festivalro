@@ -71,7 +71,10 @@ def stage_analyze(ep: Episode):
     if not asr["words"]:
         util.die("음성 인식 결과가 비었습니다. 말소리가 있는 영상인지 확인하세요.")
     log("[분석] 제품표·후킹 순위·제품 선정 중…")
-    an = brain.analyze(meta, asr, sorted(ep.work.glob("overview_*.jpg")), ep.info, yt)
+    vidiq = ep.vidiq
+    if vidiq:
+        log("[분석] 붙여 넣은 vidIQ 분석을 함께 봅니다.")
+    an = brain.analyze(meta, asr, sorted(ep.work.glob("overview_*.jpg")), ep.info, yt, vidiq)
     util.write_json(ep.w("analysis.json"), an)
     log(f"[분석] 선정: {an['pick'].get('brand', '')} {an['pick']['name']} — {an['pick']['reason']}")
     return an
@@ -107,7 +110,7 @@ def stage_design(ep: Episode, max_rounds: int = 3):
     asr = util.read_json(ep.w("words.json"))
     zoom_asr, sheets, crop_default = stage_zoom(ep)
     images = [p.name for p in ep.images()]
-    content = brain.design_request(meta, an, zoom_asr, sheets, ep.info, yt, images, crop_default)
+    content = brain.design_request(meta, an, zoom_asr, sheets, ep.info, yt, images, crop_default, ep.vidiq)
     history, plan, copy, res = None, None, None, None
     for rnd in range(1, max_rounds + 2):
         log(f"[설계] {'컷 설계 중…' if rnd == 1 else f'규칙 검사에서 걸린 부분 고치는 중… ({rnd - 1}차)'}")
@@ -234,8 +237,9 @@ def stage_copy(ep: Episode) -> Path:
         R.append("  - 인포크 번호가 없어 설명·핀 댓글에 '(번호)'로 비워 두었습니다")
     if an.get("paid_ad"):
         R.append(f"  - 원본이 유료 광고 영상입니다: {an.get('paid_ad_note', '')}")
-    if not yt.get("comments"):
-        R.append(f"  - 댓글 카드를 넣지 못했습니다: {yt.get('error') or '댓글 없음'}")
+    if not plan.get("cards"):
+        why = (yt.get("error") or "댓글 없음").strip().splitlines()[-1][:120]
+        R.append(f"  - 댓글 카드를 넣지 못했습니다: {why}")
     for i in q.get("issues", []):
         R.append(f"  - [검수] {i}")
     for n in q.get("notes", []):

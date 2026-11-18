@@ -40,6 +40,10 @@ def _client():
         util.die(f"Claude API를 쓸 수 없습니다: {e}\ntools/shopping-shorts/.env 에 ANTHROPIC_API_KEY 를 넣어 주세요.")
 
 
+def _has_credentials() -> bool:
+    return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+
+
 def ask_json(content: list, schema: dict, history: list | None = None) -> tuple[dict, list]:
     """구조화 출력(JSON 스키마)으로 답을 받는다. (답, 이어서 쓸 대화 기록)"""
     anthropic, client = _client()
@@ -67,6 +71,10 @@ def ask_json(content: list, schema: dict, history: list | None = None) -> tuple[
         util.die("Claude API에 연결하지 못했습니다. 인터넷 연결을 확인하세요.")
     except anthropic.AnthropicError as e:
         util.die(f"Claude API를 쓸 수 없습니다: {e}\ntools/shopping-shorts/.env 에 ANTHROPIC_API_KEY 를 넣어 주세요.")
+    except TypeError:
+        if not _has_credentials():   # 키가 없으면 SDK가 요청을 보내기 전에 TypeError 를 낸다
+            util.die("Claude API 키가 없습니다. tools/shopping-shorts/.env 의 ANTHROPIC_API_KEY= 뒤에 키를 넣어 주세요.")
+        raise
     if msg.stop_reason == "refusal":
         util.die("모델이 이 요청을 처리하지 않았습니다(refusal).")
     if msg.stop_reason == "max_tokens":
@@ -126,7 +134,17 @@ ANALYSIS_SCHEMA = _obj({
 })
 
 
-def analyze(meta: dict, asr: dict, sheets: list, info: dict, yt: dict) -> dict:
+def vidiq_block(vidiq: str, limit: int = 20000) -> str:
+    """사용자가 붙여 넣은 vidIQ 분석(영상을 통째로 본 결과)을 프롬프트에 넣을 글로."""
+    vidiq = (vidiq or "").strip()
+    if not vidiq:
+        return ""
+    return ("\n[vidIQ 분석 — 영상을 통째로 보고 낸 결과입니다. 프레임 시트로는 안 보이는 표정·움직임·후킹 판단과 "
+            "제품 추천은 이 분석을 우선 근거로 삼고, 시각(초)은 아래 음성 인식과 프레임으로 맞춰 확인합니다]\n"
+            + vidiq[:limit] + "\n")
+
+
+def analyze(meta: dict, asr: dict, sheets: list, info: dict, yt: dict, vidiq: str = "") -> dict:
     ask = f"""원본 영상을 분석해 쇼츠 소재가 될 제품을 고릅니다.
 
 영상 정보: 길이 {meta['duration']:.0f}초, {meta['width']}×{meta['height']}
@@ -134,7 +152,7 @@ def analyze(meta: dict, asr: dict, sheets: list, info: dict, yt: dict) -> dict:
 사용자가 정한 제품: {info.get('product') or '(없음 — 규칙 1에 따라 고릅니다)'}
 
 위 이미지는 일정 간격으로 뽑은 프레임 시트이고 각 프레임 위에 원본 시각이 적혀 있습니다.
-
+{vidiq_block(vidiq)}
 [전체 대사 — 음성 인식, 시각 포함]
 {asr_words.as_text(asr)}
 
@@ -179,7 +197,7 @@ DESIGN_SCHEMA = _obj({
 
 
 def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, info: dict, yt: dict,
-                   images: list[str], crop_default: int) -> list:
+                   images: list[str], crop_default: int, vidiq: str = "") -> list:
     pick = analysis["pick"]
     bi = analysis.get("burned_in") or {}
     ask = f"""'{pick.get('brand', '')} {pick['name']}' 로 쇼츠 한 편을 설계합니다.
@@ -197,6 +215,7 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
 후킹 순간: {json.dumps(analysis.get('hooks', [])[:10], ensure_ascii=False)}
 제품 정보: {json.dumps(next((p for p in analysis.get('products', []) if p.get('name') == pick['name']), {}), ensure_ascii=False)}
 
+{vidiq_block(vidiq, 8000)}
 [인기 댓글 — 카드에는 번호(#)로 고릅니다. 원문과 좋아요 수는 프로그램이 그대로 넣습니다]
 {comments_text(yt.get('comments') or [])}
 
@@ -215,7 +234,8 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
 - thumbnail: 썸네일로 쓸 원본 시각과 x0(표정이 가장 좋은 순간).
 - description: hook_line(쓰게 된 계기 한 줄), body_lines(영상에서 직접 말한 내용 2~3줄), closing_line, hashtags(# 포함 15개 안팎).
 - pin_question: 핀 댓글의 시청자 참여 질문 한 줄.
-- notes: 사용자에게 알릴 점(설계에서 포기한 것, 확인이 필요한 것). 없으면 "".
+- notes: 완성본을 받은 사용자가 직접 확인해야 할 점만 짧게(두세 줄). 설계를 고친 과정, 차순위 후보,
+  인포크 번호처럼 프로그램이 따로 알리는 내용은 쓰지 않습니다. 없으면 "".
 
 완성 길이는 컷 길이 합 ÷ 1.1 + TTS 길이(대략 글자당 0.15초 + 0.3초)로 어림합니다."""
     return _sheets(sheets, "제품 구간 프레임 시트") + [{"type": "text", "text": ask}]

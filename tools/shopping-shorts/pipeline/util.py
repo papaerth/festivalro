@@ -266,6 +266,12 @@ class Episode:
         return {"url": d.get("url", ""), "inpock": str(d.get("inpock", "") or ""),
                 "product": d.get("product", ""), "channel": d.get("channel", "")}
 
+    @property
+    def vidiq(self) -> str:
+        """사용자가 넣은 vidIQ 분석 글(input/<편>/vidiq.txt). 없으면 빈 문자열."""
+        p = self.inp / "vidiq.txt"
+        return p.read_text(encoding="utf-8", errors="replace").strip() if p.exists() else ""
+
     def set_info(self, **kw):
         d = read_json(self.inp / "info.json", {}) or {}
         d.update({k: v for k, v in kw.items() if v})

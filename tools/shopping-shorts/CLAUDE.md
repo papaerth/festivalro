@@ -13,6 +13,7 @@
 - `img1.jpg`, `img2.jpg` — TTS 구간에 쓸 이미지 (선택. 없으면 원본 영상의 정지 화면)
 - `tts1.mp3`, `tts2.mp3` — 일레븐랩스 키가 없을 때 직접 넣는 TTS 음성 (선택)
 - `comments.json` — 댓글을 직접 줄 때 (선택. 형식은 아래)
+- `vidiq.txt` — vidIQ 분석 결과를 붙여 넣은 글 (선택. 자동 실행의 제품 선정·컷 설계가 함께 읽는다)
 
 `output/<편이름>/`에 만들어지는 것 — 이 여섯 가지가 한 편의 완성본이다
 1. `<제품명>_배경음O.mp4` 2. `<제품명>_배경음X.mp4` 3. `<제품명>_썸네일.jpg`
@@ -66,6 +67,8 @@ python shorts.py auto <편>        # 또는 --all
 - 화면 배치·속도 등 고정값은 `pipeline/build.py`의 `DEFAULTS`. plan의 `layout`으로 편마다 덮어쓸 수 있다.
 
 ## 스크립트
+- `gui.py` 바탕화면 아이콘으로 여는 창(영상·링크·vidIQ 분석을 받아 `shorts.py auto` 실행, 업데이트, 아이콘 만들기).
+  표준 라이브러리만 쓴다(numpy 등을 읽지 않는다). `쇼츠만들기.bat`이 명령창 없이 연다.
 - `pipeline/asr_words.py` 음성 인식(어절별 시각) · `pipeline/sheets.py` 프레임 시트 · `pipeline/build.py` 렌더링
 - `pipeline/checks.py` 규칙 검사·쉼 제거 · `pipeline/qa.py` 완성본 검수
 - `pipeline/tts.py` 일레븐랩스 · `pipeline/comments.py` 댓글 · `pipeline/brain.py` Claude API 판단 단계
