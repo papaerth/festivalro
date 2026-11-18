@@ -179,7 +179,7 @@ def _outputs_fresh(ep: Episode) -> bool:
     newest = max([ep.w("plan.json").stat().st_mtime] +
                  [p.stat().st_mtime for p in ep.inp.glob("tts*.mp3")])
     outs = (util.read_json(res) or {}).get("outputs", {})
-    return res.stat().st_mtime >= newest and all(Path(p).exists() for p in outs.values())
+    return res.stat().st_mtime >= newest and all((ep.out / Path(p).name).exists() for p in outs.values())
 
 
 def stage_render(ep: Episode, uvr_model=None, no_uvr=False):
@@ -235,6 +235,13 @@ def stage_copy(ep: Episode) -> Path:
           f"📌 프로필 인포크 링크 → '{num}' 검색하면 바로 나와요. 🔗", "", copy.get("pin_question", "")]
     ep.out.mkdir(parents=True, exist_ok=True)
     (ep.out / f"{name}_업로드문구.txt").write_text("\n".join(L).rstrip() + "\n", encoding="utf-8")
+    desc_text = "\n".join(
+        [f"📌 {product}", f"🔗 프로필 인포크 링크에서 '{num}' 검색", ""]
+        + [x for x in [desc.get("hook_line", "")] + list(desc.get("body_lines", [])) + [desc.get("closing_line", "")] if x]
+        + ["", " ".join(desc.get("hashtags", []))]).strip()
+    pin_text = "\n".join([f"제품명 : {product}", "📌 제품 태그 하시거나",
+                          f"📌 프로필 인포크 링크 → '{num}' 검색하면 바로 나와요. 🔗", "",
+                          copy.get("pin_question", "")]).strip()
 
     checks_ = ["유튜브 업로드 화면에서 제품 태그 검색이 되는지 (안 되면 아래 차순위 후보로)",
                "배경음X 버전에서 목소리가 뭉개지지 않았는지 직접 들어 보기"]
@@ -251,6 +258,8 @@ def stage_copy(ep: Episode) -> Path:
     pick = an.get("pick") or {}
     data = {
         "episode": ep.name, "product": product, "duration": q.get("duration"),
+        "version": (util.read_json(ep.w("version.json")) or {}).get("dir", ""),
+        "description": desc_text, "pin_comment": pin_text,
         "files": [f"{name}_배경음O.mp4", f"{name}_배경음X.mp4", f"{name}_썸네일.jpg", f"{name}_업로드문구.txt"],
         "pick_reason": pick.get("reason", ""),
         "checks": checks_,
@@ -298,7 +307,28 @@ def clear_from(ep: Episode, stage: str):
             ep.w("review.json").unlink(missing_ok=True)
 
 
+VERSION_LABEL = {"analyze": "제품변경", "design": "컷다시", "render": "다시렌더"}
+
+
+def pick_version(ep: Episode, redo: str | None):
+    """완성본을 덮어쓰지 않게 버전 폴더를 정한다: 처음은 01_처음, 다시 만들 때마다 새 폴더."""
+    if not ep.w("version.json").exists():
+        if (ep.out_root / "_plan_resolved.json").exists():
+            # 버전 폴더가 없던 때 만든 완성본을 01_처음 으로 옮긴다
+            files = [p for p in ep.out_root.iterdir() if p.is_file()]
+            d = ep.start_version("처음")
+            for p in files:
+                p.replace(d / p.name)
+        else:
+            ep.start_version("처음")
+    if redo in VERSION_LABEL and (ep.out / "_plan_resolved.json").exists():
+        label = "수정" if redo == "design" and ep.feedback else VERSION_LABEL[redo]
+        before = ep.out.name
+        log(f"[버전] 이전 완성본은 {before} 에 그대로 두고 새 폴더에 만듭니다: {ep.start_version(label).name}")
+
+
 def auto(ep: Episode, redo: str | None = None, review: bool = True, uvr_model=None):
+    pick_version(ep, redo)
     if redo:
         clear_from(ep, redo)
     log(f"━━ {ep.name} ━━")
@@ -329,7 +359,7 @@ def pending_episodes() -> list[str]:
     out = []
     for d in sorted(inp.iterdir()) if inp.is_dir() else []:
         if d.is_dir() and any(p.suffix.lower() in util.VIDEO_EXT for p in d.iterdir()):
-            if not list((util.ROOT / "output" / d.name).glob("*_보고.txt")):
+            if not list((util.ROOT / "output" / d.name).rglob("*_보고.txt")):
                 out.append(d.name)
     return out
 
@@ -425,6 +455,7 @@ def main():
             print(f"{st:8s}", " ".join(f"{f}{'✓' if ep.w(f).exists() else '✗'}" for f in STAGE_FILES[st]))
         print(f"{'render':8s}", "완료" if _outputs_fresh(ep) else "필요")
         print(f"{'copy':8s}", "완료" if list(ep.out.glob('*_보고.txt')) else "필요")
+        print(f"{'폴더':8s}", ep.out)
 
 
 if __name__ == "__main__":

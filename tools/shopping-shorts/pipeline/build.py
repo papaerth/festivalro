@@ -646,7 +646,7 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
         util.run([util.ffmpeg_bin(), "-v", "error", "-y", "-i", vid_tmp, "-i", wav, "-map", "0:v", "-map", "1:a",
                   "-c:v", "copy", "-af", af + ",alimiter=limit=0.84:level=false", "-ar", SR, "-c:a", "aac",
                   "-b:a", "192k", "-movflags", "+faststart", "-t", f"{total_f / FPS:.3f}", dst])
-        outs[tag], loud[tag] = str(dst), measured
+        outs[tag], loud[tag] = dst.name, measured
     for p in tmp.iterdir():
         p.unlink()
     tmp.rmdir()
@@ -660,7 +660,7 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
                      for r in segs],
         "subs": subs_out, "cards": cards_out, "sfx": sfx_out, "tts": tts_report,
         "dropped_emoji": dropped, "bgm_removed": not (no_uvr or not meta["has_audio"]),
-        "outputs": {**outs, "thumbnail": str(thumb_path)},
+        "outputs": {**outs, "thumbnail": thumb_path.name},   # out_dir 안의 파일 이름
     }
     util.write_json(out_dir / "_plan_resolved.json", resolved)
     util.log(f"[완료] {resolved['duration']}초 · {out_dir}")

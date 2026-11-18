@@ -36,7 +36,7 @@ def run_qa(out_dir) -> dict:
     res = util.read_json(out_dir / "_plan_resolved.json")
     if not res:
         util.die(f"{out_dir}/_plan_resolved.json 이 없습니다. 먼저 build.py 로 렌더링하세요.")
-    vo, vx = res["outputs"]["배경음O"], res["outputs"]["배경음X"]
+    vo, vx = (out_dir / Path(res["outputs"][k]).name for k in ("배경음O", "배경음X"))
     issues, notes = [], []
 
     # 1) 길이

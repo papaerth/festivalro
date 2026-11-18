@@ -248,10 +248,25 @@ class Episode:
         base = Path(root) if root else ROOT
         self.inp = base / "input" / name
         self.work = base / "work" / name
-        self.out = base / "output" / name
+        self.out_root = base / "output" / name
         if not self.inp.is_dir():
             die(f"입력 폴더가 없습니다: {self.inp}\n원본 영상을 넣은 input/{name}/ 폴더를 만들어 주세요.")
         self.work.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def out(self) -> Path:
+        """지금 만들고 있는 버전의 폴더(output/<편>/02_수정 …). 버전을 쓰지 않으면 output/<편>."""
+        v = read_json(self.work / "version.json") or {}
+        return self.out_root / v["dir"] if v.get("dir") else self.out_root
+
+    def start_version(self, label: str) -> Path:
+        """새 버전 폴더를 만들고 그쪽으로 바꾼다. 이전 버전은 그대로 남는다."""
+        nums = [int(p.name[:2]) for p in self.out_root.glob("[0-9][0-9]_*") if p.is_dir()] if self.out_root.is_dir() else []
+        n = max(nums, default=0) + 1
+        d = self.out_root / f"{n:02d}_{safe_name(label)}"
+        d.mkdir(parents=True, exist_ok=True)
+        write_json(self.work / "version.json", {"dir": d.name, "n": n, "label": label})
+        return d
 
     @property
     def source(self) -> Path:

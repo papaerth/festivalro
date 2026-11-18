@@ -242,6 +242,8 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
 
 출력 형식
 - combos: 썸네일 문구(top1 윗줄, top2 아랫줄)와 업로드 제목(title) 조합 3개, 좋은 순서대로. 첫 번째가 화면 상단 제목이 됩니다.
+  업로드 제목은 피드에서 손을 멈추게 하는 후킹 문장으로 씁니다(궁금증·반전·구체적인 상황이나 숫자, 40자 이내).
+  세 개는 서로 다른 각도로 씁니다.
 - crop: size는 1:1 크롭 한 변(보통 {crop_default}), x_min/x_max는 크롭이 들어가도 되는 원본 x 범위(모서리 라벨·고지 문구를 피한 범위).
 - timeline: 재생 순서대로.
   · 컷: type "cut", a/b 원본 초, x0 크롭 왼쪽 x, subs 자막 묶음(t는 첫 어절 시작 시각, em은 노란 강조, sfx는 그 순간 효과음 또는 ""),

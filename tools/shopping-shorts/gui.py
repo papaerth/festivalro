@@ -154,16 +154,36 @@ def prepare_episode(name: str, video: str, url: str, inpock: str, product: str, 
     return cmd, notes
 
 
-def load_result(name: str) -> dict | None:
-    """output/<편>/_보고.json. 예전 방식으로 만든 편이면 보고 글만 담아 돌려준다."""
-    d = ROOT / "output" / name
+def _result_in(d: Path) -> dict | None:
     data = read_json(d / "_보고.json")
     if data:
         return data
     txts = sorted(d.glob("*_보고.txt"), key=lambda p: -p.stat().st_mtime) if d.is_dir() else []
-    if txts:
-        return {"plain": txts[0].read_text(encoding="utf-8", errors="replace")}
-    return None
+    return {"plain": txts[0].read_text(encoding="utf-8", errors="replace")} if txts else None
+
+
+def list_versions(name: str) -> list[dict]:
+    """만든 버전들(최신이 먼저). [{"dir": 폴더, "label": 목록에 보일 이름, "data": 보고}]"""
+    root = ROOT / "output" / name
+    if not name or not root.is_dir():
+        return []
+    out = []
+    for d in sorted((p for p in root.glob("[0-9][0-9]_*") if p.is_dir()), reverse=True):
+        data = _result_in(d)
+        if data:
+            out.append({"dir": d, "label": f"{d.name.replace('_', ' ', 1)}  ·  {data.get('product', '')}".rstrip(" ·"),
+                        "data": data})
+    legacy = _result_in(root)
+    if legacy:   # 버전 폴더가 없던 때 만든 것
+        out.append({"dir": root, "label": f"처음  ·  {legacy.get('product', '')}".rstrip(" ·"), "data": legacy})
+    if out:
+        out[0]["label"] += "   (최신)"
+    return out
+
+
+def load_result(name: str) -> dict | None:
+    v = list_versions(name)
+    return v[0]["data"] if v else None
 
 
 def desktop_dir() -> Path:
@@ -362,9 +382,18 @@ def run_gui(argv: list[str]):
               justify="left").grid(row=8, column=0, columnspan=3, sticky="w", **pad)
 
     # ---- 아래쪽: [결과] 와 [진행 기록] 두 장
+    ver_bar = ttk.Frame(frm)
+    ver_bar.grid(row=9, column=0, columnspan=3, sticky="ew", **pad)
+    ttk.Label(ver_bar, text="버전").pack(side="left")
+    v_ver = tk.StringVar()
+    cb_ver = ttk.Combobox(ver_bar, textvariable=v_ver, state="readonly", width=44)
+    cb_ver.pack(side="left", padx=8)
+    b_ver = ttk.Button(ver_bar, text="이 버전 폴더 열기")
+    b_ver.pack(side="left")
+    ttk.Label(ver_bar, text="   다시 만들 때마다 새 버전으로 남습니다", foreground=GRAY).pack(side="left")
     nb = ttk.Notebook(frm)
-    nb.grid(row=9, column=0, columnspan=3, sticky="nsew", **pad)
-    frm.rowconfigure(9, weight=1)
+    nb.grid(row=10, column=0, columnspan=3, sticky="nsew", **pad)
+    frm.rowconfigure(10, weight=1)
 
     def text_pane(parent, **kw):
         box = ttk.Frame(parent)
@@ -377,10 +406,10 @@ def run_gui(argv: list[str]):
         return box, t
 
     tab_res = ttk.Frame(nb)
-    tab_res.rowconfigure(0, weight=1)
+    tab_res.rowconfigure(1, weight=1)
     tab_res.columnconfigure(0, weight=1)
     box_res, t_res = text_pane(tab_res, height=10)
-    box_res.grid(row=0, column=0, sticky="nsew")
+    box_res.grid(row=1, column=0, sticky="nsew")
     t_res.tag_configure("title", font=F_TITLE, foreground=INK, spacing3=8)
     t_res.tag_configure("h", font=F_HEAD, foreground=BLUE, spacing1=10, spacing3=4)
     t_res.tag_configure("item", lmargin1=18, lmargin2=34)
@@ -389,15 +418,23 @@ def run_gui(argv: list[str]):
     t_res.tag_configure("dim", lmargin1=18, lmargin2=34, foreground=GRAY)
 
     alt_box = ttk.LabelFrame(tab_res, text="차순위 후보로 다시 만들기 (제품 태그 검색이 안 될 때)", padding=6)
-    alt_box.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-    fb_box = ttk.LabelFrame(tab_res, text="수정 요청 — 고치고 싶은 점을 적으면 컷 설계부터 다시 만듭니다 "
-                                          "(예: 첫 장면을 바르는 장면으로 / 제목을 더 짧게 / 댓글 카드는 아래쪽에)", padding=6)
-    fb_box.grid(row=2, column=0, sticky="ew", pady=(6, 0))
+    alt_box.grid(row=2, column=0, sticky="ew", pady=(6, 0))
+    fb_box = ttk.LabelFrame(tab_res, text="수정 요청 — 고칠 점을 적고 버튼(또는 Ctrl+Enter)을 누르면 수정본을 새 버전으로 만듭니다",
+                            padding=6)
+    fb_box.grid(row=3, column=0, sticky="ew", pady=(6, 0))
     fb_box.columnconfigure(0, weight=1)
     t_feedback = tk.Text(fb_box, height=2, wrap="word", undo=True, font=(fam, 11), foreground=INK, background="white")
     t_feedback.grid(row=0, column=0, sticky="ew")
     b_fb = ttk.Button(fb_box, text="수정 요청 반영해서\n다시 만들기")
     b_fb.grid(row=0, column=1, sticky="ns", padx=(8, 0))
+
+    tab_up = ttk.Frame(nb)
+    box_up, t_up = text_pane(tab_up, height=10)
+    box_up.pack(fill="both", expand=True)
+    t_up.tag_configure("h", font=F_HEAD, foreground=BLUE, spacing1=10, spacing3=4)
+    t_up.tag_configure("copy", lmargin1=8, lmargin2=8, spacing1=8)
+    t_up.tag_configure("quote", lmargin1=84, lmargin2=84, foreground=INK, background="#f3f6fc")
+    t_up.tag_configure("dim", lmargin1=84, lmargin2=84, foreground=GRAY)
 
     tab_log = ttk.Frame(nb)
     box_log, t_log = text_pane(tab_log, height=10)
@@ -409,10 +446,11 @@ def run_gui(argv: list[str]):
     t_log.tag_configure("head", font=(fam, 12, "bold"), spacing1=8)
     t_log.tag_configure("dim", foreground=GRAY)
     nb.add(tab_res, text="  결과  ")
+    nb.add(tab_up, text="  업로드 문구 복사  ")
     nb.add(tab_log, text="  진행 기록  ")
 
     foot = ttk.Frame(frm)
-    foot.grid(row=10, column=0, columnspan=3, sticky="ew", **pad)
+    foot.grid(row=11, column=0, columnspan=3, sticky="ew", **pad)
 
     def log(msg: str):
         line = msg.rstrip("\n")
@@ -429,23 +467,44 @@ def run_gui(argv: list[str]):
         t_log.see("end")
         t_log.configure(state="disabled")
 
-    def show_result(name: str):
-        """결과 장을 다시 그린다: 만든 것, 사람이 확인할 것, 수정 요청 반영, 제목 후보, 차순위 후보."""
-        data = load_result(name)
+    def copy_text(text: str, what: str):
+        root.clipboard_clear()
+        root.clipboard_append(text)
+        root.update_idletasks()
+        v_status.set(f"복사했습니다: {what}  (유튜브 업로드 화면에 Ctrl+V)")
+
+    def show_result(name: str, pick: int = 0):
+        """결과 장을 다시 그린다: 확인할 것, 수정 요청 반영, 업로드 문구(복사), 차순위 후보."""
+        vers = list_versions(name)
+        state["versions"] = vers
+        cb_ver.configure(values=[v["label"] for v in vers])
+        pick = min(pick, len(vers) - 1) if vers else 0
+        v_ver.set(vers[pick]["label"] if vers else "")
+        state["shown"] = vers[pick]["dir"] if vers else None
+        data = vers[pick]["data"] if vers else None
+        latest = pick == 0
         for w in alt_box.winfo_children():
             w.destroy()
-        t_res.configure(state="normal")
-        t_res.delete("1.0", "end")
+        for t in (t_res, t_up):
+            for w in t.winfo_children():
+                w.destroy()
+            t.configure(state="normal")
+            t.delete("1.0", "end")
 
         def put(text, tag="item"):
             t_res.insert("end", text + "\n", tag)
 
+        def up(text, tag="dim"):
+            t_up.insert("end", text + "\n", tag)
+
         if not data:
+            up("결과가 나오면 제목·설명·핀 댓글을 여기서 [복사]로 가져갈 수 있습니다.")
             put("아직 만든 결과가 없습니다.", "dim")
             put("[만들기]를 누르면 진행 상황은 '진행 기록'에, 끝난 뒤 결과는 여기에 나옵니다.", "dim")
             ttk.Label(alt_box, text="결과가 나오면 후보가 여기에 표시됩니다.", foreground=GRAY).pack(anchor="w")
         elif "plain" in data:
             put(data["plain"], "")
+            up("이 버전은 예전 방식으로 만들어 복사 버튼이 없습니다. 한 번 더 [만들기] 하면 생깁니다.")
             ttk.Label(alt_box, text="이 편을 한 번 더 [만들기] 하면 후보 버튼이 표시됩니다.", foreground=GRAY).pack(anchor="w")
         else:
             dur = f"  ·  {data['duration']}초" if data.get("duration") else ""
@@ -469,15 +528,34 @@ def run_gui(argv: list[str]):
                 put(f"{i}.  {a.get('brand', '')} {a.get('name', '')}".rstrip())
                 if a.get("reason"):
                     put(f"     {a['reason']}", "dim")
-            put("제목과 썸네일 문구", "h")
+            put("제목·설명·핀 댓글은 위의 [업로드 문구 복사] 장에서 버튼으로 복사합니다.", "dim")
+
+            def copy_row(label, text, what, show=None):
+                t_up.insert("end", " ", "copy")
+                t_up.window_create("end", window=ttk.Button(t_up, text="복사", width=6,
+                                                            command=lambda: copy_text(text, what)))
+                t_up.insert("end", f"  {label}\n", "copy")
+                if show:
+                    t_up.insert("end", show.rstrip() + "\n", "quote")
+
+            up("제목 — 후킹 순서대로 3개", "h")
             for i, c in enumerate(data.get("combos", [])):
-                put(f"{'1순위' if i == 0 else f'대안 {i}'}:  {c.get('title', '')}   ―   썸네일  {' / '.join(c.get('top', []))}")
+                rank = "1순위" if i == 0 else f"대안 {i}"
+                copy_row(f"{rank}   {c.get('title', '')}", c.get("title", ""), f"제목 {rank}")
+                up(f"화면 상단·썸네일 문구:  {' / '.join(c.get('top', []))}")
+            if data.get("description"):
+                up("설명", "h")
+                copy_row("설명 전체", data["description"], "설명", data["description"])
+                up("핀 댓글", "h")
+                copy_row("핀 댓글 전체", data.get("pin_comment", ""), "핀 댓글", data.get("pin_comment", ""))
+            else:
+                up("이 버전은 예전 방식으로 만들어 설명·핀 댓글 복사가 없습니다. 한 번 더 [만들기] 하면 생깁니다.")
             put("만든 파일", "h")
             put("  ·  ".join(data.get("files", [])), "dim")
             if not alts:
                 put("(후보가 없습니다)", "dim")
                 ttk.Label(alt_box, text="후보가 없습니다.", foreground=GRAY).pack(anchor="w")
-            for a in alts:
+            for a in alts if latest else []:
                 pname = f"{a.get('brand', '')} {a.get('name', '')}".strip()
 
                 def remake(pname=pname):
@@ -486,8 +564,39 @@ def run_gui(argv: list[str]):
                         v_product.set(pname)
                         run()
                 ttk.Button(alt_box, text=f"{pname} (으)로 다시 만들기", command=remake).pack(side="left", padx=(0, 8))
-        t_res.configure(state="disabled")
-        t_res.yview_moveto(0)
+        if data and "plain" not in data and not latest:
+            ttk.Label(alt_box, text="이전 버전을 보고 있습니다. 다시 만들기는 최신 버전에서 합니다.",
+                      foreground=GRAY).pack(anchor="w")
+        for t in (t_res, t_up):
+            t.configure(state="disabled")
+            t.yview_moveto(0)
+
+    def on_version(_=None):
+        labels = [v["label"] for v in state.get("versions", [])]
+        if v_ver.get() in labels:
+            show_result(state["name"] or safe_episode(v_name.get()), labels.index(v_ver.get()))
+
+    def notify(title: str, msg: str, ask: bool = False) -> bool:
+        """창을 앞으로 가져오고 소리와 함께 알림을 띄운다."""
+        try:
+            root.deiconify()
+            root.lift()
+            root.attributes("-topmost", True)
+            root.bell()
+            if os.name == "nt":
+                import ctypes
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                ctypes.windll.user32.FlashWindow(ctypes.windll.user32.GetParent(root.winfo_id()), True)
+        except Exception:
+            pass
+        try:
+            return bool(messagebox.askyesno(title, msg) if ask else messagebox.showinfo(title, msg))
+        finally:
+            try:
+                root.attributes("-topmost", False)
+            except Exception:
+                pass
 
     def busy(on: bool):
         for b in (b_run, b_fb):
@@ -559,14 +668,21 @@ def run_gui(argv: list[str]):
             log(n)
         nb.select(tab_log)
 
+        revised = "--redo" in cmd
+
         def after(code):
             v_redo.set("이어서 하기")
             if code == 0:
                 show_result(name)
                 nb.select(tab_res)
                 fold(True)
-                messagebox.showinfo("완료", f"'{name}' 편을 만들었습니다.\n아래 [결과]에서 확인할 것을 보고, "
-                                    "[결과 폴더 열기]로 영상을 확인하세요.")
+                d = state.get("shown")
+                what = f"수정본을 만들었습니다 ({d.name})" if revised and d else f"'{name}' 편을 만들었습니다"
+                if notify("완료", f"{what}.\n\n지금 폴더를 열어 영상을 볼까요?\n"
+                          "제목·설명·핀 댓글은 [결과]에서 [복사]로 가져갈 수 있습니다.", ask=True):
+                    open_out()
+            else:
+                notify("멈췄습니다", f"'{name}' 편을 만들다가 멈췄습니다.\n[진행 기록]의 빨간 줄을 확인하세요.")
 
         start_process(cmd, f"완료: '{name}' 편을 만들었습니다. 아래 [결과]를 확인하세요.",
                       "중간에 멈췄습니다. [진행 기록]의 빨간 줄을 확인하세요. 고친 뒤 [만들기]를 누르면 이어서 합니다.", after)
@@ -589,7 +705,9 @@ def run_gui(argv: list[str]):
 
     def open_out():
         name = state["name"] or safe_episode(v_name.get())
-        d = ROOT / "output" / name if name and (ROOT / "output" / name).is_dir() else ROOT / "output"
+        d = state.get("shown")
+        if not d or not Path(d).is_dir():
+            d = ROOT / "output" / name if name and (ROOT / "output" / name).is_dir() else ROOT / "output"
         if not d.is_dir():
             messagebox.showinfo("결과 폴더", "아직 만든 결과가 없습니다.")
             return
@@ -643,6 +761,9 @@ def run_gui(argv: list[str]):
     b_fb.configure(command=run_feedback)
     b_stop.configure(command=stop)
     b_open.configure(command=open_out)
+    b_ver.configure(command=open_out)
+    cb_ver.bind("<<ComboboxSelected>>", on_version)
+    t_feedback.bind("<Control-Return>", lambda e: (run_feedback(), "break")[1])
     ttk.Button(foot, text="바탕화면 아이콘 만들기", command=shortcut).pack(side="left")
     ttk.Button(foot, text="키 설정(.env)", command=edit_env).pack(side="left", padx=8)
     ttk.Button(foot, text="프로그램 업데이트", command=update).pack(side="left")
