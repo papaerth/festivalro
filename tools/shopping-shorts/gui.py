@@ -186,6 +186,59 @@ def load_result(name: str) -> dict | None:
     return v[0]["data"] if v else None
 
 
+STATE_FILE = ROOT / "work" / "gui_state.json"
+
+
+def load_state() -> dict:
+    return read_json(STATE_FILE, {}) or {}
+
+
+def save_state(**kw):
+    """마지막에 보던 편과 입력 내용을 남겨, 창을 다시 열 때 이어서 보이게 한다."""
+    try:
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATE_FILE.write_text(json.dumps(kw, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def log_file(name: str) -> Path:
+    return ROOT / "work" / name / "gui_log.txt"
+
+
+def read_log_tail(name: str, lines: int = 400) -> list[str]:
+    p = log_file(name)
+    if not name or not p.exists():
+        return []
+    return p.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:]
+
+
+def episode_summaries() -> list[dict]:
+    """이전 작업 목록(최근 작업이 먼저): 편 이름, 제품, 버전 수, 마지막 작업 시각, 상태."""
+    import time
+    out = []
+    for name in existing_episodes():
+        vers = list_versions(name)
+        work = ROOT / "work" / name
+        times = [p.stat().st_mtime for d in (ROOT / "input" / name, work) if d.is_dir() for p in d.iterdir()]
+        times += [v["dir"].stat().st_mtime for v in vers]
+        last = max(times, default=0)
+        if vers:
+            status = f"완성 (버전 {len(vers)}개)"
+        elif (work / "plan.json").exists():
+            status = "렌더링 전에 멈춤"
+        elif (work / "analysis.json").exists():
+            status = "컷 설계 전에 멈춤"
+        elif work.is_dir() and any(work.iterdir()):
+            status = "분석 전에 멈춤"
+        else:
+            status = "영상만 넣음"
+        out.append({"name": name, "product": (vers[0]["data"].get("product", "") if vers else ""),
+                    "status": status, "last": last,
+                    "when": time.strftime("%m-%d %H:%M", time.localtime(last)) if last else ""})
+    return sorted(out, key=lambda e: -e["last"])
+
+
 def desktop_dir() -> Path:
     if os.name == "nt":
         import ctypes
@@ -308,29 +361,82 @@ def run_gui(argv: list[str]):
         widget.delete("1.0", "end")
         widget.insert("1.0", text)
 
+    def open_episode(name: str):
+        """편 하나를 창에 불러온다: 입력 내용, 결과, 업로드 문구, 진행 기록."""
+        ep = load_episode(name)
+        v_name.set(name)
+        v_url.set(ep["url"])
+        v_inpock.set(ep["inpock"])
+        v_product.set(ep["product"])
+        v_video.set(ep["video"])
+        set_text(t_vidiq, ep["vidiq"])
+        set_text(t_feedback, ep["feedback"])
+        state["name"] = name
+        t_log.configure(state="normal")
+        t_log.delete("1.0", "end")
+        t_log.configure(state="disabled")
+        old_lines = read_log_tail(name)
+        for ln in old_lines:
+            log(ln, save=False)
+        if old_lines:
+            log("──────── 여기까지 이전 기록 ────────", save=False)
+        show_result(name)
+        done = bool(load_result(name))
+        fold(done)
+        nb.select(tab_res if done else tab_log)
+        v_status.set(f"'{name}' 편을 불러왔습니다. " + ("결과와 업로드 문구를 아래에서 볼 수 있습니다."
+                                                 if done else "[만들기]를 누르면 멈춘 곳부터 이어서 합니다."))
+        save_state(last=name)
+
     def on_episode(_=None):
         name = safe_episode(v_name.get())
         if name and name != state["name"] and name in existing_episodes():
-            ep = load_episode(name)
-            v_url.set(ep["url"])
-            v_inpock.set(ep["inpock"])
-            v_product.set(ep["product"])
-            if ep["video"]:
-                v_video.set(ep["video"])
-            set_text(t_vidiq, ep["vidiq"])
-            set_text(t_feedback, ep["feedback"])
-            state["name"] = name
-            v_status.set(f"'{name}' 편을 불러왔습니다. 그대로 [만들기]를 누르면 이어서 합니다.")
-            show_result(name)
-            if load_result(name):
-                fold(True)
+            open_episode(name)
+
+    def pick_previous():
+        """이전 작업 보기: 만든 편 목록에서 골라 다시 연다."""
+        items = episode_summaries()
+        if not items:
+            messagebox.showinfo("이전 작업", "아직 만든 작업이 없습니다.")
+            return
+        win = tk.Toplevel(root)
+        win.title("이전 작업 보기")
+        win.geometry(f"760x{min(520, 150 + 30 * len(items))}")
+        win.transient(root)
+        ttk.Label(win, text="다시 볼 작업을 두 번 누르거나, 고른 뒤 [열기]를 누르세요.", padding=8).pack(anchor="w")
+        cols = ("name", "product", "status", "when")
+        tree = ttk.Treeview(win, columns=cols, show="headings", selectmode="browse")
+        for c, title, w in zip(cols, ("편 이름", "제품", "상태", "마지막 작업"), (170, 270, 180, 110)):
+            tree.heading(c, text=title)
+            tree.column(c, width=w, anchor="w")
+        for e in items:
+            tree.insert("", "end", iid=e["name"], values=(e["name"], e["product"], e["status"], e["when"]))
+        tree.pack(fill="both", expand=True, padx=8)
+        tree.selection_set(items[0]["name"])
+
+        def choose(_=None):
+            sel = tree.selection()
+            if sel:
+                win.destroy()
+                if state["proc"]:
+                    messagebox.showinfo("이전 작업", "지금 만드는 중입니다. 끝난 뒤에 열어 주세요.")
+                else:
+                    open_episode(sel[0])
+
+        tree.bind("<Double-1>", choose)
+        tree.bind("<Return>", choose)
+        bar2 = ttk.Frame(win, padding=8)
+        bar2.pack(fill="x")
+        ttk.Button(bar2, text="열기", style="Go.TButton", command=choose).pack(side="right")
+        ttk.Button(bar2, text="닫기", command=win.destroy).pack(side="right", padx=8)
+        state["prev_win"] = win
 
     row(0, "원본 영상", ttk.Entry(frm, textvariable=v_video), ttk.Button(frm, text="파일 고르기", command=pick_video))
     row(1, "유튜브 링크", ttk.Entry(frm, textvariable=v_url))
     cb_name = ttk.Combobox(frm, textvariable=v_name, values=existing_episodes())
     cb_name.bind("<<ComboboxSelected>>", on_episode)
     cb_name.bind("<FocusOut>", on_episode)
-    row(2, "편 이름", cb_name)
+    row(2, "편 이름", cb_name, ttk.Button(frm, text="이전 작업 보기", command=pick_previous))
     sub = ttk.Frame(frm)
     sub.columnconfigure(3, weight=1)
     ttk.Entry(sub, textvariable=v_inpock, width=12).grid(row=0, column=0, sticky="w")
@@ -452,8 +558,16 @@ def run_gui(argv: list[str]):
     foot = ttk.Frame(frm)
     foot.grid(row=11, column=0, columnspan=3, sticky="ew", **pad)
 
-    def log(msg: str):
+    def log(msg: str, save: bool = True):
         line = msg.rstrip("\n")
+        if save and state["name"]:
+            try:
+                p = log_file(state["name"])
+                p.parent.mkdir(parents=True, exist_ok=True)
+                with open(p, "a", encoding="utf-8") as f:
+                    f.write(line + "\n")
+            except OSError:
+                pass
         st = line.strip()
         tag = ("err" if st.startswith(("[오류]", "Traceback")) or "Error" in st[:40] else
                "warn" if st.startswith(("[주의]", "[문제]", "[권고]", "- [검수]", "- [권고]")) else
@@ -660,10 +774,12 @@ def run_gui(argv: list[str]):
             messagebox.showerror("파일을 준비하지 못했습니다", str(e))
             return
         state["name"] = name
+        save_state(last=name)
         cb_name.configure(values=existing_episodes())
         if not v_url.get().strip():
             notes.append("유튜브 링크가 없어 댓글 카드 없이 만듭니다.")
-        log(f"━━ {name} 시작 ━━")
+        import time
+        log(f"━━ {name} 시작 ({time.strftime('%Y-%m-%d %H:%M')}) ━━")
         for n in notes:
             log(n)
         nb.select(tab_log)
@@ -768,19 +884,63 @@ def run_gui(argv: list[str]):
     ttk.Button(foot, text="키 설정(.env)", command=edit_env).pack(side="left", padx=8)
     ttk.Button(foot, text="프로그램 업데이트", command=update).pack(side="left")
 
+    def remember():
+        name = state["name"]
+        draft = {} if name else {"video": v_video.get(), "url": v_url.get(), "name": v_name.get(),
+                                 "inpock": v_inpock.get(), "product": v_product.get(),
+                                 "vidiq": t_vidiq.get("1.0", "end").strip()}
+        save_state(last=name, draft=draft, geometry=root.geometry())
+
     def on_close():
-        if state["proc"] and not messagebox.askyesno("닫기", "아직 만드는 중입니다. 중지하고 닫을까요?"):
+        if state["proc"] and not messagebox.askyesno("닫기", "아직 만드는 중입니다. 중지하고 닫을까요?\n"
+                                                    "(다시 열어 [만들기]를 누르면 멈춘 곳부터 이어서 합니다)"):
             return
         stop()
+        remember()
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
     show_result("")
+    saved = load_state()
+    geo = str(saved.get("geometry") or "")
+    m = re.match(r"(\d+)x(\d+)", geo)
+    if m and int(m.group(1)) <= sw and int(m.group(2)) <= sh:
+        root.geometry(f"{m.group(1)}x{m.group(2)}")
     vids = [a for a in argv if Path(a).suffix.lower() in VIDEO_EXT and Path(a).is_file()]
-    if vids:  # 아이콘 위에 영상을 끌어다 놓은 경우
+    if vids:  # 아이콘 위에 영상을 끌어다 놓은 경우: 새 작업으로 시작
         set_video(vids[0])
+    elif saved.get("last") in existing_episodes():  # 마지막에 하던 작업을 그대로 다시 연다
+        open_episode(saved["last"])
+    elif existing_episodes() and not saved.get("draft"):
+        open_episode(episode_summaries()[0]["name"])
+    elif saved.get("draft"):  # 만들기 전에 닫은 입력 내용
+        d = saved["draft"]
+        v_video.set(d.get("video", ""))
+        v_url.set(d.get("url", ""))
+        v_name.set(d.get("name", ""))
+        v_inpock.set(d.get("inpock", ""))
+        v_product.set(d.get("product", ""))
+        set_text(t_vidiq, d.get("vidiq", ""))
     if not (ROOT / ".env").exists():
         v_status.set("처음이면 아래 [키 설정(.env)]에서 Claude와 일레븐랩스 키를 넣어 주세요.")
+
+    def new_work():
+        """입력 칸을 비워 새 영상으로 시작한다(이전 작업은 [이전 작업 보기]에 남는다)."""
+        if state["proc"]:
+            return
+        state["name"] = ""
+        for v in (v_video, v_url, v_name, v_inpock, v_product, v_img[0], v_img[1]):
+            v.set("")
+        set_text(t_vidiq, "")
+        set_text(t_feedback, "")
+        t_log.configure(state="normal")
+        t_log.delete("1.0", "end")
+        t_log.configure(state="disabled")
+        show_result("")
+        fold(False)
+        v_status.set("새 작업: 원본 영상을 고르고 유튜브 링크를 붙여 넣은 뒤 [만들기]를 누르세요.")
+
+    ttk.Button(foot, text="새 작업", command=new_work).pack(side="right")
     poll()
     root.mainloop()
 
