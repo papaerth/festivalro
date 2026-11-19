@@ -65,6 +65,9 @@ def apply_defaults(plan: dict, settings: dict | None = None) -> dict:
     for key in ("font_title", "font_sub"):
         if st.get(key) and not plan.get(key):
             plan[key] = st[key]
+    for key in ("title_bold", "sub_bold", "music_file", "music_volume"):
+        if key in st and key not in plan:
+            plan[key] = st[key]
     return plan
 
 
@@ -82,7 +85,8 @@ def title_base(plan: dict):
     longest = max(title, key=lambda s: util.font(L["title_size"], True, ft).getlength(s)) if title else ""
     tf = fit_font(longest, L["title_size"], CW - 90, True, ft)
     for i, line in enumerate(title):
-        im = text_image(line, tf, WHITE if i == 0 else YELLOW, stroke_w=6, max_w=CW)
+        im = text_image(line, tf, WHITE if i == 0 else YELLOW, stroke_w=6, max_w=CW + 40,
+                        bold=bold_px(tf.size, bool(plan.get("title_bold"))))
         base.paste(im, (int(CW / 2 - im.width / 2), int(L["title_y"][i] - im.height / 2)), im)
     return base
 
@@ -90,7 +94,8 @@ def title_base(plan: dict):
 def sub_image(text: str, em: bool, plan: dict):
     """자막 한 덩이 이미지(흰색·검은 테두리, 강조는 노란색)."""
     fnt = util.font(plan["layout"]["sub_size"], True, plan.get("font_sub") or plan.get("font_bold"))
-    return text_image(text, fnt, YELLOW if em else WHITE, stroke_w=6, max_w=CW - 60)
+    return text_image(text, fnt, YELLOW if em else WHITE, stroke_w=6, max_w=CW - 60,
+                      bold=bold_px(fnt.size, bool(plan.get("sub_bold"))))
 
 
 def crop_of(plan: dict, meta: dict) -> tuple[int, int]:
@@ -127,20 +132,28 @@ def wrap_text(text: str, fnt, max_w: int) -> list[str]:
     return out
 
 
-def text_image(text: str, fnt, fill, stroke_w: int = 0, max_w: int = CW - 80, line_gap: int = 8, alpha: int = 255):
-    """가운데 정렬 글자 이미지(RGBA)."""
+def bold_px(size: int, on: bool) -> int:
+    """'굵게'를 켰을 때 글자를 두껍게 할 픽셀 수(글자 크기에 비례)."""
+    return max(1, round(size * 0.02)) if on else 0   # 더 두껍게 하면 획이 많은 글자가 뭉개진다
+
+
+def text_image(text: str, fnt, fill, stroke_w: int = 0, max_w: int = CW - 80, line_gap: int = 8, alpha: int = 255,
+               bold: int = 0):
+    """가운데 정렬 글자 이미지(RGBA). bold 는 글자를 더 두껍게 할 픽셀 수(어떤 글자체에도 쓸 수 있다)."""
     from PIL import Image, ImageDraw
-    lines = wrap_text(text, fnt, max_w - 2 * stroke_w) or [""]
+    edge = stroke_w + bold
+    lines = wrap_text(text, fnt, max_w - 2 * edge) or [""]
     asc, desc = fnt.getmetrics()
     lh = asc + desc + line_gap
-    w = int(max(fnt.getlength(ln) for ln in lines)) + 2 * stroke_w + 8
-    h = lh * len(lines) + 2 * stroke_w
+    w = int(max(fnt.getlength(ln) for ln in lines)) + 2 * edge + 8
+    h = lh * len(lines) + 2 * edge
     im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
     for i, ln in enumerate(lines):
-        x = (w - fnt.getlength(ln)) / 2
-        d.text((x, stroke_w + i * lh), ln, font=fnt, fill=fill + (alpha,),
-               stroke_width=stroke_w, stroke_fill=BLACK + (alpha,))
+        xy = ((w - fnt.getlength(ln)) / 2, edge + i * lh)
+        if stroke_w:      # 바깥 검은 테두리
+            d.text(xy, ln, font=fnt, fill=BLACK + (alpha,), stroke_width=edge, stroke_fill=BLACK + (alpha,))
+        d.text(xy, ln, font=fnt, fill=fill + (alpha,), stroke_width=bold, stroke_fill=fill + (alpha,))
     return im
 
 
@@ -353,6 +366,23 @@ def separate_vocals(pieces: list[np.ndarray], uvr_model) -> list[np.ndarray]:
     if len(voc) < len(x):
         voc = np.concatenate([voc, np.zeros((len(x) - len(voc), 2), np.float32)])
     return [voc[a:b] for a, b in spans]
+
+
+def add_music(voice: np.ndarray, music_path: Path, volume: float = 0.15) -> np.ndarray:
+    """목소리만 있는 소리(voice) 밑에 음악을 깐다. 길이에 맞춰 반복·자르고 앞뒤를 부드럽게 한다.
+    volume: 목소리 크기를 1로 봤을 때 음악의 크기(0.15 = 15%)."""
+    m = trim_silence(util.read_audio(music_path), keep=0.0)
+    n = len(voice)
+    if len(m) < SR // 2:
+        return voice
+    if len(m) < n:
+        m = np.tile(m, (n // len(m) + 1, 1))
+    m = m[:n].copy()
+    m *= (10 ** (-20 / 20) / active_rms(m)) * max(0.0, min(volume, 1.0))   # 목소리 기준(-20dBFS)에 맞춘 뒤 비율 적용
+    fi, fo = min(int(0.3 * SR), n // 4), min(int(0.8 * SR), n // 4)
+    m[:fi] *= np.linspace(0, 1, fi, dtype=np.float32)[:, None]
+    m[-fo:] *= np.linspace(1, 0, fo, dtype=np.float32)[:, None]
+    return voice + m
 
 
 def loudnorm_filter(wav: Path, target: float = -14.0) -> tuple[str, float]:
@@ -728,8 +758,18 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
     if enc.wait() != 0:
         raise RuntimeError("영상 인코딩 실패")
 
+    mixes = [("배경음O", mix_o), ("배경음X", mix_x)]
+    music_note = ""
+    mfile = plan.get("music_file")
+    if mfile:
+        mp = Path(mfile) if Path(mfile).is_absolute() else base_dir / mfile
+        if mp.exists():
+            mixes.append(("음악", add_music(mix_x, mp, float(plan.get("music_volume") or 0.15))))
+            music_note = mp.name
+        else:
+            util.log(f"[주의] 고른 음악 파일이 없어 음악 버전은 만들지 않습니다: {mp}")
     outs, loud = {}, {}
-    for tag, mix in (("배경음O", mix_o), ("배경음X", mix_x)):
+    for tag, mix in mixes:
         wav = tmp / f"{tag}.wav"
         util.write_wav(wav, mix * 0.5)
         af, measured = loudnorm_filter(wav)
@@ -750,7 +790,7 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
                       **({"a": r["a"], "b": r["b"], "x0": r["x0"]} if r["type"] == "cut" else {"text": r["text"]})}
                      for r in segs],
         "subs": subs_out, "cards": cards_out, "sfx": sfx_out, "tts": tts_report,
-        "dropped_emoji": dropped, "bgm_removed": not (no_uvr or not meta["has_audio"]),
+        "dropped_emoji": dropped, "bgm_removed": not (no_uvr or not meta["has_audio"]), "music": music_note,
         "outputs": {**outs, "thumbnail": thumb_path.name},   # out_dir 안의 파일 이름
     }
     util.write_json(out_dir / "_plan_resolved.json", resolved)

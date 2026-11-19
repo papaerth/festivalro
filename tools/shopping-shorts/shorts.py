@@ -184,7 +184,10 @@ def _outputs_fresh(ep: Episode) -> bool:
 
 def stage_render(ep: Episode, uvr_model=None, no_uvr=False):
     plan = util.read_json(ep.w("plan.json"))
-    meta, asr = util.read_json(ep.w("meta.json")), util.read_json(ep.w("words.json"))
+    if plan is None:
+        util.die(f"work/{ep.name}/plan.json 이 없습니다.")
+    meta = util.read_json(ep.w("meta.json")) or stage_prep(ep)   # 준비 단계를 건너뛰고 불렀을 때
+    asr = util.read_json(ep.w("words.json"))
     res = checks.validate(load_plan(ep.w("plan.json")), meta, ep.inp, asr)
     if res["errors"]:
         print(checks.report(res))
@@ -260,7 +263,9 @@ def stage_copy(ep: Episode) -> Path:
         "episode": ep.name, "product": product, "duration": q.get("duration"),
         "version": (util.read_json(ep.w("version.json")) or {}).get("dir", ""),
         "description": desc_text, "pin_comment": pin_text,
-        "files": [f"{name}_배경음O.mp4", f"{name}_배경음X.mp4", f"{name}_썸네일.jpg", f"{name}_업로드문구.txt"],
+        "files": [f"{name}_배경음O.mp4", f"{name}_배경음X.mp4"]
+                 + ([f"{name}_음악.mp4"] if (ep.out / f"{name}_음악.mp4").exists() else [])
+                 + [f"{name}_썸네일.jpg", f"{name}_업로드문구.txt"],
         "pick_reason": pick.get("reason", ""),
         "checks": checks_,
         "feedback": ep.feedback,

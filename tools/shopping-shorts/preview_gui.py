@@ -91,7 +91,7 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     sh = win.winfo_screenheight()
     disp_h = max(480, min(880, sh - 170))
     disp_w = int(disp_h * 9 / 16)
-    win.geometry(f"{disp_w + 470}x{disp_h + 40}")
+    win.geometry(f"{disp_w + 480}x{max(disp_h + 40, min(sh - 90, 800))}")
     win.transient(root)
 
     left = ttk.Frame(win, padding=8)
@@ -104,18 +104,26 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     v_title_font, v_sub_font = tk.StringVar(value=DEFAULT_NAME), tk.StringVar(value=DEFAULT_NAME)
     v_title_size = tk.IntVar(value=int(st0.get("title_size") or 112))
     v_sub_size = tk.IntVar(value=int(st0.get("sub_size") or 66))
+    v_title_bold = tk.BooleanVar(value=bool(st0.get("title_bold")))
+    v_sub_bold = tk.BooleanVar(value=bool(st0.get("sub_bold")))
+    v_music = tk.StringVar(value=str(st0.get("music_file") or ""))
+    v_music_label = tk.StringVar()
+    v_volume = tk.IntVar(value=int(round(float(st0.get("music_volume") or 0.15) * 100)))
     v_platform, v_card = tk.StringVar(value=""), tk.BooleanVar(value=False)
     v_note = tk.StringVar(value="글자체 목록을 읽는 중입니다…")
     refs = {DEFAULT_NAME: None}
     job = {"id": None, "img": None}
 
+    bar = ttk.Frame(right)
+    bar.pack(side="bottom", fill="x", pady=(6, 0))
+
     def section(text):
-        ttk.Label(right, text=text, font=(fam, 12, "bold"), foreground="#0b57d0").pack(anchor="w", pady=(10, 2))
+        ttk.Label(right, text=text, font=(fam, 12, "bold"), foreground="#0b57d0").pack(anchor="w", pady=(8, 2))
 
     section("볼 장면")
     box = ttk.Frame(right)
     box.pack(fill="x")
-    lb = tk.Listbox(box, height=7, exportselection=False, font=(fam, 11), activestyle="none")
+    lb = tk.Listbox(box, height=5, exportselection=False, font=(fam, 11), activestyle="none")
     sb_ = ttk.Scrollbar(box, command=lb.yview)
     lb.configure(yscrollcommand=sb_.set)
     sb_.pack(side="right", fill="y")
@@ -125,7 +133,7 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     lb.selection_set(1 if len(scenes) > 1 else 0)
     ttk.Checkbutton(right, text="댓글 카드도 함께 보기", variable=v_card, command=lambda: schedule()).pack(anchor="w", pady=(4, 0))
 
-    def font_row(title, var_font, var_size, lo, hi):
+    def font_row(title, var_font, var_size, lo, hi, var_bold):
         section(title)
         cb = ttk.Combobox(right, textvariable=var_font, state="readonly", values=[DEFAULT_NAME], height=18)
         cb.pack(fill="x")
@@ -136,10 +144,11 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
         sp = ttk.Spinbox(r, from_=lo, to=hi, increment=2, textvariable=var_size, width=6, command=lambda: schedule())
         sp.pack(side="left", padx=6)
         sp.bind("<KeyRelease>", lambda e: schedule(400))
+        ttk.Checkbutton(r, text="굵게", variable=var_bold, command=lambda: schedule()).pack(side="left", padx=14)
         return cb
 
-    cb_title = font_row("썸네일 문구(화면 상단 제목) 글자체", v_title_font, v_title_size, 60, 150)
-    cb_sub = font_row("자막 글자체", v_sub_font, v_sub_size, 40, 100)
+    cb_title = font_row("썸네일 문구(화면 상단 제목) 글자체", v_title_font, v_title_size, 60, 150, v_title_bold)
+    cb_sub = font_row("자막 글자체", v_sub_font, v_sub_size, 40, 100, v_sub_bold)
 
     section("앱에서 보이는 모습")
     for key, label in [("", "없음 (완성본 그대로)")] + list(platforms.PLATFORMS.items()):
@@ -147,7 +156,58 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     ttk.Label(right, text="버튼과 글자가 놓이는 자리를 비슷하게 흉내 낸 것입니다.\n기기와 앱 버전에 따라 조금 다릅니다.",
               foreground="#5f6368").pack(anchor="w", pady=(2, 0))
 
-    ttk.Label(right, textvariable=v_note, foreground="#a85a00", wraplength=420, justify="left").pack(anchor="w", pady=(10, 4))
+    section("배경 음악")
+    ttk.Label(right, text="목소리만 있는 버전 밑에 깔아 '_음악.mp4' 파일을 하나 더 만듭니다.",
+              foreground="#5f6368").pack(anchor="w")
+
+    def music_label():
+        p = v_music.get()
+        v_music_label.set(Path(p).name if p else "음악 없음")
+
+    def pick_music():
+        from tkinter import filedialog
+        p = filedialog.askopenfilename(parent=win, title="음악 파일 고르기",
+                                       filetypes=[("음악", "*.mp3 *.wav *.m4a *.aac *.flac *.ogg"), ("모든 파일", "*.*")])
+        if p:
+            v_music.set(p)
+            music_label()
+
+    def no_music():
+        v_music.set("")
+        music_label()
+
+    def open_library():
+        import webbrowser
+        webbrowser.open("https://www.youtube.com/audiolibrary")
+
+    def listen():
+        p = v_music.get()
+        if not p or not Path(p).exists():
+            messagebox.showinfo("음악", "먼저 음악 파일을 골라 주세요.", parent=win)
+            return
+        try:
+            import os
+            os.startfile(p) if os.name == "nt" else __import__("subprocess").Popen(["xdg-open", p])  # noqa: S606
+        except OSError as e:
+            messagebox.showerror("음악", str(e), parent=win)
+
+    ttk.Label(right, textvariable=v_music_label, foreground="#1c1c1c").pack(anchor="w")
+    m1 = ttk.Frame(right)
+    m1.pack(fill="x", pady=(2, 0))
+    ttk.Button(m1, text="음악 파일 고르기", command=pick_music).pack(side="left")
+    ttk.Button(m1, text="들어 보기", command=listen).pack(side="left", padx=4)
+    ttk.Button(m1, text="음악 없음", command=no_music).pack(side="left")
+    m2 = ttk.Frame(right)
+    m2.pack(fill="x", pady=(4, 0))
+    ttk.Label(m2, text="음악 크기").pack(side="left")
+    ttk.Scale(m2, from_=3, to=60, variable=v_volume, orient="horizontal", length=150,
+              command=lambda v: v_vol_text.set(f"{int(float(v))}%")).pack(side="left", padx=6)
+    v_vol_text = tk.StringVar(value=f"{v_volume.get()}%")
+    ttk.Label(m2, textvariable=v_vol_text, width=5).pack(side="left")
+    ttk.Button(m2, text="유튜브 오디오 보관함 열기", command=open_library).pack(side="right")
+    music_label()
+
+    ttk.Label(right, textvariable=v_note, foreground="#a85a00", wraplength=420, justify="left").pack(anchor="w", pady=(6, 2))
 
     def current() -> dict:
         def num(v, default):
@@ -157,7 +217,9 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
                 return default
         return {"font_title": refs.get(v_title_font.get()), "font_title_name": v_title_font.get(),
                 "font_sub": refs.get(v_sub_font.get()), "font_sub_name": v_sub_font.get(),
-                "title_size": max(40, min(170, num(v_title_size, 112))), "sub_size": max(30, min(120, num(v_sub_size, 66)))}
+                "title_size": max(40, min(170, num(v_title_size, 112))), "sub_size": max(30, min(120, num(v_sub_size, 66))),
+                "title_bold": bool(v_title_bold.get()), "sub_bold": bool(v_sub_bold.get()),
+                "music_file": v_music.get().strip(), "music_volume": max(3, min(60, num(v_volume, 15))) / 100}
 
     def draw():
         job["id"] = None
@@ -222,6 +284,8 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
             if not st[k]:
                 keep.pop(k, None)
                 keep.pop(k + "_name", None)
+        if not st["music_file"]:
+            keep.pop("music_volume", None)
         try:
             write_settings(keep)
         except OSError as e:
@@ -231,17 +295,17 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
             win.destroy()
             on_rerender()
         else:
-            v_note.set("저장했습니다. 다음에 만드는 영상부터 이 글자체로 나옵니다.")
+            v_note.set("저장했습니다. 다음에 만드는 영상부터 이 글자체" + ("와 음악으로" if st["music_file"] else "로") + " 나옵니다.")
 
     def reset():
         v_title_font.set(DEFAULT_NAME)
         v_sub_font.set(DEFAULT_NAME)
         v_title_size.set(112)
         v_sub_size.set(66)
+        v_title_bold.set(False)
+        v_sub_bold.set(False)
         schedule()
 
-    bar = ttk.Frame(right)
-    bar.pack(side="bottom", fill="x", pady=(8, 0))
     if has_episode and on_rerender:
         ttk.Button(bar, text="저장하고 이 편을 다시 렌더링", style="Go.TButton",
                    command=lambda: save(True)).pack(fill="x", pady=2)
