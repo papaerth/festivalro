@@ -63,7 +63,8 @@ python shorts.py auto <편>        # 또는 --all
 - `crop`: `size`(1:1 한 변, 1080p 기본 840), `y0`(기본 0), `x_min`/`x_max`(크롭이 들어가도 되는 원본 x 범위).
 - 원본 글씨: plan 맨 위 `erase`(영상 내내 같은 자리의 글씨)와 구간의 `erase`는 원본 좌표 사각형 `[[x,y,w,h], …]`을 주변 화소로 메운다.
   구간에 `"mirror": false`를 주면 그 구간만 거울반전을 하지 않는다. 우선순위는 RULES.md(피하기 → 지우기 → 반전 풀기).
-- `cards`: `seg`(뜨기 시작하는 timeline 순번), `offset`, `dur`, `text`(원문 그대로), `likes`, `heart`, `pos`.
+- `cards`: `seg`(뜨기 시작하는 timeline 순번), `offset`, `dur`, `text`(원문 그대로), `likes`, `heart`.
+  카드는 영상 아래 띠(`layout.card_y`)에 뜬다. 영상 위에 올리려면 `"on_video": true`와 `pos`(top/mid/bottom) 또는 `pos`에 y 숫자.
   실제 캡처 이미지를 쓰려면 `image`(파일명)와 `mosaic`([[x,y,w,h], …] 가릴 영역)를 준다.
 - `ranges`: 고른 제품이 나오는 원본 구간 `[[시작, 끝], …]`(analysis의 `pick.ranges`에서 옴). 있으면 규칙 검사가
   모든 컷·정지 화면·썸네일이 이 안에 있는지 본다. 제품과 무관한 장면은 넣지 않는다.

@@ -319,6 +319,7 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
 - cards: comment는 위 후보의 번호, seg는 카드가 뜨기 시작하는 timeline 순번(0부터), offset은 그 구간 시작 뒤 초, dur는 표시 시간.
   이 제품과 가장 관련 있는 댓글을 먼저 고르고, 관련성이 비슷하면 위쪽(좋아요가 많은 것)을 고릅니다.
   dur는 4~4.5초로 하고, 두 카드가 동시에 화면에 뜨지 않게 간격을 둡니다(영상 끝을 넘지 않게 seg와 offset을 잡습니다).
+  카드는 영상 아래 띠에 뜨므로 화면을 가리지 않습니다. pos는 쓰이지 않으니 "top"으로 둡니다.
   댓글을 가져오지 못했으면 빈 배열.
 - thumbnail: 썸네일로 쓸 원본 시각과 x0(표정이 가장 좋은 순간).
 - description: hook_line(쓰게 된 계기 한 줄), body_lines(영상에서 직접 말한 내용 2~3줄), closing_line, hashtags(# 포함 15개 안팎).
@@ -417,7 +418,7 @@ def review(resolved: dict, plan: dict, sheets: list, meta: dict, crop_size: int)
   (구간 정보의 mirror 가 true 인 구간은 거울반전된 상태입니다. 바로 읽히는 글씨는 문제가 아닙니다)
 - 글씨를 지운 자리에 눈에 띄는 얼룩이 남았는가
 - 이 쇼츠의 제품({plan.get('product', '')})과 무관한 장면이 들어갔는가 (다른 제품, 다른 주제의 화면). 있으면 fix "none" 으로 알립니다
-- 자막이 얼굴을 가리는가, 댓글 카드가 얼굴을 덮는가
+- 자막이 얼굴이나 제품을 가리는가 (댓글 카드는 영상 아래 띠에 뜨므로 영상을 가리지 않습니다)
 - 인물이나 제품이 화면 밖으로 잘렸는가
 
 구간 정보(완성본 시각 → 원본 구간과 x0): {json.dumps(resolved['segments'], ensure_ascii=False)}

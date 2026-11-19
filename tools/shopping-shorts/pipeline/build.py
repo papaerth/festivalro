@@ -40,8 +40,9 @@ DEFAULTS = {
         "title_size": 112,
         "sub_y": 1350,         # 자막 가운데 y
         "sub_size": 66,
-        "source_y": 1528,      # 출처 문구 가운데 y
-        "source_size": 30,
+        "card_y": 1508,        # 댓글 카드(영상 바로 아래 띠)의 위쪽 y. 영상을 가리지 않는다
+        "source_y": 1646,      # 출처 문구 가운데 y(카드 띠 아래)
+        "source_size": 28,
     },
 }
 
@@ -526,16 +527,82 @@ def split_tts_text(text: str) -> list[str]:
     return [" ".join(words[:k]), " ".join(words[k:])]
 
 
-def card_y(card: dict, im, plan: dict) -> int:
+STRIP_X, STRIP_W = 20, 920    # 영상 아래 띠 카드의 왼쪽 x 와 너비(오른쪽 앱 버튼 줄을 피해 왼쪽에 붙인다)
+
+
+def card_strip_image(card: dict, plan: dict, dropped: list):
+    """영상 아래 띠에 띄우는 댓글 카드(RGBA). 윗줄에 모자이크한 이름과 좋아요, 아랫줄에 댓글 한 줄."""
+    from PIL import Image, ImageDraw
+    width = STRIP_W
+    raw = str(card.get("text", ""))
+    text = re.sub(r"\s+", " ", EMOJI.sub("", raw)).strip()
+    gone = "".join(sorted(set(EMOJI.findall(raw))))
+    if gone:
+        dropped.append(gone)
+    reg = plan.get("font_regular")
+    fs = util.font(24, False, reg)
+    ax = 104
+    room = width - ax - 22
+    size, lines = 36, [text]
+    while size > 30 and util.font(size, False, reg).getlength(text) > room:
+        size -= 2
+    fr = util.font(size, False, reg)
+    if fr.getlength(text) > room:
+        lines = wrap_text(text, fr, room)
+    lh = size + 10
+    h = 14 + 24 + 4 + lh * len(lines) + 12
+    S = 2
+    im = Image.new("RGBA", (width * S, h * S), (0, 0, 0, 0))
+    ImageDraw.Draw(im).rounded_rectangle([0, 0, width * S - 1, h * S - 1], radius=24 * S, fill=(255, 255, 255, 250))
+    im = im.resize((width, h), Image.LANCZOS)
+    d = ImageDraw.Draw(im)
+    seed = int(hashlib.md5(raw.encode("utf-8")).hexdigest()[:8], 16)
+    av = Image.new("RGBA", (68, 68), (0, 0, 0, 0))
+    _mosaic(ImageDraw.Draw(av), (0, 0, 68, 68), seed, 12,
+            [(214, 180, 160), (190, 150, 130), (120, 110, 120), (230, 210, 200), (90, 80, 90), (170, 190, 210)])
+    mask = Image.new("L", (68 * 4, 68 * 4), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, 68 * 4 - 1, 68 * 4 - 1], fill=255)
+    im.paste(av, (20, (h - 68) // 2), mask.resize((68, 68), Image.LANCZOS))
+    _mosaic(d, (ax, 17, ax + 110 + seed % 70, 17 + 18), seed + 1, 9,
+            [(60, 60, 60), (110, 110, 110), (150, 150, 150), (200, 200, 200), (85, 85, 85)])
+    gray = (96, 96, 96, 255)
+    likes = str(card.get("likes", "") or "")
+    x = width - 24 - int(fs.getlength(likes))
+    d.text((x, 11), likes, font=fs, fill=gray)
+    _thumb_icon(d, x - 36, 12, 26, gray)
+    if card.get("heart"):
+        _heart(d, x - 36 - 26, 26, 28, (255, 48, 64, 255))
+    for i, ln in enumerate(lines):
+        d.text((ax, 40 + i * lh), ln, font=fr, fill=(15, 15, 15, 255))
+    return im
+
+
+def place_card(card: dict, plan: dict, dropped: list, base_dir: Path):
+    """댓글 카드 (이미지, x, y). 기본은 영상 바로 아래 띠(영상 속 제품·말하는 사람을 가리지 않는다).
+    카드에 "on_video": true 를 주거나 pos 를 숫자(y)로 주면 예전처럼 영상 위에 놓는다."""
     L = plan["layout"]
-    pos = card.get("pos", "top")
+    pos = card.get("pos", "below")
+
+    def centered(im, y):
+        return im, int(CW / 2 - im.width / 2), int(y)
+
     if isinstance(pos, (int, float)):
-        return int(pos)
+        return centered(card_image(card, plan, dropped, base_dir), pos)
+    if not card.get("on_video"):
+        gone: list = []
+        if card.get("image"):
+            im = card_image({**card, "width": STRIP_W}, plan, gone, base_dir)
+        else:
+            im = card_strip_image(card, plan, gone)
+        if im.height <= 128:      # 띠에 들어가는 높이일 때만(긴 댓글·큰 캡처는 영상 위로)
+            dropped.extend(gone)
+            return im, STRIP_X, int(L["card_y"])
+    im = card_image(card, plan, dropped, base_dir)
     if pos == "bottom":
-        return L["sub_y"] - 70 - im.height
+        return centered(im, L["sub_y"] - 70 - im.height)
     if pos == "mid":
-        return L["video_y"] + 540 - im.height // 2
-    return L["video_y"] + 6
+        return centered(im, L["video_y"] + 540 - im.height // 2)
+    return centered(im, L["video_y"] + 6)
 
 
 def preview_frame(plan: dict, src, base_dir, scene: dict | None = None, show_card: bool = False,
@@ -593,8 +660,8 @@ def preview_frame(plan: dict, src, base_dir, scene: dict | None = None, show_car
     cards = plan.get("cards") or []
     if show_card and cards and seg is not None:
         c = next((c for c in cards if int(c.get("seg", -1)) == scene.get("seg")), cards[0])
-        im = card_image(c, plan, [], Path(base_dir))
-        out.alpha_composite(im, (int(CW / 2 - im.width / 2), max(0, min(card_y(c, im, plan), CH - im.height))))
+        im, x, y = place_card(c, plan, [], Path(base_dir))
+        out.alpha_composite(im, (x, max(0, min(y, CH - im.height))))
     return out.convert("RGB")
 
 
@@ -739,10 +806,9 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
             util.die(f"cards의 seg={si} 가 timeline 범위를 벗어났습니다.")
         t0 = segs[si]["f0"] / FPS + float(c.get("offset", 0.1))
         t1 = min(t0 + float(c.get("dur", 4.5)), total_f / FPS)
-        im = card_image(c, plan, dropped, base_dir)
-        y = card_y(c, im, plan)
+        im, x, y = place_card(c, plan, dropped, base_dir)
         f0, f1 = int(round(t0 * FPS)), int(round(t1 * FPS))
-        ov = Overlay(im, 0, 0, f0, f1, fade_in=4, fade_out=4, top_left=(int(CW / 2 - im.width / 2), y))
+        ov = Overlay(im, 0, 0, f0, f1, fade_in=4, fade_out=4, top_left=(x, y))
         overlays.append(ov)
         card_ovs.append(ov)
         cards_out.append({"seg": si, "start": round(f0 / FPS, 3), "end": round(f1 / FPS, 3),
