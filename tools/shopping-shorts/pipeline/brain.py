@@ -120,7 +120,7 @@ def comments_text(comments: list, limit: int = 100) -> str:
 
 
 CARD_MAX_CHARS = 20     # 카드에 쓸 댓글은 이 글자 수 미만
-CARD_MIN_SEC = 4.0      # 카드 표시 시간(초) 하한
+CARD_MIN_SEC, CARD_MAX_SEC = 3.0, 3.5      # 카드 표시 시간(초)
 
 
 def card_len(text: str) -> int:
@@ -318,8 +318,8 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
     (정지 화면에도 unmirror·erase를 같은 기준으로 씁니다). a/b는 -1, subs는 [].
 - cards: comment는 위 후보의 번호, seg는 카드가 뜨기 시작하는 timeline 순번(0부터), offset은 그 구간 시작 뒤 초, dur는 표시 시간.
   이 제품과 가장 관련 있는 댓글을 먼저 고르고, 관련성이 비슷하면 위쪽(좋아요가 많은 것)을 고릅니다.
-  dur는 4~4.5초로 하고, 두 카드가 동시에 화면에 뜨지 않게 간격을 둡니다(영상 끝을 넘지 않게 seg와 offset을 잡습니다).
-  카드는 영상 아래 띠에 뜨므로 화면을 가리지 않습니다. pos는 쓰이지 않으니 "top"으로 둡니다.
+  dur는 3~3.5초로 하고, 두 카드가 동시에 화면에 뜨지 않게 간격을 둡니다(영상 끝을 넘지 않게 seg와 offset을 잡습니다).
+  카드는 자막과 출처 사이의 고정된 상자에 뜨므로 화면을 가리지 않습니다. pos는 쓰이지 않으니 "top"으로 둡니다.
   댓글을 가져오지 못했으면 빈 배열.
 - thumbnail: 썸네일로 쓸 원본 시각과 x0(표정이 가장 좋은 순간).
 - description: hook_line(쓰게 된 계기 한 줄), body_lines(영상에서 직접 말한 내용 2~3줄), closing_line, hashtags(# 포함 15개 안팎).
@@ -371,7 +371,7 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
     for c in d["cards"]:
         if 0 <= c["comment"] < len(comments):
             src = comments[c["comment"]]
-            cards.append({"seg": c["seg"], "offset": round(c["offset"], 2), "dur": round(max(CARD_MIN_SEC, c["dur"]), 2),
+            cards.append({"seg": c["seg"], "offset": round(c["offset"], 2), "dur": round(min(CARD_MAX_SEC, max(CARD_MIN_SEC, c["dur"])), 2),
                           "text": src["text"], "likes": src.get("likes_label", str(src.get("likes", ""))),
                           "heart": bool(c["heart"]), "pos": c["pos"]})
     top = d["combos"][0]
