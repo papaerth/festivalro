@@ -214,8 +214,6 @@ def validate(plan: dict, meta: dict, assets: Path | None = None, asr: dict | Non
             E.append(f"cards[{k}]: 댓글 원문이 비었습니다.")
         if cdd.get("text") and len(re.sub(r"\s+", " ", EMOJI.sub("", str(cdd["text"]))).strip()) >= 20:
             W.append(f"cards[{k}] '{str(cdd['text'])[:24]}…': 20자 이상입니다. 카드 댓글은 20자 미만이 기준입니다.")
-        if float(cdd.get("dur", 3.5)) < 3.0:
-            W.append(f"cards[{k}]: 표시 시간이 {cdd.get('dur')}초입니다. 3~3.5초가 기준입니다.")
 
     # 마무리(루프), 효과음
     last = tl[-1]

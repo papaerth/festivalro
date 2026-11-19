@@ -64,7 +64,8 @@ python shorts.py auto <편>        # 또는 --all
 - 원본 글씨: plan 맨 위 `erase`(영상 내내 같은 자리의 글씨)와 구간의 `erase`는 원본 좌표 사각형 `[[x,y,w,h], …]`을 주변 화소로 메운다.
   구간에 `"mirror": false`를 주면 그 구간만 거울반전을 하지 않는다. 우선순위는 RULES.md(피하기 → 지우기 → 반전 풀기).
 - `cards`: `seg`(뜨기 시작하는 timeline 순번), `offset`, `dur`, `text`(원문 그대로), `likes`, `heart`.
-  카드는 자막과 출처 사이의 고정 상자(`layout.card_y`, `layout.card_h`)에 뜨고, 긴 댓글은 글씨를 줄여 맞춘다. 표시 시간은 `card_max_sec`(3.5초)까지.
+  카드는 자막 바로 아래에서 `layout.card_bottom`까지의 고정 상자에 뜨고(출처 문구를 덮는다), 긴 댓글은 글씨를 줄여 맞춘다.
+  표시 시간은 `build.card_seconds`가 글자 수로 정한다(읽기에 살짝 모자라게. 비율은 `card_read`). plan의 `dur`는 `"dur_fixed": true`일 때만 쓴다.
   영상 위에 올리려면 `"on_video": true`와 `pos`(top/mid/bottom) 또는 `pos`에 y 숫자.
   실제 캡처 이미지를 쓰려면 `image`(파일명)와 `mosaic`([[x,y,w,h], …] 가릴 영역)를 준다.
 - `ranges`: 고른 제품이 나오는 원본 구간 `[[시작, 끝], …]`(analysis의 `pick.ranges`에서 옴). 있으면 규칙 검사가

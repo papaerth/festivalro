@@ -34,15 +34,14 @@ DEFAULTS = {
     "mirror": True,
     "color_filter": "eq=contrast=1.06:saturation=1.15:brightness=0.015,unsharp=5:5:0.4",
     "still_zoom": 0.05,
-    "card_max_sec": 3.5,       # 댓글 카드 하나를 보여 주는 최대 시간(초)
+    "card_read": 0.85,         # 댓글 카드 표시 시간 = 읽는 데 드는 시간 × 이 비율(살짝 모자라게)
     "layout": {
         "video_y": 420,        # 1:1 영상이 놓이는 세로 위치(1080×1080)
         "title_y": [205, 335],  # 상단 제목 두 줄의 가운데 y
         "title_size": 112,
         "sub_y": 1350,         # 자막 가운데 y
         "sub_size": 66,
-        "card_y": 1508,        # 댓글 상자의 위쪽 y — 자막(영상 안 아래쪽)과 출처 문구 사이에 고정
-        "card_h": 116,         # 댓글 상자의 높이(고정). 긴 댓글은 글씨를 줄여 이 안에 맞춘다
+        "card_bottom": 1662,   # 댓글 상자의 아래쪽 y. 상자는 자막 바로 아래에서 여기까지(출처 문구를 덮는다)
         "source_y": 1646,      # 출처 문구 가운데 y(카드 띠 아래)
         "source_size": 28,
     },
@@ -532,64 +531,76 @@ def split_tts_text(text: str) -> list[str]:
 STRIP_X, STRIP_W = 20, 920    # 영상 아래 띠 카드의 왼쪽 x 와 너비(오른쪽 앱 버튼 줄을 피해 왼쪽에 붙인다)
 
 
+def card_box(plan: dict) -> tuple[int, int]:
+    """댓글 상자의 (위쪽 y, 높이). 자막 바로 아래에서 시작해 출처 문구를 덮는 데까지. 모든 카드가 같은 자리·같은 크기다."""
+    L = plan["layout"]
+    top = int(L["card_y"]) if L.get("card_y") else int(L["sub_y"] + round(L["sub_size"] * 0.75) + 12)
+    h = int(L["card_h"]) if L.get("card_h") else int(L["card_bottom"]) - top
+    return top, max(100, h)
+
+
+def card_seconds(text: str, ratio: float = 0.85) -> float:
+    """댓글 카드를 보여 줄 시간(초): 영상을 보면서 그 댓글을 읽는 데 드는 시간보다 살짝 짧게.
+    (알아차리는 데 1초 + 글자당 0.16초) × ratio, 1.8~4초 사이. 다 못 읽고 다시 보게 하려는 뜻이다."""
+    n = len(re.sub(r"\s+", "", EMOJI.sub("", str(text))))
+    return round(max(1.8, min(4.0, (1.0 + 0.16 * n) * ratio)), 2)
+
+
 def fit_card_text(text: str, room_w: int, room_h: int, explicit=None):
-    """댓글을 상자 안에 맞춘다: 한 줄로 들어가는 가장 큰 글씨부터, 안 되면 줄을 나누고 글씨를 줄인다.
+    """댓글을 상자 안에 가장 큰 글씨로 맞춘다(필요하면 줄을 나눈다).
     돌려주는 값: (글꼴, 줄들, 줄 높이, 잘렸는지). 가장 작은 글씨로도 안 들어갈 때만 끝을 … 로 줄인다."""
-    for size in range(36, 25, -2):                       # 한 줄
-        f = util.font(size, False, explicit)
-        if f.getlength(text) <= room_w and size + 10 <= room_h:
-            return f, [text], size + 10, False
-    for size in range(28, 15, -2):                       # 두 줄, 세 줄
+    for size in range(66, 19, -2):
         f = util.font(size, False, explicit)
         lines = wrap_text(text, f, room_w)
-        if (size + 6) * len(lines) <= room_h:
-            return f, lines, size + 6, False
-    f = util.font(16, False, explicit)
-    lines = wrap_text(text, f, room_w)[: max(1, room_h // 22)]
+        lh = size + 12
+        if lh * len(lines) <= room_h and all(f.getlength(ln) <= room_w for ln in lines):
+            return f, lines, lh, False
+    f = util.font(20, False, explicit)
+    lines = wrap_text(text, f, room_w)[: max(1, room_h // 28)]
     while lines and f.getlength(lines[-1] + "…") > room_w and len(lines[-1]) > 1:
         lines[-1] = lines[-1][:-1]
     lines[-1] += "…"
-    return f, lines, 22, True
+    return f, lines, 28, True
 
 
 def card_strip_image(card: dict, plan: dict, dropped: list):
-    """자막과 출처 사이에 띄우는 댓글 상자(RGBA). 크기는 고정이고, 댓글 글씨를 줄여 그 안에 맞춘다.
-    윗줄에 모자이크한 이름과 좋아요, 그 아래에 댓글."""
+    """자막 아래에 띄우는 댓글 상자(RGBA). 자리와 크기는 고정이고, 댓글은 그 안에 가장 큰 글씨로 맞춘다.
+    윗줄에 모자이크한 프로필·이름과 좋아요, 그 아래에 댓글."""
     from PIL import Image, ImageDraw
-    width, h = STRIP_W, int(plan["layout"]["card_h"])
+    width, h = STRIP_W, card_box(plan)[1]
     raw = str(card.get("text", ""))
     text = re.sub(r"\s+", " ", EMOJI.sub("", raw)).strip()
     gone = "".join(sorted(set(EMOJI.findall(raw))))
     if gone:
         dropped.append(gone)
     reg = plan.get("font_regular")
-    fs = util.font(24, False, reg)
-    ax, top = 104, 40
-    fr, lines, lh, cut = fit_card_text(text, width - ax - 22, h - top - 8, reg)
+    fs = util.font(30, False, reg)
+    ax, top = 124, 66
+    fr, lines, lh, cut = fit_card_text(text, width - ax - 28, h - top - 18, reg)
     if cut:
         dropped.append("(댓글이 길어 끝을 줄임)")
     S = 2
     im = Image.new("RGBA", (width * S, h * S), (0, 0, 0, 0))
-    ImageDraw.Draw(im).rounded_rectangle([0, 0, width * S - 1, h * S - 1], radius=24 * S, fill=(255, 255, 255, 250))
+    ImageDraw.Draw(im).rounded_rectangle([0, 0, width * S - 1, h * S - 1], radius=30 * S, fill=(255, 255, 255, 250))
     im = im.resize((width, h), Image.LANCZOS)
     d = ImageDraw.Draw(im)
     seed = int(hashlib.md5(raw.encode("utf-8")).hexdigest()[:8], 16)
-    av = Image.new("RGBA", (68, 68), (0, 0, 0, 0))
-    _mosaic(ImageDraw.Draw(av), (0, 0, 68, 68), seed, 12,
+    av = Image.new("RGBA", (84, 84), (0, 0, 0, 0))
+    _mosaic(ImageDraw.Draw(av), (0, 0, 84, 84), seed, 14,
             [(214, 180, 160), (190, 150, 130), (120, 110, 120), (230, 210, 200), (90, 80, 90), (170, 190, 210)])
-    mask = Image.new("L", (68 * 4, 68 * 4), 0)
-    ImageDraw.Draw(mask).ellipse([0, 0, 68 * 4 - 1, 68 * 4 - 1], fill=255)
-    im.paste(av, (20, (h - 68) // 2), mask.resize((68, 68), Image.LANCZOS))
-    _mosaic(d, (ax, 17, ax + 110 + seed % 70, 17 + 18), seed + 1, 9,
+    mask = Image.new("L", (84 * 4, 84 * 4), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, 84 * 4 - 1, 84 * 4 - 1], fill=255)
+    im.paste(av, (24, 22), mask.resize((84, 84), Image.LANCZOS))
+    _mosaic(d, (ax, 24, ax + 150 + seed % 80, 24 + 24), seed + 1, 12,
             [(60, 60, 60), (110, 110, 110), (150, 150, 150), (200, 200, 200), (85, 85, 85)])
     gray = (96, 96, 96, 255)
     likes = str(card.get("likes", "") or "")
-    x = width - 24 - int(fs.getlength(likes))
-    d.text((x, 11), likes, font=fs, fill=gray)
-    _thumb_icon(d, x - 36, 12, 26, gray)
+    x = width - 30 - int(fs.getlength(likes))
+    d.text((x, 16), likes, font=fs, fill=gray)
+    _thumb_icon(d, x - 44, 18, 32, gray)
     if card.get("heart"):
-        _heart(d, x - 36 - 26, 26, 28, (255, 48, 64, 255))
-    y = top + max(0, (h - top - 8 - lh * len(lines)) // 2)       # 댓글은 남는 높이의 가운데에
+        _heart(d, x - 44 - 32, 36, 34, (255, 48, 64, 255))
+    y = top + max(0, (h - top - 18 - lh * len(lines)) // 2)       # 댓글은 남는 높이의 가운데에
     for i, ln in enumerate(lines):
         d.text((ax, y + i * lh), ln, font=fr, fill=(15, 15, 15, 255))
     return im
@@ -598,7 +609,7 @@ def card_strip_image(card: dict, plan: dict, dropped: list):
 def card_capture_image(card: dict, plan: dict, base_dir: Path):
     """실제 캡처 이미지를 댓글 상자 크기에 맞춰 넣는다(비율 유지, 모자이크 적용)."""
     from PIL import Image
-    width, h = STRIP_W, int(plan["layout"]["card_h"])
+    width, h = STRIP_W, card_box(plan)[1]
     src = card_image({**card, "width": STRIP_W}, plan, [], base_dir)
     k = min(width / src.width, h / src.height)
     src = src.resize((max(1, int(src.width * k)), max(1, int(src.height * k))), Image.LANCZOS)
@@ -608,7 +619,7 @@ def card_capture_image(card: dict, plan: dict, base_dir: Path):
 
 
 def place_card(card: dict, plan: dict, dropped: list, base_dir: Path):
-    """댓글 카드 (이미지, x, y). 자막과 출처 문구 사이의 고정된 자리·크기(영상 속 얼굴·제품을 가리지 않는다).
+    """댓글 카드 (이미지, x, y). 자막 바로 아래의 고정된 자리·크기(출처 문구는 덮고, 얼굴·제품은 가리지 않는다).
     카드에 "on_video": true 를 주거나 pos 를 숫자(y)로 줄 때만 예전처럼 영상 위에 놓는다."""
     L = plan["layout"]
     pos = card.get("pos", "below")
@@ -620,7 +631,7 @@ def place_card(card: dict, plan: dict, dropped: list, base_dir: Path):
         return centered(card_image(card, plan, dropped, base_dir), pos)
     if not card.get("on_video"):     # 크기와 자리가 고정된 상자. 길어도 영상 위로 올리지 않는다
         im = card_capture_image(card, plan, base_dir) if card.get("image") else card_strip_image(card, plan, dropped)
-        return im, STRIP_X, int(L["card_y"])
+        return im, STRIP_X, card_box(plan)[0]
     im = card_image(card, plan, dropped, base_dir)
     if pos == "bottom":
         return centered(im, L["sub_y"] - 70 - im.height)
@@ -829,7 +840,10 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
         if not 0 <= si < len(segs):
             util.die(f"cards의 seg={si} 가 timeline 범위를 벗어났습니다.")
         t0 = segs[si]["f0"] / FPS + float(c.get("offset", 0.1))
-        t1 = min(t0 + min(float(c.get("dur", 3.5)), float(plan.get("card_max_sec") or 3.5)), total_f / FPS)
+        # 표시 시간은 댓글 길이로 정한다(읽기에 살짝 모자라게). "dur_fixed": true 인 카드만 plan 의 dur 를 쓴다
+        secs = float(c["dur"]) if c.get("dur_fixed") and c.get("dur") else \
+            card_seconds(c.get("text", ""), float(plan.get("card_read") or 0.85)) if c.get("text") else 3.0
+        t1 = min(t0 + secs, total_f / FPS)
         im, x, y = place_card(c, plan, dropped, base_dir)
         f0, f1 = int(round(t0 * FPS)), int(round(t1 * FPS))
         ov = Overlay(im, 0, 0, f0, f1, fade_in=4, fade_out=4, top_left=(x, y))
