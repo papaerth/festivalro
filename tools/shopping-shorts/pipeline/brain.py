@@ -119,6 +119,31 @@ def comments_text(comments: list, limit: int = 100) -> str:
                      for i, c in enumerate(comments[:limit]))
 
 
+CARD_MAX_CHARS = 20     # 카드에 쓸 댓글은 이 글자 수 미만
+CARD_MIN_SEC = 4.0      # 카드 표시 시간(초) 하한
+
+
+def card_len(text: str) -> int:
+    """카드에 실제로 그려지는 글자 수(이모지는 빠지므로 세지 않는다)."""
+    import re
+    from pipeline.build import EMOJI
+    return len(re.sub(r"\s+", " ", EMOJI.sub("", str(text))).strip())
+
+
+def card_candidates(comments: list, limit: int = 60) -> tuple[str, bool]:
+    """카드 후보 목록 글(좋아요 많은 순, 번호는 원래 댓글 번호)과 '20자 미만만 추렸는지'.
+    20자 미만 댓글이 둘도 안 되면 전체에서 고르게 한다."""
+    idx = [i for i, c in enumerate(comments) if 0 < card_len(c["text"]) < CARD_MAX_CHARS]
+    short = len(idx) >= 2
+    if not short:
+        idx = [i for i, c in enumerate(comments) if card_len(c["text"]) > 0]
+    idx.sort(key=lambda i: -int(comments[i].get("likes") or 0))
+    if not idx:
+        return "(댓글을 가져오지 못했습니다)", False
+    return "\n".join(f"#{i} (좋아요 {comments[i].get('likes_label', comments[i].get('likes', 0))}) "
+                     f"{comments[i]['text']}" for i in idx[:limit]), short
+
+
 # ------------------------------------------------------------------ 1) 분석·제품 선정
 ANALYSIS_SCHEMA = _obj({
     "channel": S,
@@ -221,6 +246,7 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
                    prev_plan: dict | None = None, prev_copy: dict | None = None) -> list:
     pick = analysis["pick"]
     bi = analysis.get("burned_in") or {}
+    cand_text, cand_short = card_candidates(yt.get("comments") or [])
     ask = f"""'{pick.get('brand', '')} {pick['name']}' 로 쇼츠 한 편을 설계합니다.
 
 원본: {meta['width']}×{meta['height']}, 길이 {meta['duration']:.0f}초. 완성본은 1.1배속입니다.
@@ -237,8 +263,8 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
 제품 정보: {json.dumps(next((p for p in analysis.get('products', []) if p.get('name') == pick['name']), {}), ensure_ascii=False)}
 
 {vidiq_block(vidiq, 8000)}{feedback_block(feedback, prev_plan, prev_copy)}
-[인기 댓글 — 카드에는 번호(#)로 고릅니다. 원문과 좋아요 수는 프로그램이 그대로 넣습니다]
-{comments_text(yt.get('comments') or [])}
+[댓글 카드 후보 — {'20자 미만인 댓글만 추려 ' if cand_short else ''}좋아요 많은 순으로 놓았습니다. 번호(#)로 고릅니다. 원문과 좋아요 수는 프로그램이 그대로 넣습니다]
+{cand_text}
 
 [사용자가 준 TTS용 이미지]
 {', '.join(images) if images else '(없음 — still_t 로 원본의 정지 화면을 씁니다)'}
@@ -259,7 +285,9 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
     sfx는 컷 시작 효과음 또는 "". text와 image는 "", still_t는 -1.
   · TTS: type "tts", text 문구, image는 사용자 이미지 파일명 또는 "", image가 ""이면 still_t(정지 화면 시각)와 x0
     (정지 화면에도 unmirror·erase를 같은 기준으로 씁니다). a/b는 -1, subs는 [].
-- cards: comment는 위 댓글 번호, seg는 카드가 뜨기 시작하는 timeline 순번(0부터), offset은 그 구간 시작 뒤 초, dur는 표시 시간.
+- cards: comment는 위 후보의 번호, seg는 카드가 뜨기 시작하는 timeline 순번(0부터), offset은 그 구간 시작 뒤 초, dur는 표시 시간.
+  이 제품과 가장 관련 있는 댓글을 먼저 고르고, 관련성이 비슷하면 위쪽(좋아요가 많은 것)을 고릅니다.
+  dur는 4~4.5초로 하고, 두 카드가 동시에 화면에 뜨지 않게 간격을 둡니다(영상 끝을 넘지 않게 seg와 offset을 잡습니다).
   댓글을 가져오지 못했으면 빈 배열.
 - thumbnail: 썸네일로 쓸 원본 시각과 x0(표정이 가장 좋은 순간).
 - description: hook_line(쓰게 된 계기 한 줄), body_lines(영상에서 직접 말한 내용 2~3줄), closing_line, hashtags(# 포함 15개 안팎).
@@ -309,7 +337,7 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
     for c in d["cards"]:
         if 0 <= c["comment"] < len(comments):
             src = comments[c["comment"]]
-            cards.append({"seg": c["seg"], "offset": round(c["offset"], 2), "dur": round(c["dur"], 2),
+            cards.append({"seg": c["seg"], "offset": round(c["offset"], 2), "dur": round(max(CARD_MIN_SEC, c["dur"]), 2),
                           "text": src["text"], "likes": src.get("likes_label", str(src.get("likes", ""))),
                           "heart": bool(c["heart"]), "pos": c["pos"]})
     top = d["combos"][0]

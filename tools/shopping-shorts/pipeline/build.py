@@ -732,19 +732,26 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
             im = text_image(txt, src_font, (235, 235, 235), stroke_w=0, alpha=215)
             overlays.append(Overlay(im, CW / 2, L["source_y"], r["f0"], r["f1"], fade_in=0))
 
-    cards_out = []
+    cards_out, card_ovs = [], []
     for c in plan.get("cards", []):
         si = int(c.get("seg", 0))
         if not 0 <= si < len(segs):
             util.die(f"cards의 seg={si} 가 timeline 범위를 벗어났습니다.")
         t0 = segs[si]["f0"] / FPS + float(c.get("offset", 0.1))
-        t1 = min(t0 + float(c.get("dur", 2.5)), total_f / FPS)
+        t1 = min(t0 + float(c.get("dur", 4.5)), total_f / FPS)
         im = card_image(c, plan, dropped, base_dir)
         y = card_y(c, im, plan)
         f0, f1 = int(round(t0 * FPS)), int(round(t1 * FPS))
-        overlays.append(Overlay(im, 0, 0, f0, f1, fade_in=4, fade_out=4, top_left=(int(CW / 2 - im.width / 2), y)))
+        ov = Overlay(im, 0, 0, f0, f1, fade_in=4, fade_out=4, top_left=(int(CW / 2 - im.width / 2), y))
+        overlays.append(ov)
+        card_ovs.append(ov)
         cards_out.append({"seg": si, "start": round(f0 / FPS, 3), "end": round(f1 / FPS, 3),
                           "y": y, "height": im.height, "text": c.get("text", "")})
+    order = sorted(range(len(card_ovs)), key=lambda k: card_ovs[k].f0)
+    for a_, b_ in zip(order, order[1:]):     # 두 카드가 같은 시간에 뜨면 앞 카드를 일찍 내린다
+        if card_ovs[a_].f1 > card_ovs[b_].f0 - 3:
+            card_ovs[a_].f1 = max(card_ovs[a_].f0 + 1, card_ovs[b_].f0 - 3)
+            cards_out[a_]["end"] = round(card_ovs[a_].f1 / FPS, 3)
 
     sfx_files = plan.get("sfx_files") or {}
     for e in sfx_out:
