@@ -432,7 +432,8 @@ def run_gui(argv: list[str]):
         state["prev_win"] = win
 
     row(0, "원본 영상", ttk.Entry(frm, textvariable=v_video), ttk.Button(frm, text="파일 고르기", command=pick_video))
-    row(1, "유튜브 링크", ttk.Entry(frm, textvariable=v_url))
+    row(1, "유튜브 링크", ttk.Entry(frm, textvariable=v_url),
+        ttk.Button(frm, text="모두 지우기 (새 영상)", command=lambda: new_work()))
     cb_name = ttk.Combobox(frm, textvariable=v_name, values=existing_episodes())
     cb_name.bind("<<ComboboxSelected>>", on_episode)
     cb_name.bind("<FocusOut>", on_episode)
@@ -937,12 +938,16 @@ def run_gui(argv: list[str]):
         v_status.set("처음이면 아래 [키 설정(.env)]에서 Claude와 일레븐랩스 키를 넣어 주세요.")
 
     def new_work():
-        """입력 칸을 비워 새 영상으로 시작한다(이전 작업은 [이전 작업 보기]에 남는다)."""
+        """모두 지우기: 창의 모든 칸과 결과·기록 화면을 비워 새 영상을 바로 넣을 수 있게 한다.
+        만든 파일은 지우지 않는다(이전 작업은 [이전 작업 보기]에 남는다)."""
         if state["proc"]:
+            messagebox.showinfo("모두 지우기", "지금 만드는 중입니다. 끝나거나 [중지]한 뒤에 지울 수 있습니다.")
             return
         state["name"] = ""
+        state["shown"] = None
         for v in (v_video, v_url, v_name, v_inpock, v_product, v_img[0], v_img[1]):
             v.set("")
+        v_redo.set("이어서 하기")
         set_text(t_vidiq, "")
         set_text(t_feedback, "")
         t_log.configure(state="normal")
@@ -950,9 +955,12 @@ def run_gui(argv: list[str]):
         t_log.configure(state="disabled")
         show_result("")
         fold(False)
-        v_status.set("새 작업: 원본 영상을 고르고 유튜브 링크를 붙여 넣은 뒤 [만들기]를 누르세요.")
+        nb.select(tab_res)
+        cb_name.configure(values=existing_episodes())
+        save_state(last="", draft={"cleared": True}, geometry=root.geometry())
+        v_status.set("모두 지웠습니다. 새 원본 영상을 고르고 유튜브 링크를 붙여 넣은 뒤 [만들기]를 누르세요. "
+                     "이전 작업은 [이전 작업 보기]에 그대로 있습니다.")
 
-    ttk.Button(foot, text="새 작업", command=new_work).pack(side="right")
     poll()
     root.mainloop()
 
