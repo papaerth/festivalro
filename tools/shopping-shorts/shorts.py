@@ -81,25 +81,36 @@ def stage_analyze(ep: Episode):
 
 
 def stage_zoom(ep: Episode, a: float | None = None, b: float | None = None, step: float = 0.5):
-    """고른 제품 구간을 0.5초 간격·x좌표 눈금 프레임 시트로 뽑고, 그 구간의 어절 시각을 정리한다."""
+    """고른 제품이 나오는 구간들을 0.5초 간격·좌표 눈금 프레임 시트로 뽑고, 그 구간의 어절 시각을 정리한다."""
+    from pipeline.brain import product_ranges
     meta = util.read_json(ep.w("meta.json")) or stage_prep(ep)
     an = util.read_json(ep.w("analysis.json"), {}) or {}
-    if a is None or b is None:
-        if not an.get("pick"):
+    if a is not None and b is not None:
+        ranges = [[a, b]]
+    else:
+        ranges = product_ranges(an)
+        if not ranges:
             util.die("analysis.json 의 pick(start, end)이 없습니다. --a, --b 로 구간을 주세요.")
-        a, b = float(an["pick"]["start"]) - 1.5, float(an["pick"]["end"]) + 1.5
-    a, b = max(0.0, a), min(meta["duration"], b)
+    ranges = [[max(0.0, x - 1.0), min(meta["duration"], y + 1.0)] for x, y in ranges]
     for p in ep.work.glob("zoom_*.jpg"):
         p.unlink()
     crop = default_crop_size(meta)
-    sheets = make_sheets(ep.source, ep.w("zoom"), a, b, step, cols=4, rows=3, thumb_w=480, ruler=True,
-                         crop_size=crop, max_sheets=24)
+    total = sum(y - x for x, y in ranges) or 1.0
+    sheets = []
+    for k, (x, y) in enumerate(ranges, 1):     # 시트 수(최대 24장)를 구간 길이에 비례해 나눈다
+        share = max(1, round(24 * (y - x) / total))
+        sheets += make_sheets(ep.source, ep.w(f"zoom_{k}"), x, y, step, cols=4, rows=3, thumb_w=480, ruler=True,
+                              crop_size=crop, max_sheets=share)
     asr = util.read_json(ep.w("words.json"))
-    zoom_asr = {"words": [w for w in asr["words"] if a <= w["t"] <= b],
-                "speech": [s for s in asr["speech"] if s[1] > a and s[0] < b],
-                "lines": [l for l in asr["lines"] if l["b"] > a and l["a"] < b]}
+
+    def inside(t0, t1=None):
+        return any(x <= t0 <= y or (t1 is not None and t1 > x and t0 < y) for x, y in ranges)
+
+    zoom_asr = {"words": [w for w in asr["words"] if inside(w["t"])],
+                "speech": [sp for sp in asr["speech"] if inside(sp[0], sp[1])],
+                "lines": [ln for ln in asr["lines"] if inside(ln["a"], ln["b"])]}
     ep.w("words_zoom.txt").write_text(asr_words.as_text(zoom_asr, words=True), encoding="utf-8")
-    util.write_json(ep.w("zoom.json"), {"a": a, "b": b, "crop_default": crop, "sheets": [p.name for p in sheets]})
+    util.write_json(ep.w("zoom.json"), {"ranges": ranges, "crop_default": crop, "sheets": [p.name for p in sheets]})
     return zoom_asr, sheets, crop
 
 
@@ -256,6 +267,9 @@ def stage_copy(ep: Episode) -> Path:
         why = (yt.get("error") or "댓글 없음").strip().splitlines()[-1][:120]
         checks_.append(f"댓글 카드를 넣지 못했습니다: {why}")
     checks_ += [f"[검수] {i}" for i in q.get("issues", [])] + list(q.get("notes", []))
+    rv = util.read_json(ep.w("review.json"), {}) or {}
+    checks_ += [f"[화면 검수] {it.get('seg', 0) + 1}번째 장면: {it.get('problem', '')}"
+                for it in rv.get("issues", []) if it.get("fix") == "none" and it.get("problem")]
     checks_ += [ln.strip() for ln in str(copy.get("notes") or "").splitlines() if ln.strip()]
     checks_ += [f"[권고] {w}" for w in copy.get("warnings", [])]
     pick = an.get("pick") or {}
@@ -271,6 +285,11 @@ def stage_copy(ep: Episode) -> Path:
         "feedback": ep.feedback,
         "revision": [ln.strip() for ln in str(copy.get("revision") or "").splitlines() if ln.strip()],
         "combos": [{"title": c.get("title", ""), "top": c.get("top", [])} for c in combos[:3]],
+        "cuts": [{"kind": "나레이션" if sg.get("type") == "tts" else "컷",
+                  "at": (f"{sg['a']:.1f}~{sg['b']:.1f}초" if sg.get("type") == "cut" else
+                         sg.get("image") or f"{sg.get('still_t', 0):.1f}초 정지 화면"),
+                  "note": sg.get("note") or sg.get("text") or " ".join(x.get("text", "") for x in sg.get("subs") or [])}
+                 for sg in plan.get("timeline", [])],
         "alternates": [{"brand": a.get("brand", ""), "name": a.get("name", ""), "reason": a.get("reason", "")}
                        for a in an.get("alternates", [])],
     }

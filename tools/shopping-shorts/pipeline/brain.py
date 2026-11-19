@@ -154,7 +154,8 @@ ANALYSIS_SCHEMA = _obj({
     "products": _arr(_obj({"brand": S, "name": S, "start": N, "end": N, "closeups": _arr(N), "demos": _arr(N),
                            "quote": S, "sellable": S})),
     "hooks": _arr(_obj({"t": N, "product": S, "why": S})),
-    "pick": _obj({"brand": S, "name": S, "start": N, "end": N, "reason": S}),
+    "pick": _obj({"brand": S, "name": S, "start": N, "end": N, "reason": S,
+                  "ranges": _arr(_obj({"start": N, "end": N, "what": S}))}),
     "alternates": _arr(_obj({"brand": S, "name": S, "reason": S})),
 })
 
@@ -185,6 +186,23 @@ def feedback_block(feedback: str, prev_plan: dict | None = None, prev_copy: dict
     return out
 
 
+def product_ranges(analysis: dict) -> list[list[float]]:
+    """고른 제품이 나오는 구간들 [[시작, 끝], …]. 겹치면 합친다."""
+    pick = (analysis or {}).get("pick") or {}
+    rs = [[float(r["start"]), float(r["end"])] for r in pick.get("ranges") or [] if float(r["end"]) > float(r["start"])]
+    if pick.get("start") is not None and pick.get("end") is not None and float(pick["end"]) > float(pick["start"]):
+        if not rs:
+            rs.append([float(pick["start"]), float(pick["end"])])
+    rs.sort()
+    out = []
+    for a, b in rs:
+        if out and a <= out[-1][1] + 0.5:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return out
+
+
 def analyze(meta: dict, asr: dict, sheets: list, info: dict, yt: dict, vidiq: str = "", feedback: str = "") -> dict:
     ask = f"""원본 영상을 분석해 쇼츠 소재가 될 제품을 고릅니다.
 
@@ -211,7 +229,10 @@ def analyze(meta: dict, asr: dict, sheets: list, info: dict, yt: dict, vidiq: st
 - products: 영상에 나오는 모든 제품. start/end는 소개 구간, closeups는 제품 클로즈업 시각, demos는 바르거나 시연하는 시각,
   quote는 화자의 가장 강한 한마디(대사 그대로), sellable은 쿠팡 판매·제품 태그 가능성에 대한 한 줄 판단.
 - hooks: 20~40대 여성이 쇼츠 첫 3초에 멈출 후킹 순간 TOP 10 (표정·리액션·반전 발언·비포애프터·제형 클로즈업 우선).
-- pick: 고른 제품과 그 제품 구간(start/end, 컷을 뽑을 범위. 앞뒤 맥락을 조금 넉넉히), 고른 이유.
+- pick: 고른 제품, 그 제품을 본격적으로 소개하는 구간(start/end), 고른 이유.
+  ranges 에는 그 제품이 화면에 나오거나 화자가 그 제품을 이야기하는 모든 구간을 적습니다(본 구간 + 영상 앞뒤에 다시 나오는 곳).
+  각 구간은 다른 제품·다른 주제의 이야기가 시작되기 전에서 정확히 끊고, what 에 그 구간에서 무엇을 보여 주는지 한 줄로 적습니다.
+  컷은 이 구간들 안에서만 뽑으므로, 넉넉히 잡지 말고 정확히 잡습니다.
 - alternates: 차순위 후보 정확히 2개와 이유."""
     data, _ = ask_json(_sheets(sheets, "개요 프레임 시트") + [{"type": "text", "text": ask}], ANALYSIS_SCHEMA)
     return data
@@ -225,7 +246,7 @@ DESIGN_SCHEMA = _obj({
     "erase": _arr(RECT),
     "timeline": _arr(_obj({
         "type": {"type": "string", "enum": ["cut", "tts"]},
-        "a": N, "b": N, "x0": I,
+        "a": N, "b": N, "x0": I, "shows": S,
         "unmirror": B, "erase": _arr(RECT),
         "subs": _arr(_obj({"t": N, "text": S, "em": B, "sfx": {"type": "string", "enum": SFX}})),
         "sfx": {"type": "string", "enum": SFX},
@@ -247,6 +268,10 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
     pick = analysis["pick"]
     bi = analysis.get("burned_in") or {}
     cand_text, cand_short = card_candidates(yt.get("comments") or [])
+    ranges = product_ranges(analysis)
+    whats = {(float(r["start"]), float(r["end"])): r.get("what", "") for r in pick.get("ranges") or []}
+    ranges_text = "\n".join(f"- {a:.1f}~{b:.1f}초" + (f": {whats[(a, b)]}" if whats.get((a, b)) else "") for a, b in ranges)
+    hooks = [h for h in analysis.get("hooks", []) if any(a - 2 <= float(h.get("t", -99)) <= b + 2 for a, b in ranges)]
     ask = f"""'{pick.get('brand', '')} {pick['name']}' 로 쇼츠 한 편을 설계합니다.
 
 원본: {meta['width']}×{meta['height']}, 길이 {meta['duration']:.0f}초. 완성본은 1.1배속입니다.
@@ -259,7 +284,12 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
 
 [분석 요약]
 화자: {analysis.get('celebrity', '')} / 채널: {analysis.get('channel', '')}
-후킹 순간: {json.dumps(analysis.get('hooks', [])[:10], ensure_ascii=False)}
+이 제품 구간 안의 후킹 순간: {json.dumps(hooks[:10], ensure_ascii=False)}
+
+[이 제품이 나오는 구간 — 컷과 정지 화면(still_t), 썸네일은 이 구간 안에서만 고릅니다]
+{ranges_text}
+위 프레임 시트와 음성 인식도 이 구간만 담았습니다. 구간 안이라도 다른 제품·다른 주제가 화면에 나오는 순간은 쓰지 않습니다.
+이 영상의 다른 장면이 아무리 눈길을 끌어도 이 제품과 무관하면 넣지 않습니다. 쓸 장면이 모자라면 길이를 줄입니다.
 제품 정보: {json.dumps(next((p for p in analysis.get('products', []) if p.get('name') == pick['name']), {}), ensure_ascii=False)}
 
 {vidiq_block(vidiq, 8000)}{feedback_block(feedback, prev_plan, prev_copy)}
@@ -280,7 +310,8 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
   · timeline 각 항목의 erase: 그 구간에만 있는 글씨를 지울 사각형들. 없으면 [].
   · timeline 각 항목의 unmirror: 그 구간의 거울반전을 풀지. 글씨가 안 보이거나 erase로 다 지워지면 false.
   사각형은 글씨보다 사방 8픽셀쯤 넉넉히 잡되, 얼굴·손·제품에 닿지 않게 합니다. 지우면 얼룩이 남을 것 같으면 지우지 말고 unmirror를 씁니다.
-- timeline: 재생 순서대로.
+- timeline: 재생 순서대로. 각 항목의 shows 에는 그 장면에서 화면에 무엇이 보이는지 한 줄로 적습니다
+  (예: "트리 아래에 바스켓을 놓는 손"). 이 제품과의 관련을 설명할 수 없는 장면은 넣지 않습니다.
   · 컷: type "cut", a/b 원본 초, x0 크롭 왼쪽 x, unmirror·erase(위 설명), subs 자막 묶음(t는 첫 어절 시작 시각, em은 노란 강조, sfx는 그 순간 효과음 또는 ""),
     sfx는 컷 시작 효과음 또는 "". text와 image는 "", still_t는 -1.
   · TTS: type "tts", text 문구, image는 사용자 이미지 파일명 또는 "", image가 ""이면 still_t(정지 화면 시각)와 x0
@@ -326,6 +357,8 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
                 seg.update(still_t=round(s["still_t"], 2), x0=s["x0"])
         if s["sfx"]:
             seg["sfx"] = s["sfx"]
+        if s.get("shows"):
+            seg["note"] = s["shows"]
         if not seg.get("image"):      # 사용자 이미지는 반전·지우기 대상이 아니다
             if s.get("unmirror"):
                 seg["mirror"] = False
@@ -349,6 +382,8 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
         "timeline": tl, "cards": cards,
         "thumbnail": {"t": round(d["thumbnail"]["t"], 2), "x0": d["thumbnail"]["x0"]},
     }
+    if product_ranges(analysis):
+        plan["ranges"] = product_ranges(analysis)     # 이 제품이 나오는 구간(규칙 검사가 컷이 이 안에 있는지 본다)
     static = [[r["x"], r["y"], r["w"], r["h"]] for r in d.get("erase") or [] if r["w"] > 1 and r["h"] > 1]
     if static:
         plan["erase"] = static
@@ -381,6 +416,7 @@ def review(resolved: dict, plan: dict, sheets: list, meta: dict, crop_size: int)
 - 원본의 글씨(자막·브랜드 라벨·광고 고지·제품의 큰 글씨)가 1:1 영상 안에서 뒤집혀 보이는가
   (구간 정보의 mirror 가 true 인 구간은 거울반전된 상태입니다. 바로 읽히는 글씨는 문제가 아닙니다)
 - 글씨를 지운 자리에 눈에 띄는 얼룩이 남았는가
+- 이 쇼츠의 제품({plan.get('product', '')})과 무관한 장면이 들어갔는가 (다른 제품, 다른 주제의 화면). 있으면 fix "none" 으로 알립니다
 - 자막이 얼굴을 가리는가, 댓글 카드가 얼굴을 덮는가
 - 인물이나 제품이 화면 밖으로 잘렸는가
 

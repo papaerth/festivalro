@@ -78,12 +78,31 @@ def validate(plan: dict, meta: dict, assets: Path | None = None, asr: dict | Non
                      f"{min(meta['width'], x_max)} 를 벗어납니다(라벨·광고 문구가 들어옴). "
                      f"x0는 {max(0, x_min)}~{min(meta['width'], x_max) - size} 사이여야 합니다.")
 
+    # 고른 제품이 나오는 구간 밖의 장면은 쓰지 않는다
+    ranges = [(float(a), float(b)) for a, b in plan.get("ranges") or []]
+    if ranges:
+        where = ", ".join(f"{a:.1f}~{b:.1f}초" for a, b in ranges)
+
+        def inside(a, b):
+            return any(ra - 1.0 <= a and b <= rb + 1.0 for ra, rb in ranges)
+
+        for i, s in cuts:
+            if not inside(float(s["a"]), float(s["b"])):
+                E.append(f"timeline[{i}]: {s['a']}~{s['b']}초는 이 제품이 나오는 구간({where}) 밖입니다. "
+                         f"제품과 무관한 장면은 쓰지 않습니다. 구간 안의 장면으로 바꾸거나 빼세요.")
+        for i, s in ttss:
+            if not s.get("image") and s.get("still_t") is not None and not inside(float(s["still_t"]), float(s["still_t"])):
+                E.append(f"timeline[{i}]: 정지 화면 {s['still_t']}초는 이 제품이 나오는 구간({where}) 밖입니다.")
+        th = (plan.get("thumbnail") or {}).get("t")
+        if th is not None and not inside(float(th), float(th)):
+            E.append(f"thumbnail: {th}초는 이 제품이 나오는 구간({where}) 밖입니다.")
+
     # 길이
     total, tts_d = est_duration(plan, assets)
     if total > MAX_SEC:
         E.append(f"완성 길이가 {total:.1f}초로 {MAX_SEC:.0f}초를 넘습니다. 컷을 {total - MAX_SEC + 0.3:.1f}초 이상 줄이세요.")
     elif total < 12:
-        W.append(f"완성 길이가 {total:.1f}초로 짧습니다.")
+        W.append(f"완성 길이가 {total:.1f}초로 짧습니다(제품 장면이 모자라면 그대로 둡니다).")
 
     # 순서
     if tl[0].get("type") != "cut":
@@ -135,9 +154,11 @@ def validate(plan: dict, meta: dict, assets: Path | None = None, asr: dict | Non
         E.append("title은 두 줄이어야 합니다.")
     else:
         joined = _norm("".join(title))
-        names = sorted({w for w in re.split(r"\s+", f"{plan.get('product', '')} {plan.get('brand', '')}")
-                        if len(_norm(w)) >= 2 and _norm(w) not in GENERIC})
-        for bad in BANNED_TITLE + names:
+        # 브랜드 이름과 제품명 전체만 막는다. 제품명 속의 보통 명사(트리, 바스켓, 크림 …)는 상황을 말할 때 써도 된다.
+        names = {w for w in re.split(r"\s+", str(plan.get("brand", ""))) if len(_norm(w)) >= 2 and _norm(w) not in GENERIC}
+        if len(_norm(str(plan.get("product", "")))) >= 4:
+            names.add(str(plan["product"]))
+        for bad in BANNED_TITLE + sorted(names):
             if _norm(bad) and _norm(bad) in joined:
                 E.append(f"title에 '{bad}' 가 들어 있습니다. 광고처럼 보이는 말·제품명·브랜드명은 쓰지 않는다.")
         for ln in title:

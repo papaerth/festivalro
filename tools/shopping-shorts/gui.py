@@ -673,6 +673,11 @@ def run_gui(argv: list[str]):
                         put(f"요청:  {ln.strip()}", "dim")
                 for ln in data.get("revision") or ["(반영 내용 설명이 없습니다. 영상으로 확인해 주세요.)"]:
                     put(f"→  {ln}")
+            if data.get("cuts"):
+                put("장면 구성 — 원본 영상의 어느 장면을 썼는지", "h")
+                for i, c in enumerate(data["cuts"], 1):
+                    put(f"{i}.  [{c.get('kind', '')}  {c.get('at', '')}]  {c.get('note', '')}")
+                put("제품과 무관한 장면이 있으면 아래 수정 요청에 번호로 적어 주세요(예: 3번 장면 빼줘).", "dim")
             put("차순위 제품 후보", "h")
             alts = data.get("alternates", [])
             for i, a in enumerate(alts, 1):
