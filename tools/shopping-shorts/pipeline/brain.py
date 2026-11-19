@@ -193,12 +193,15 @@ def analyze(meta: dict, asr: dict, sheets: list, info: dict, yt: dict, vidiq: st
 
 
 # ------------------------------------------------------------------ 2) 컷 설계·문구
+RECT = _obj({"x": I, "y": I, "w": I, "h": I})
 DESIGN_SCHEMA = _obj({
     "combos": _arr(_obj({"top1": S, "top2": S, "title": S})),
     "crop": _obj({"size": I, "x_min": I, "x_max": I}),
+    "erase": _arr(RECT),
     "timeline": _arr(_obj({
         "type": {"type": "string", "enum": ["cut", "tts"]},
         "a": N, "b": N, "x0": I,
+        "unmirror": B, "erase": _arr(RECT),
         "subs": _arr(_obj({"t": N, "text": S, "em": B, "sfx": {"type": "string", "enum": SFX}})),
         "sfx": {"type": "string", "enum": SFX},
         "text": S, "image": S, "still_t": N,
@@ -222,7 +225,7 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
 
 원본: {meta['width']}×{meta['height']}, 길이 {meta['duration']:.0f}초. 완성본은 1.1배속입니다.
 위 이미지는 제품 구간을 촘촘히 뽑은 프레임 시트입니다. 각 프레임 위에 원본 시각이 있고,
-청록색 세로선과 노란 숫자는 원본 x좌표, 빨간 가로선은 기본 1:1 크롭({crop_default}px)의 아래 경계입니다.
+청록색 세로선과 노란 숫자는 원본 x좌표, 왼쪽 가장자리의 y240·y480… 은 원본 y좌표, 빨간 가로선은 기본 1:1 크롭({crop_default}px)의 아래 경계입니다.
 분석 단계에서 본 화면 글자 위치: {json.dumps(bi, ensure_ascii=False)}
 
 [이 구간의 음성 인식 — 어절@시작시각, 괄호는 말소리 구간]
@@ -245,10 +248,17 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
   업로드 제목은 피드에서 손을 멈추게 하는 후킹 문장으로 씁니다(궁금증·반전·구체적인 상황이나 숫자, 40자 이내).
   세 개는 서로 다른 각도로 씁니다.
 - crop: size는 1:1 크롭 한 변(보통 {crop_default}), x_min/x_max는 크롭이 들어가도 되는 원본 x 범위(모서리 라벨·고지 문구를 피한 범위).
+- 원본 글씨는 규칙의 순서대로 처리합니다: ① 안 보이게 컷과 x0를 고른다 ② 작고 단순한 배경 위라 깔끔히 지워지면 erase
+  ③ 그래도 읽히는 글씨가 크롭 안에 남는 컷은 unmirror=true.
+  · erase(맨 위): 영상 내내 같은 자리에 있는 글씨(채널 로고, 고지 문구)를 지울 사각형들. 원본 픽셀 x, y, w, h. 없으면 [].
+  · timeline 각 항목의 erase: 그 구간에만 있는 글씨를 지울 사각형들. 없으면 [].
+  · timeline 각 항목의 unmirror: 그 구간의 거울반전을 풀지. 글씨가 안 보이거나 erase로 다 지워지면 false.
+  사각형은 글씨보다 사방 8픽셀쯤 넉넉히 잡되, 얼굴·손·제품에 닿지 않게 합니다. 지우면 얼룩이 남을 것 같으면 지우지 말고 unmirror를 씁니다.
 - timeline: 재생 순서대로.
-  · 컷: type "cut", a/b 원본 초, x0 크롭 왼쪽 x, subs 자막 묶음(t는 첫 어절 시작 시각, em은 노란 강조, sfx는 그 순간 효과음 또는 ""),
+  · 컷: type "cut", a/b 원본 초, x0 크롭 왼쪽 x, unmirror·erase(위 설명), subs 자막 묶음(t는 첫 어절 시작 시각, em은 노란 강조, sfx는 그 순간 효과음 또는 ""),
     sfx는 컷 시작 효과음 또는 "". text와 image는 "", still_t는 -1.
-  · TTS: type "tts", text 문구, image는 사용자 이미지 파일명 또는 "", image가 ""이면 still_t(정지 화면 시각)와 x0. a/b는 -1, subs는 [].
+  · TTS: type "tts", text 문구, image는 사용자 이미지 파일명 또는 "", image가 ""이면 still_t(정지 화면 시각)와 x0
+    (정지 화면에도 unmirror·erase를 같은 기준으로 씁니다). a/b는 -1, subs는 [].
 - cards: comment는 위 댓글 번호, seg는 카드가 뜨기 시작하는 timeline 순번(0부터), offset은 그 구간 시작 뒤 초, dur는 표시 시간.
   댓글을 가져오지 못했으면 빈 배열.
 - thumbnail: 썸네일로 쓸 원본 시각과 x0(표정이 가장 좋은 순간).
@@ -269,6 +279,7 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
     channel = info.get("channel") or analysis.get("channel") or yt.get("channel") or ""
     tl, k = [], 0
     for s in d["timeline"]:
+        rects = [[r["x"], r["y"], r["w"], r["h"]] for r in s.get("erase") or [] if r["w"] > 1 and r["h"] > 1]
         if s["type"] == "cut":
             seg = {"type": "cut", "a": round(s["a"], 2), "b": round(s["b"], 2), "x0": s["x0"], "subs": []}
             for sb in s["subs"]:
@@ -287,6 +298,11 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
                 seg.update(still_t=round(s["still_t"], 2), x0=s["x0"])
         if s["sfx"]:
             seg["sfx"] = s["sfx"]
+        if not seg.get("image"):      # 사용자 이미지는 반전·지우기 대상이 아니다
+            if s.get("unmirror"):
+                seg["mirror"] = False
+            if rects:
+                seg["erase"] = rects
         tl.append(seg)
     comments = yt.get("comments") or []
     cards = []
@@ -305,6 +321,9 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
         "timeline": tl, "cards": cards,
         "thumbnail": {"t": round(d["thumbnail"]["t"], 2), "x0": d["thumbnail"]["x0"]},
     }
+    static = [[r["x"], r["y"], r["w"], r["h"]] for r in d.get("erase") or [] if r["w"] > 1 and r["h"] > 1]
+    if static:
+        plan["erase"] = static
     copy = {"product": product,
             "combos": [{"top": [c["top1"], c["top2"]], "title": c["title"]} for c in d["combos"][:3]],
             "description": d["description"], "pin_question": d["pin_question"], "notes": d["notes"],
@@ -323,7 +342,7 @@ REVIEW_SCHEMA = _obj({
     "ok": B,
     "issues": _arr(_obj({
         "seg": I, "problem": S,
-        "fix": {"type": "string", "enum": ["x0", "card_pos", "none"]},
+        "fix": {"type": "string", "enum": ["x0", "card_pos", "unmirror", "none"]},
         "x0": I, "card": I, "pos": {"type": "string", "enum": ["top", "mid", "bottom"]},
     })),
 })
@@ -331,7 +350,9 @@ REVIEW_SCHEMA = _obj({
 
 def review(resolved: dict, plan: dict, sheets: list, meta: dict, crop_size: int) -> dict:
     ask = f"""완성본을 1초 간격으로 뽑은 프레임입니다(각 프레임 위 숫자는 완성본 시각). 끝났다고 하기 전의 화면 검수를 합니다.
-- 원본에 박혀 있던 자막·브랜드 라벨·광고 고지 문구가 1:1 영상 안에 들어왔는가 (거울반전돼 뒤집힌 글자로 보입니다)
+- 원본의 글씨(자막·브랜드 라벨·광고 고지·제품의 큰 글씨)가 1:1 영상 안에서 뒤집혀 보이는가
+  (구간 정보의 mirror 가 true 인 구간은 거울반전된 상태입니다. 바로 읽히는 글씨는 문제가 아닙니다)
+- 글씨를 지운 자리에 눈에 띄는 얼룩이 남았는가
 - 자막이 얼굴을 가리는가, 댓글 카드가 얼굴을 덮는가
 - 인물이나 제품이 화면 밖으로 잘렸는가
 
@@ -340,7 +361,8 @@ def review(resolved: dict, plan: dict, sheets: list, meta: dict, crop_size: int)
 원본 너비 {meta['width']}, 크롭 한 변 {crop_size}. 거울반전이므로 완성본에서 왼쪽으로 치우친 것은 원본에서는 오른쪽에 있습니다.
 
 문제가 없으면 ok=true, issues=[]. 문제가 있으면 구간(seg)마다 하나씩:
-fix "x0" 는 그 구간의 새 x0(원본 픽셀), fix "card_pos" 는 card(카드 순번, 0부터)와 새 pos, 고칠 방법이 없으면 "none".
+fix "x0" 는 그 구간의 새 x0(원본 픽셀)로 글씨를 화면 밖으로 내보낼 수 있을 때, fix "unmirror" 는 x0로 피할 수 없어
+그 구간의 거울반전을 풀어야 할 때, fix "card_pos" 는 card(카드 순번, 0부터)와 새 pos, 고칠 방법이 없으면 "none".
 쓰지 않는 숫자 칸은 -1, pos는 "top"."""
     data, _ = ask_json(_sheets(sheets, "완성본 프레임 시트") + [{"type": "text", "text": ask}], REVIEW_SCHEMA)
     return data
@@ -359,6 +381,11 @@ def apply_review(plan: dict, rv: dict, meta: dict, crop_size: int) -> list[str]:
                 if new != seg["x0"]:
                     done.append(f"구간 {it['seg']}: x0 {seg['x0']} → {new} ({it['problem']})")
                     seg["x0"] = new
+        elif it["fix"] == "unmirror" and 0 <= it["seg"] < len(plan["timeline"]):
+            seg = plan["timeline"][it["seg"]]
+            if not seg.get("image") and seg.get("mirror", True):
+                seg["mirror"] = False
+                done.append(f"구간 {it['seg']}: 거울반전을 풀었습니다 ({it['problem']})")
         elif it["fix"] == "card_pos" and 0 <= it["card"] < len(plan.get("cards", [])):
             card = plan["cards"][it["card"]]
             if card.get("pos") != it["pos"]:

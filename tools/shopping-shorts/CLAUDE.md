@@ -61,6 +61,8 @@ python shorts.py auto <편>        # 또는 --all
 - `timeline`: 재생 순서. 컷은 `{"type":"cut","a","b","x0","subs":[{"t","text","em","sfx"}],"sfx"}`,
   TTS는 `{"type":"tts","text","audio":"tts1.mp3","image" 또는 "still_t"+"x0","sfx"}`.
 - `crop`: `size`(1:1 한 변, 1080p 기본 840), `y0`(기본 0), `x_min`/`x_max`(크롭이 들어가도 되는 원본 x 범위).
+- 원본 글씨: plan 맨 위 `erase`(영상 내내 같은 자리의 글씨)와 구간의 `erase`는 원본 좌표 사각형 `[[x,y,w,h], …]`을 주변 화소로 메운다.
+  구간에 `"mirror": false`를 주면 그 구간만 거울반전을 하지 않는다. 우선순위는 RULES.md(피하기 → 지우기 → 반전 풀기).
 - `cards`: `seg`(뜨기 시작하는 timeline 순번), `offset`, `dur`, `text`(원문 그대로), `likes`, `heart`, `pos`.
   실제 캡처 이미지를 쓰려면 `image`(파일명)와 `mosaic`([[x,y,w,h], …] 가릴 영역)를 준다.
 - `title`: 화면 상단 두 줄(= 썸네일 문구). `thumbnail`: `{"t","x0"}`.

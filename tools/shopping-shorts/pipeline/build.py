@@ -399,15 +399,40 @@ def loudnorm_filter(wav: Path, target: float = -14.0) -> tuple[str, float]:
 
 
 # ------------------------------------------------------------------ 영상 프레임
-def cut_frames(src, a, b, x0, size, y0, plan, n):
-    """컷 하나를 1080×1080 RGB 프레임 n장으로."""
-    vf = [f"crop={size}:{size}:{int(x0)}:{y0}"]
-    if plan["mirror"]:
+def _rect(r) -> tuple[int, int, int, int]:
+    if isinstance(r, dict):
+        return int(r["x"]), int(r["y"]), int(r["w"]), int(r["h"])
+    x, y, w, h = r
+    return int(x), int(y), int(w), int(h)
+
+
+def seg_filters(seg: dict, size: int, y0: int, plan: dict, meta: dict | None = None) -> list[str]:
+    """한 구간의 영상 필터: 원본 글씨 지우기 → 1:1 크롭 → 거울반전(구간별로 끌 수 있다) → 크기 → 색보정.
+
+    글씨 지우기(erase)는 원본 좌표의 사각형 [x, y, w, h] 를 주변 화소로 메운다(작고 단순한 배경일 때만 깔끔하다).
+    구간에 "mirror": false 를 주면 그 구간만 거울반전을 하지 않는다(읽히는 글씨가 화면에 남을 때)."""
+    vf = []
+    W, H = (meta or {}).get("width"), (meta or {}).get("height")
+    for r in list(plan.get("erase") or []) + list(seg.get("erase") or []):
+        x, y, w, h = _rect(r)
+        if W and H:      # delogo 는 화면 가장자리에 닿으면 안 된다
+            x, y = max(1, min(x, W - 3)), max(1, min(y, H - 3))
+            w, h = max(1, min(w, W - 1 - x)), max(1, min(h, H - 1 - y))
+        if w > 1 and h > 1:
+            vf.append(f"delogo=x={x}:y={y}:w={w}:h={h}")
+    vf.append(f"crop={size}:{size}:{int(seg.get('x0', 0))}:{y0}")
+    if seg.get("mirror", plan["mirror"]):
         vf.append("hflip")
     vf.append("scale=1080:1080:flags=lanczos")
     if plan["color_filter"]:
         vf.append(plan["color_filter"])
-    vf += [f"setpts=(PTS-STARTPTS)/{plan['speed']}", f"fps={FPS}"]
+    return vf
+
+
+def cut_frames(src, seg: dict, size, y0, plan, n, meta=None):
+    """컷 하나를 1080×1080 RGB 프레임 n장으로."""
+    a, b = float(seg["a"]), float(seg["b"])
+    vf = seg_filters(seg, size, y0, plan, meta) + [f"setpts=(PTS-STARTPTS)/{plan['speed']}", f"fps={FPS}"]
     cmd = [util.ffmpeg_bin(), "-v", "error", "-ss", f"{a:.3f}", "-t", f"{b - a:.3f}", "-i", str(src),
            "-an", "-vf", ",".join(vf), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -429,19 +454,27 @@ def cut_frames(src, a, b, x0, size, y0, plan, n):
         yield last
 
 
-def still_image(seg, src, size, y0, plan, base_dir: Path):
+def still_image(seg, src, size, y0, plan, base_dir: Path, meta=None):
     """TTS 구간에 깔 1080×1080 이미지: 사용자가 준 이미지 또는 원본의 정지 화면."""
     from PIL import Image, ImageOps
     if seg.get("image"):
         im = Image.open(base_dir / seg["image"]).convert("RGB")
         return ImageOps.fit(im, (1080, 1080), Image.LANCZOS, centering=(0.5, 0.35))
-    vf = [f"crop={size}:{size}:{int(seg.get('x0', 0))}:{y0}"]
-    if plan["mirror"]:
-        vf.append("hflip")
-    vf.append("scale=1080:1080:flags=lanczos")
-    if plan["color_filter"]:
-        vf.append(plan["color_filter"])
-    return util.grab_frame(src, float(seg["still_t"]), ",".join(vf))
+    return util.grab_frame(src, float(seg["still_t"]), ",".join(seg_filters(seg, size, y0, plan, meta)))
+
+
+def thumb_seg(plan: dict) -> dict:
+    """썸네일로 쓸 정지 화면 설정. 그 시각이 들어 있는 컷의 거울반전·지우기 설정을 따른다."""
+    tl = plan.get("timeline") or []
+    first = next((s for s in tl if s.get("type") == "cut"), None)
+    th = plan.get("thumbnail") or {}
+    t = float(th.get("t", (first["a"] + min(0.3, (first["b"] - first["a"]) / 2)) if first else 0.0))
+    host = next((s for s in tl if s.get("type") == "cut" and float(s["a"]) - 0.05 <= t <= float(s["b"]) + 0.05), first) or {}
+    seg = {"still_t": t, "x0": th.get("x0", host.get("x0", 0))}
+    for k in ("mirror", "erase"):
+        if k in th or k in host:
+            seg[k] = th.get(k, host.get(k))
+    return seg
 
 
 def still_frames(im, n, zoom):
@@ -521,25 +554,24 @@ def preview_frame(plan: dict, src, base_dir, scene: dict | None = None, show_car
     if seg and seg.get("type") == "cut":
         subs = seg.get("subs") or []
         sub = subs[min(scene.get("sub", 0), len(subs) - 1)] if subs else None
-        want = {"still_t": float(sub["t"]) + 0.15 if sub else float(seg["a"]) + 0.2, "x0": seg.get("x0", 0)}
+        want = {**{k: seg[k] for k in ("mirror", "erase") if k in seg},
+                "still_t": float(sub["t"]) + 0.15 if sub else float(seg["a"]) + 0.2, "x0": seg.get("x0", 0)}
     elif seg:
         chunks = split_tts_text(seg.get("text", ""))
         sub = {"text": chunks[min(scene.get("sub", 0), len(chunks) - 1)], "em": seg.get("em", False)}
         want = seg
     else:
-        first = next((s for s in tl if s.get("type") == "cut"), None)
-        th = plan.get("thumbnail") or {}
-        want = {"still_t": float(th.get("t", (first["a"] + 0.3) if first else 0.0)),
-                "x0": th.get("x0", first.get("x0", 0) if first else 0)}
+        want = thumb_seg(plan)
     vid = None
     if src:
         meta = meta or util.probe(src)
         size, y0 = crop_of(plan, meta)
-        key = (str(src), want.get("image"), want.get("still_t"), want.get("x0"), size, y0, plan["mirror"],
+        key = (str(src), want.get("image"), want.get("still_t"), want.get("x0"), size, y0,
+               want.get("mirror", plan["mirror"]), json.dumps([plan.get("erase"), want.get("erase")]),
                plan["color_filter"])
         vid = (cache or {}).get(key)
         if vid is None:
-            vid = still_image(want, src, size, y0, plan, Path(base_dir))
+            vid = still_image(want, src, size, y0, plan, Path(base_dir), meta)
             if cache is not None:
                 cache[key] = vid
     if vid is None:   # 영상 없이 글자체만 볼 때
@@ -583,14 +615,11 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
     title = (plan.get("title") or ["", ""])[:2]
 
     # --- 썸네일
-    th = plan.get("thumbnail") or {}
     first_cut = next((s for s in plan["timeline"] if s["type"] == "cut"), None)
     if first_cut is None:
         util.die("plan에 컷이 하나도 없습니다.")
-    t_th = float(th.get("t", first_cut["a"] + min(0.3, (first_cut["b"] - first_cut["a"]) / 2)))
     thumb = base.copy()
-    thumb.paste(still_image({"still_t": t_th, "x0": th.get("x0", first_cut.get("x0", 0))}, src, size, y0, plan,
-                            base_dir), (0, L["video_y"]))
+    thumb.paste(still_image(thumb_seg(plan), src, size, y0, plan, base_dir, meta), (0, L["video_y"]))
     thumb_path = out_dir / f"{name}_썸네일.jpg"
     thumb.save(thumb_path, quality=93)
     if only_thumbnail:
@@ -742,9 +771,9 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
     for r in segs:
         s = plan["timeline"][r["i"]]
         if r["type"] == "cut":
-            frames = cut_frames(src, r["a"], r["b"], r["x0"], size, y0, plan, r["n"])
+            frames = cut_frames(src, {**s, "a": r["a"], "b": r["b"]}, size, y0, plan, r["n"], meta)
         else:
-            frames = still_frames(still_image(s, src, size, y0, plan, base_dir), r["n"], plan["still_zoom"])
+            frames = still_frames(still_image(s, src, size, y0, plan, base_dir, meta), r["n"], plan["still_zoom"])
         for fr in frames:
             frame = base_arr.copy()
             frame[vy:vy + 1080] = fr
@@ -787,7 +816,9 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
         "source": str(src), "crop": {"size": size, "y0": y0}, "title": title,
         "segments": [{"i": r["i"], "type": r["type"], "start": round(r["f0"] / FPS, 3),
                       "end": round(r["f1"] / FPS, 3),
-                      **({"a": r["a"], "b": r["b"], "x0": r["x0"]} if r["type"] == "cut" else {"text": r["text"]})}
+                      **({"a": r["a"], "b": r["b"], "x0": r["x0"],
+                          "mirror": bool(plan["timeline"][r["i"]].get("mirror", plan["mirror"]))}
+                         if r["type"] == "cut" else {"text": r["text"]})}
                      for r in segs],
         "subs": subs_out, "cards": cards_out, "sfx": sfx_out, "tts": tts_report,
         "dropped_emoji": dropped, "bgm_removed": not (no_uvr or not meta["has_audio"]), "music": music_note,

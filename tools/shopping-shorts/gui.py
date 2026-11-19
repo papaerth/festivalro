@@ -322,7 +322,7 @@ def run_gui(argv: list[str]):
     v_inpock, v_product, v_redo = tk.StringVar(), tk.StringVar(), tk.StringVar(value="이어서 하기")
     v_img = [tk.StringVar(), tk.StringVar()]
     v_status = tk.StringVar(value="원본 영상을 고르고 유튜브 링크를 붙여 넣은 뒤 [만들기]를 누르세요.")
-    state = {"proc": None, "name": ""}
+    state = {"name": ""}
     q: queue.Queue = queue.Queue()
 
     frm = ttk.Frame(root, padding=10)
@@ -382,11 +382,14 @@ def run_gui(argv: list[str]):
             log("──────── 여기까지 이전 기록 ────────", save=False)
         show_result(name)
         done = bool(load_result(name))
-        fold(done)
-        nb.select(tab_res if done else tab_log)
-        v_status.set(f"'{name}' 편을 불러왔습니다. " + ("결과와 업로드 문구를 아래에서 볼 수 있습니다."
-                                                 if done else "[만들기]를 누르면 멈춘 곳부터 이어서 합니다."))
+        making = is_active(name)
+        fold(done or making)
+        nb.select(tab_log if making else tab_res if done else tab_log)
+        v_status.set(f"'{name}' 편을 불러왔습니다. " + (
+            "지금 만드는 중입니다. 진행 상황은 [진행 기록]에 나옵니다." if making else
+            "결과와 업로드 문구를 아래에서 볼 수 있습니다." if done else "[만들기]를 누르면 멈춘 곳부터 이어서 합니다."))
         save_state(last=name)
+        sync_buttons()
 
     def on_episode(_=None):
         name = safe_episode(v_name.get())
@@ -418,10 +421,7 @@ def run_gui(argv: list[str]):
             sel = tree.selection()
             if sel:
                 win.destroy()
-                if state["proc"]:
-                    messagebox.showinfo("이전 작업", "지금 만드는 중입니다. 끝난 뒤에 열어 주세요.")
-                else:
-                    open_episode(sel[0])
+                open_episode(sel[0])
 
         tree.bind("<Double-1>", choose)
         tree.bind("<Return>", choose)
@@ -564,23 +564,47 @@ def run_gui(argv: list[str]):
     t_log.tag_configure("stage", foreground=BLUE)
     t_log.tag_configure("head", font=(fam, 12, "bold"), spacing1=8)
     t_log.tag_configure("dim", foreground=GRAY)
+    tab_jobs = ttk.Frame(nb)
+    jtop = ttk.Frame(tab_jobs, padding=(4, 8))
+    jtop.pack(fill="x")
+    v_par = tk.IntVar(value=max(1, min(4, int(load_state().get("parallel") or 2))))
+    ttk.Label(jtop, text="동시에 만들 개수").pack(side="left")
+    ttk.Spinbox(jtop, from_=1, to=4, textvariable=v_par, width=4, state="readonly",
+                command=lambda: pump_queue()).pack(side="left", padx=6)
+    ttk.Label(jtop, text="줄을 두 번 누르면 그 작업이 열립니다.", foreground=GRAY).pack(side="left", padx=8)
+    ttk.Label(tab_jobs, text="  만들기를 누른 뒤 [모두 지우기]로 다음 영상을 넣고 또 만들기를 누르면 함께 진행됩니다. "
+                             "개수를 넘는 작업은 차례를 기다립니다.", foreground=GRAY).pack(anchor="w", pady=(0, 6))
+    tree_jobs = ttk.Treeview(tab_jobs, columns=("name", "status", "stage", "when"), show="headings", selectmode="browse")
+    for c, title, w in zip(("name", "status", "stage", "when"), ("편 이름", "상태", "지금 하는 일", "시작"), (190, 80, 520, 90)):
+        tree_jobs.heading(c, text=title)
+        tree_jobs.column(c, width=w, anchor="w")
+    tree_jobs.pack(fill="both", expand=True)
+    tree_jobs.bind("<Double-1>", lambda e: tree_jobs.selection() and open_episode(tree_jobs.selection()[0]))
+
     nb.add(tab_res, text="  결과  ")
     nb.add(tab_up, text="  업로드 문구 복사  ")
     nb.add(tab_log, text="  진행 기록  ")
+    nb.add(tab_jobs, text="  작업 목록  ")
 
     foot = ttk.Frame(frm)
     foot.grid(row=11, column=0, columnspan=3, sticky="ew", **pad)
 
     def log(msg: str, save: bool = True):
+        log_to(state["name"], msg, save)
+
+    def log_to(name: str, msg: str, save: bool = True):
+        """편 name 의 기록에 한 줄을 남긴다. 화면에는 지금 보고 있는 편(또는 편과 무관한 안내)만 보인다."""
         line = msg.rstrip("\n")
-        if save and state["name"]:
+        if save and name:
             try:
-                p = log_file(state["name"])
+                p = log_file(name)
                 p.parent.mkdir(parents=True, exist_ok=True)
                 with open(p, "a", encoding="utf-8") as f:
                     f.write(line + "\n")
             except OSError:
                 pass
+        if name and name != state["name"]:
+            return
         st = line.strip()
         tag = ("err" if st.startswith(("[오류]", "Traceback")) or "Error" in st[:40] else
                "warn" if st.startswith(("[주의]", "[문제]", "[권고]", "- [검수]", "- [권고]")) else
@@ -725,57 +749,143 @@ def run_gui(argv: list[str]):
             except Exception:
                 pass
 
-    def busy(on: bool):
+    # ---- 여러 편을 동시에 만들기: 편마다 작업 하나, 정한 개수만큼 같이 돌리고 나머지는 차례를 기다린다
+    jobs: dict = {}      # 편 이름 → {"proc", "status"(대기·진행·완료·멈춤·중지), "cmd", "revised", "stage", "when"}
+    waiting: list = []   # 차례를 기다리는 편 이름
+
+    def is_active(name: str) -> bool:
+        return jobs.get(name, {}).get("status") in ("대기", "진행")
+
+    def any_active() -> bool:
+        return any(j["status"] in ("대기", "진행") for j in jobs.values())
+
+    def sync_buttons():
+        """지금 보고 있는 편이 만드는 중이면 만들기를 잠그고 중지를 연다."""
+        on = is_active(state["name"]) or bool(state.get("updating"))
         for b in (b_run, b_fb):
             b.configure(state="disabled" if on else "normal")
         for w in alt_box.winfo_children():
             if isinstance(w, ttk.Button):
                 w.configure(state="disabled" if on else "normal")
-        b_stop.configure(state="normal" if on else "disabled")
+        b_stop.configure(state="normal" if is_active(state["name"]) else "disabled")
+        refresh_jobs()
 
-    def start_process(cmd: list[str], done_msg: str, fail_msg: str, after=None):
+    def refresh_jobs():
+        order = {"진행": 0, "대기": 1}
+        rows = sorted(jobs.items(), key=lambda kv: (order.get(kv[1]["status"], 2), kv[1]["when"]))
+        tree_jobs.delete(*tree_jobs.get_children())
+        for name, j in rows:
+            tree_jobs.insert("", "end", iid=name, values=(name, j["status"], j["stage"], j["when"]))
+        n = sum(1 for j in jobs.values() if j["status"] in ("대기", "진행"))
+        nb.tab(tab_jobs, text=f"  작업 목록 ({n}개 진행)  " if n else "  작업 목록  ")
+
+    def start_job(name: str):
+        j = jobs[name]
         env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
         try:
-            proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            proc = subprocess.Popen(j["cmd"], cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                     stdin=subprocess.DEVNULL, env=env, creationflags=NO_WINDOW)
         except OSError as e:
-            messagebox.showerror("실행 실패", str(e))
+            j.update(status="멈춤", stage="실행하지 못함")
+            log_to(name, f"[오류] 실행하지 못했습니다: {e}")
             return
-        state["proc"] = proc
-        busy(True)
+        j.update(proc=proc, status="진행", stage="시작")
 
         def pump():
             for raw in proc.stdout:
-                q.put(("line", raw.decode("utf-8", "replace")))
-            q.put(("done", (proc.wait(), done_msg, fail_msg, after)))
+                q.put(("line", name, raw.decode("utf-8", "replace")))
+            q.put(("done", name, proc.wait()))
 
         threading.Thread(target=pump, daemon=True).start()
 
+    def pump_queue():
+        try:
+            limit = max(1, min(4, int(v_par.get())))
+        except (tk.TclError, ValueError):
+            limit = 2
+        while waiting and sum(1 for j in jobs.values() if j["status"] == "진행") < limit:
+            start_job(waiting.pop(0))
+        sync_buttons()
+
+    def submit(name: str, cmd: list[str], notes: list[str], revised: bool):
+        import time
+        jobs[name] = {"proc": None, "status": "대기", "cmd": cmd, "revised": revised, "stage": "차례를 기다리는 중",
+                      "when": time.strftime("%H:%M:%S")}
+        waiting.append(name)
+        log_to(name, f"━━ {name} 시작 ({time.strftime('%Y-%m-%d %H:%M')}) ━━")
+        for n in notes:
+            log_to(name, n)
+        pump_queue()
+        if jobs[name]["status"] == "대기":
+            log_to(name, "앞선 작업이 끝나면 자동으로 시작합니다. (동시에 만드는 개수는 [작업 목록]에서 바꿉니다)")
+            v_status.set(f"'{name}' 편은 차례를 기다리는 중입니다. 앞선 작업이 끝나면 자동으로 시작합니다.")
+        else:
+            v_status.set(f"'{name}' 편을 만들기 시작했습니다. [모두 지우기]를 누르고 다음 영상을 넣어도 됩니다.")
+
+    def finish_job(name: str, code: int):
+        j = jobs.get(name)
+        if not j:
+            return
+        stopped = bool(j.get("stopped"))
+        j.update(proc=None, status="완료" if code == 0 else "중지" if stopped else "멈춤",
+                 stage="완성" if code == 0 else "사용자가 중지" if stopped else j["stage"])
+        pump_queue()     # 기다리던 다음 작업을 시작한다
+        viewing = name == state["name"]
+        if code == 0:
+            vers = list_versions(name)
+            d = vers[0]["dir"] if vers else None
+            what = f"'{name}' 편의 수정본을 만들었습니다 ({d.name})" if j["revised"] and d else f"'{name}' 편을 만들었습니다"
+            if viewing:
+                v_redo.set("이어서 하기")
+                show_result(name)
+                nb.select(tab_res)
+                fold(True)
+                v_status.set(f"완료: '{name}' 편을 만들었습니다. 아래 [결과]를 확인하세요.")
+                if notify("완료", f"{what}.\n\n지금 폴더를 열어 영상을 볼까요?\n"
+                          "제목·설명·핀 댓글은 [업로드 문구 복사]에서 가져갈 수 있습니다.", ask=True):
+                    open_out()
+            elif notify("완료", f"{what}.\n\n지금 이 작업을 열어 볼까요?", ask=True):
+                open_episode(name)
+        elif not stopped:
+            if viewing:
+                v_status.set("중간에 멈췄습니다. [진행 기록]의 빨간 줄을 확인하세요. 고친 뒤 [만들기]를 누르면 이어서 합니다.")
+            notify("멈췄습니다", f"'{name}' 편을 만들다가 멈췄습니다.\n그 편의 [진행 기록]에서 빨간 줄을 확인하세요.")
+        elif viewing:
+            v_status.set(f"'{name}' 편을 중지했습니다. [만들기]를 누르면 멈춘 곳부터 이어서 합니다.")
+        sync_buttons()
+
     def poll():
+        dirty = False
         try:
             while True:
-                kind, val = q.get_nowait()
+                kind, name, val = q.get_nowait()
                 if kind == "line":
-                    log(val)
+                    log_to(name, val)
                     line = val.strip()
-                    if line.startswith("[") and "]" in line and not line.startswith("[Claude]"):
-                        v_status.set(line[:150])
+                    if line.startswith("[") and "]" in line and not line.startswith(("[Claude]", "[영상]")):
+                        if name in jobs:
+                            jobs[name]["stage"] = line[:70]
+                            dirty = True
+                        if name == state["name"] or not name:
+                            v_status.set(line[:150])
                 elif kind == "done":
-                    code, done_msg, fail_msg, after = val
-                    state["proc"] = None
-                    busy(False)
-                    v_status.set(done_msg if code == 0 else fail_msg)
-                    if after:
-                        after(code)
+                    finish_job(name, val)
+                elif kind == "sysdone":      # 프로그램 업데이트처럼 편과 무관한 일
+                    state["updating"] = False
+                    v_status.set(val)
+                    sync_buttons()
         except queue.Empty:
             pass
+        if dirty:
+            refresh_jobs()
         root.after(120, poll)
 
     def run(force_redo: str | None = None):
-        if state["proc"]:
-            return
         name = safe_episode(v_name.get() or episode_from_video(v_video.get()))
         v_name.set(name)
+        if is_active(name):
+            messagebox.showinfo("만들기", f"'{name}' 편은 이미 만드는 중입니다.")
+            return
         try:
             cmd, notes = prepare_episode(name, v_video.get().strip(), v_url.get(), v_inpock.get(), v_product.get(),
                                          t_vidiq.get("1.0", "end"), [v.get() for v in v_img],
@@ -791,30 +901,13 @@ def run_gui(argv: list[str]):
         cb_name.configure(values=existing_episodes())
         if not v_url.get().strip():
             notes.append("유튜브 링크가 없어 댓글 카드 없이 만듭니다.")
-        import time
-        log(f"━━ {name} 시작 ({time.strftime('%Y-%m-%d %H:%M')}) ━━")
-        for n in notes:
-            log(n)
+        t_log.configure(state="normal")       # 이 편의 기록 화면으로 바꾼다
+        t_log.delete("1.0", "end")
+        t_log.configure(state="disabled")
+        for ln in read_log_tail(name, 60):
+            log_to(name, ln, save=False)
         nb.select(tab_log)
-
-        revised = "--redo" in cmd
-
-        def after(code):
-            v_redo.set("이어서 하기")
-            if code == 0:
-                show_result(name)
-                nb.select(tab_res)
-                fold(True)
-                d = state.get("shown")
-                what = f"수정본을 만들었습니다 ({d.name})" if revised and d else f"'{name}' 편을 만들었습니다"
-                if notify("완료", f"{what}.\n\n지금 폴더를 열어 영상을 볼까요?\n"
-                          "제목·설명·핀 댓글은 [결과]에서 [복사]로 가져갈 수 있습니다.", ask=True):
-                    open_out()
-            else:
-                notify("멈췄습니다", f"'{name}' 편을 만들다가 멈췄습니다.\n[진행 기록]의 빨간 줄을 확인하세요.")
-
-        start_process(cmd, f"완료: '{name}' 편을 만들었습니다. 아래 [결과]를 확인하세요.",
-                      "중간에 멈췄습니다. [진행 기록]의 빨간 줄을 확인하세요. 고친 뒤 [만들기]를 누르면 이어서 합니다.", after)
+        submit(name, cmd, notes, "--redo" in cmd)
 
     def run_feedback():
         if not t_feedback.get("1.0", "end").strip():
@@ -822,15 +915,34 @@ def run_gui(argv: list[str]):
             return
         run("design")
 
-    def stop():
-        proc = state["proc"]
+    def kill(name: str):
+        j = jobs.get(name)
+        if not j or j["status"] not in ("대기", "진행"):
+            return
+        j["stopped"] = True
+        if j["status"] == "대기":
+            if name in waiting:
+                waiting.remove(name)
+            j.update(status="중지", stage="시작 전에 취소")
+            log_to(name, "사용자가 취소했습니다.")
+            sync_buttons()
+            return
+        proc = j.get("proc")
         if proc and proc.poll() is None:
             if os.name == "nt":
                 subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True,
                                creationflags=NO_WINDOW)
             else:
                 proc.terminate()
-            log("사용자가 중지했습니다.")
+            log_to(name, "사용자가 중지했습니다.")
+
+    def stop():
+        kill(state["name"])
+
+    def stop_all():
+        waiting.clear()
+        for name in list(jobs):
+            kill(name)
 
     def open_out():
         name = state["name"] or safe_episode(v_name.get())
@@ -854,26 +966,30 @@ def run_gui(argv: list[str]):
         messagebox.showinfo("바탕화면 아이콘", f"만들었습니다:\n{p}\n\n더블클릭하면 이 창이 열립니다. 영상 파일을 아이콘 위에 끌어다 놓아도 됩니다.")
 
     def update():
-        if state["proc"]:
+        if any_active():
+            messagebox.showinfo("프로그램 업데이트", "만드는 중에는 업데이트할 수 없습니다. 작업이 끝난 뒤에 눌러 주세요.")
+            return
+        if state.get("updating"):
             return
         if not messagebox.askyesno("프로그램 업데이트", "최신 프로그램 파일을 받아 덮어씁니다.\n"
                                    "키(.env)와 만든 편(input, work, output)은 그대로 둡니다. 계속할까요?"):
             return
-        busy(True)
+        state["updating"] = True
+        sync_buttons()
         nb.select(tab_log)
 
         def work():
             try:
-                update_program(lambda m: q.put(("line", m)))
-                q.put(("line", "필요한 패키지를 확인합니다…"))
+                update_program(lambda m: q.put(("line", "", m)))
+                q.put(("line", "", "필요한 패키지를 확인합니다…"))
                 r = subprocess.run([python_exe(), "-m", "pip", "install", "-q", "-r", str(ROOT / "requirements.txt")],
                                    capture_output=True, creationflags=NO_WINDOW)
                 if r.returncode != 0:
-                    q.put(("line", r.stderr.decode("utf-8", "replace")[-800:]))
-                q.put(("done", (0, "업데이트했습니다. 이 창을 닫고 다시 열어 주세요.", "", None)))
+                    q.put(("line", "", r.stderr.decode("utf-8", "replace")[-800:]))
+                q.put(("sysdone", "", "업데이트했습니다. 이 창을 닫고 다시 열어 주세요."))
             except (RuntimeError, OSError, zipfile.BadZipFile) as e:
-                q.put(("line", f"[오류] {e}"))
-                q.put(("done", (1, "", "업데이트하지 못했습니다.", None)))
+                q.put(("line", "", f"[오류] {e}"))
+                q.put(("sysdone", "", "업데이트하지 못했습니다."))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -902,13 +1018,18 @@ def run_gui(argv: list[str]):
         draft = {} if name else {"video": v_video.get(), "url": v_url.get(), "name": v_name.get(),
                                  "inpock": v_inpock.get(), "product": v_product.get(),
                                  "vidiq": t_vidiq.get("1.0", "end").strip()}
-        save_state(last=name, draft=draft, geometry=root.geometry())
+        try:
+            par = int(v_par.get())
+        except (tk.TclError, ValueError):
+            par = 2
+        save_state(last=name, draft=draft, geometry=root.geometry(), parallel=par)
 
     def on_close():
-        if state["proc"] and not messagebox.askyesno("닫기", "아직 만드는 중입니다. 중지하고 닫을까요?\n"
-                                                    "(다시 열어 [만들기]를 누르면 멈춘 곳부터 이어서 합니다)"):
+        n = sum(1 for j in jobs.values() if j["status"] in ("대기", "진행"))
+        if n and not messagebox.askyesno("닫기", f"아직 {n}개를 만드는 중입니다. 모두 중지하고 닫을까요?\n"
+                                         "(다시 열어 [만들기]를 누르면 멈춘 곳부터 이어서 합니다)"):
             return
-        stop()
+        stop_all()
         remember()
         root.destroy()
 
@@ -940,9 +1061,6 @@ def run_gui(argv: list[str]):
     def new_work():
         """모두 지우기: 창의 모든 칸과 결과·기록 화면을 비워 새 영상을 바로 넣을 수 있게 한다.
         만든 파일은 지우지 않는다(이전 작업은 [이전 작업 보기]에 남는다)."""
-        if state["proc"]:
-            messagebox.showinfo("모두 지우기", "지금 만드는 중입니다. 끝나거나 [중지]한 뒤에 지울 수 있습니다.")
-            return
         state["name"] = ""
         state["shown"] = None
         for v in (v_video, v_url, v_name, v_inpock, v_product, v_img[0], v_img[1]):
@@ -958,8 +1076,11 @@ def run_gui(argv: list[str]):
         nb.select(tab_res)
         cb_name.configure(values=existing_episodes())
         save_state(last="", draft={"cleared": True}, geometry=root.geometry())
+        sync_buttons()
+        making = sum(1 for j in jobs.values() if j["status"] in ("대기", "진행"))
         v_status.set("모두 지웠습니다. 새 원본 영상을 고르고 유튜브 링크를 붙여 넣은 뒤 [만들기]를 누르세요. "
-                     "이전 작업은 [이전 작업 보기]에 그대로 있습니다.")
+                     + (f"만들고 있던 {making}개는 뒤에서 계속 진행됩니다([작업 목록])." if making
+                        else "이전 작업은 [이전 작업 보기]에 그대로 있습니다."))
 
     poll()
     root.mainloop()

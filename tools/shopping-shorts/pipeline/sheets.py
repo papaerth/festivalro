@@ -80,6 +80,10 @@ def make_sheets(src, out_prefix, a=0.0, b=None, step=0.5, cols=4, rows=3, thumb_
                 d.line([(x * sx, 0), (x * sx, th)], fill=(0, 255, 255) if major else (0, 150, 150), width=1)
                 if major:
                     d.text((x * sx + 2, 2), str(x), font=fs, fill=(255, 255, 0), stroke_width=2, stroke_fill=(0, 0, 0))
+            sy = th / H
+            for yy in range(240, H, 240):   # y좌표 눈금(글씨를 지울 사각형을 정할 때 쓴다)
+                d.line([(0, yy * sy), (10, yy * sy)], fill=(0, 255, 255), width=1)
+                d.text((12, yy * sy - 8), f"y{yy}", font=fs, fill=(255, 255, 0), stroke_width=2, stroke_fill=(0, 0, 0))
             if crop_size and crop_size < H:
                 y = crop_size * th / H
                 d.line([(0, y), (tw, y)], fill=(255, 60, 60), width=2)
