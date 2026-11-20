@@ -183,6 +183,20 @@ def stage_tts(ep: Episode):
     tts.ensure(plan, ep.inp, ep.work)
 
 
+def stage_center(ep: Episode) -> list[str]:
+    """인물이 화면 가로 정중앙에 오도록 컷마다 x0 를 맞춘다(얼굴 찾기). 따로 띄운 프로세스에서 돈다."""
+    import subprocess
+    r = subprocess.run([sys.executable, "-X", "utf8", str(util.ROOT / "pipeline" / "center.py"),
+                        "--plan", str(ep.w("plan.json")), "--src", str(ep.source), "--write"],
+                       capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    lines = [ln for ln in r.stdout.decode("utf-8", "replace").splitlines() if ln.strip()]
+    if r.returncode != 0:
+        lines.append("[가운데 맞춤] 건너뜁니다: " + (r.stderr.decode("utf-8", "replace").strip().splitlines() or ["알 수 없는 오류"])[-1][:160])
+    for ln in lines:
+        log(ln)
+    return lines
+
+
 def stage_capture(ep: Episode) -> list[str]:
     """고른 댓글을 실제 유튜브 댓글창에서 캡처해 카드로 쓴다. 안 되면 그린 상자를 쓰고 이유를 돌려준다."""
     from pipeline import capture
@@ -377,9 +391,14 @@ def auto(ep: Episode, redo: str | None = None, review: bool = True, uvr_model=No
         stage_analyze(ep)
     if not (ep.w("plan.json").exists() and ep.w("copy.json").exists()):
         stage_design(ep)
+    stage_center(ep)
     stage_tts(ep)
     stage_capture(ep)
     if not _outputs_fresh(ep):
+        if not redo and (ep.out / "_plan_resolved.json").exists():
+            # 완성본이 있는 편의 설계가 자동 보정(가운데 맞춤·댓글 캡처 등)으로 바뀌었다 → 덮어쓰지 않고 새 버전에
+            before = ep.out.name
+            log(f"[버전] 이전 완성본은 {before} 에 그대로 두고 새 폴더에 만듭니다: {ep.start_version('보정').name}")
         stage_render(ep, uvr_model)
     q = stage_qa(ep)
     if review and not ep.w("review.json").exists():
@@ -429,6 +448,7 @@ def main():
                       ("qa", "완성본 검수"), ("copy", "업로드 문구·보고 쓰기"), ("status", "단계별 진행 상태")]:
         sub.add_parser(name, help=hlp).add_argument("name")
     sub.add_parser("capture", help="실제 유튜브 댓글 캡처").add_argument("name")
+    sub.add_parser("center", help="인물이 화면 가운데 오도록 x0 맞추기").add_argument("name")
     p = sub.add_parser("zoom", help="구간 프레임 시트(x좌표 눈금)와 어절 시각")
     p.add_argument("name")
     p.add_argument("--a", type=float)
@@ -485,6 +505,8 @@ def main():
         raise SystemExit(1 if stage_check(ep, a.fix)["errors"] else 0)
     elif a.cmd == "tts":
         stage_tts(ep)
+    elif a.cmd == "center":
+        stage_center(ep)
     elif a.cmd == "capture":
         print("\n".join(stage_capture(ep)) or "캡처를 마쳤습니다.")
     elif a.cmd == "render":

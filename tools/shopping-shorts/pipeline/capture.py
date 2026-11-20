@@ -19,7 +19,7 @@ from pipeline import util  # noqa: E402
 from pipeline.comments import video_id  # noqa: E402
 
 SCALE = 3          # 화면 배율(선명하게 찍으려고)
-VIEW_W = 520       # 폰 화면에 가까운 너비로 열어 댓글이 폰에서처럼 줄바꿈되게 한다
+VIEW_W = 420       # 폰 화면 너비로 열어 댓글이 폰에서처럼 줄바꿈되고, 영상에 넣었을 때 글씨가 크게 보이게 한다
 THREAD = "ytd-comment-thread-renderer"
 HIDE_CSS = ("#masthead-container, ytd-popup-container, tp-yt-paper-dialog, ytd-consent-bump-v2-lightbox, "
             "ytd-mealbar-promo-renderer, #clarify-box { display: none !important; }")
@@ -144,7 +144,23 @@ def capture_comments(url: str, texts: list[str], out_dir, max_scrolls: int = 30,
                         rects.append([int((r["x"] - bb["x"]) * SCALE) - 4, int((r["y"] - bb["y"]) * SCALE) - 4,
                                       int(r["width"] * SCALE) + 8, int(r["height"] * SCALE) + 8])
                 name = card_file(want[k])
-                box_el.screenshot(path=str(out_dir / name))
+                # 프로필·아이디·댓글까지만 찍는다(그 아래 좋아요·답글 줄은 뺀다 — 사용자가 준 참고 화면 모양)
+                cut_y = None
+                for sel in ("#toolbar", "ytd-comment-engagement-bar", "#action-buttons"):
+                    tb = box_el.locator(sel).first
+                    try:
+                        r = tb.bounding_box() if tb.count() else None
+                    except Exception:
+                        r = None
+                    if r and r["y"] - bb["y"] > 24:
+                        cut_y = r["y"]
+                        break
+                if cut_y:
+                    page.screenshot(path=str(out_dir / name),
+                                    clip={"x": bb["x"], "y": bb["y"], "width": bb["width"],
+                                          "height": min(bb["height"], cut_y - bb["y"] + 2)})
+                else:
+                    box_el.screenshot(path=str(out_dir / name))
                 found[want[k]] = {"image": name, "mosaic": rects}
         finally:
             browser.close()

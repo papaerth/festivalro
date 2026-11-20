@@ -316,7 +316,8 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
   사각형은 글씨보다 사방 8픽셀쯤 넉넉히 잡되, 얼굴·손·제품에 닿지 않게 합니다. 지우면 얼룩이 남을 것 같으면 지우지 말고 unmirror를 씁니다.
 - timeline: 재생 순서대로. 각 항목의 shows 에는 그 장면에서 화면에 무엇이 보이는지 한 줄로 적습니다
   (예: "트리 아래에 바스켓을 놓는 손"). 이 제품과의 관련을 설명할 수 없는 장면은 넣지 않습니다.
-  · 컷: type "cut", a/b 원본 초, x0 크롭 왼쪽 x, unmirror·erase(위 설명), subs 자막 묶음(t는 첫 어절 시작 시각, em은 노란 강조, sfx는 그 순간 효과음 또는 ""),
+  · 컷: type "cut", a/b 원본 초, x0 크롭 왼쪽 x(인물의 얼굴이 크롭의 가로 정중앙에 오게. 얼굴이 없는 제품 장면은 제품이 가운데),
+    unmirror·erase(위 설명), subs 자막 묶음(t는 첫 어절 시작 시각, em은 노란 강조, sfx는 그 순간 효과음 또는 ""),
     sfx는 컷 시작 효과음 또는 "". text와 image는 "", still_t는 -1.
   · TTS: type "tts", text 문구, image는 사용자 이미지 파일명 또는 "", image가 ""이면 still_t(정지 화면 시각)와 x0
     (정지 화면에도 unmirror·erase를 같은 기준으로 씁니다). a/b는 -1, subs는 [].
@@ -324,7 +325,7 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
   이 제품과 가장 관련 있는 댓글을 먼저 고르고, 관련성이 비슷하면 위쪽(좋아요가 많은 것)을 고릅니다.
   표시 시간은 프로그램이 댓글 길이로 정합니다(읽기에 살짝 모자라게, 약 2~4초). dur에는 3을 적고,
   두 카드가 동시에 화면에 뜨지 않게 4초 넘게 간격을 둡니다(영상 끝 4초 전까지 뜨도록 seg와 offset을 잡습니다).
-  카드는 자막 바로 아래의 고정된 상자에 뜨므로 얼굴이나 제품을 가리지 않습니다. pos는 쓰이지 않으니 "top"으로 둡니다.
+  카드는 영상 바로 아래 띠에 뜨므로 얼굴이나 제품을 가리지 않습니다. pos는 쓰이지 않으니 "top"으로 둡니다.
   댓글을 가져오지 못했으면 빈 배열.
 - thumbnail: 썸네일로 쓸 원본 시각과 x0(표정이 가장 좋은 순간).
 - description: hook_line(쓰게 된 계기 한 줄), body_lines(영상에서 직접 말한 내용 2~3줄), closing_line, hashtags(# 포함 15개 안팎).
@@ -424,7 +425,8 @@ def review(resolved: dict, plan: dict, sheets: list, meta: dict, crop_size: int)
   (구간 정보의 mirror 가 true 인 구간은 거울반전된 상태입니다. 바로 읽히는 글씨는 문제가 아닙니다)
 - 글씨를 지운 자리에 눈에 띄는 얼룩이 남았는가
 - 이 쇼츠의 제품({plan.get('product', '')})과 무관한 장면이 들어갔는가 (다른 제품, 다른 주제의 화면). 있으면 fix "none" 으로 알립니다
-- 자막이 얼굴이나 제품을 가리는가 (댓글 카드는 자막 아래 고정된 자리에 뜹니다. 카드 자리는 문제 삼지 않습니다)
+- 자막이 얼굴이나 제품을 가리는가 (댓글 카드는 영상 아래 띠에 뜹니다. 카드 자리는 문제 삼지 않습니다)
+- 인물이 화면 가로 가운데에서 벗어나 한쪽으로 치우쳤는가 (치우쳤으면 fix "x0")
 - 인물이나 제품이 화면 밖으로 잘렸는가
 
 구간 정보(완성본 시각 → 원본 구간과 x0): {json.dumps(resolved['segments'], ensure_ascii=False)}

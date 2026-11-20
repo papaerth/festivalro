@@ -41,9 +41,11 @@ DEFAULTS = {
         "title_size": 112,
         "sub_y": 1350,         # 자막 가운데 y
         "sub_size": 66,
-        "card_bottom": 1662,   # 댓글 상자의 아래쪽 y. 상자는 자막 바로 아래에서 여기까지(출처 문구를 덮는다)
-        "source_y": 1646,      # 출처 문구 가운데 y(카드 띠 아래)
-        "source_size": 28,
+        "card_gap": 4,         # 댓글 상자는 영상 바로 아래에 붙인다(영상 밑변에서 이만큼 띄움)
+        "card_h": 146,         # 그린 댓글 상자의 높이. 캡처한 댓글은 제 높이대로(최대 card_max_h)
+        "card_max_h": 230,
+        "source_y": 1700,      # 출처 문구 가운데 y(댓글 상자 아래)
+        "source_size": 30,
     },
 }
 
@@ -528,15 +530,14 @@ def split_tts_text(text: str) -> list[str]:
     return [" ".join(words[:k]), " ".join(words[k:])]
 
 
-STRIP_X, STRIP_W = 20, 920    # 영상 아래 띠 카드의 왼쪽 x 와 너비(오른쪽 앱 버튼 줄을 피해 왼쪽에 붙인다)
+STRIP_X, STRIP_W = 20, 1040   # 영상 아래 댓글 상자의 왼쪽 x 와 너비(화면 폭에 가깝게)
 
 
 def card_box(plan: dict) -> tuple[int, int]:
-    """댓글 상자의 (위쪽 y, 높이). 자막 바로 아래에서 시작해 출처 문구를 덮는 데까지. 모든 카드가 같은 자리·같은 크기다."""
+    """댓글 상자의 (위쪽 y, 높이). 영상 바로 아래 검은 띠에 붙는다 — 영상 속 인물·제품·자막을 가리지 않는다."""
     L = plan["layout"]
-    top = int(L["card_y"]) if L.get("card_y") else int(L["sub_y"] + round(L["sub_size"] * 0.75) + 12)
-    h = int(L["card_h"]) if L.get("card_h") else int(L["card_bottom"]) - top
-    return top, max(100, h)
+    top = int(L["card_y"]) if L.get("card_y") else int(L["video_y"] + 1080 + L.get("card_gap", 4))
+    return top, max(90, int(L.get("card_h") or 146))
 
 
 def card_seconds(text: str, ratio: float = 0.85) -> float:
@@ -546,13 +547,13 @@ def card_seconds(text: str, ratio: float = 0.85) -> float:
     return round(max(1.8, min(4.0, (1.0 + 0.16 * n) * ratio)), 2)
 
 
-def fit_card_text(text: str, room_w: int, room_h: int, explicit=None):
+def fit_card_text(text: str, room_w: int, room_h: int, explicit=None, max_size: int = 44):
     """댓글을 상자 안에 가장 큰 글씨로 맞춘다(필요하면 줄을 나눈다).
     돌려주는 값: (글꼴, 줄들, 줄 높이, 잘렸는지). 가장 작은 글씨로도 안 들어갈 때만 끝을 … 로 줄인다."""
-    for size in range(66, 19, -2):
+    for size in range(max_size, 19, -2):
         f = util.font(size, False, explicit)
         lines = wrap_text(text, f, room_w)
-        lh = size + 12
+        lh = size + 10
         if lh * len(lines) <= room_h and all(f.getlength(ln) <= room_w for ln in lines):
             return f, lines, lh, False
     f = util.font(20, False, explicit)
@@ -570,9 +571,8 @@ def _reply_icon(d, x, y, s, color):
 
 
 def card_strip_image(card: dict, plan: dict, dropped: list):
-    """자막 아래에 띄우는 댓글 상자(RGBA). 유튜브 앱의 댓글 한 줄처럼 그린다:
-    프로필(모자이크) · 아이디(모자이크)와 작성 시기 · 오른쪽 위 점 세 개 / 댓글 / 좋아요 수 · 싫어요 · 답글 · (채널 하트).
-    자리와 크기는 고정이고, 댓글은 그 안에 가장 큰 글씨로 맞춘다."""
+    """영상 바로 아래에 붙는 댓글 상자(RGBA) — 실제 댓글을 캡처하지 못했을 때 대신 그린다.
+    사용자가 준 참고 화면 모양: 흰 띠 안에 모자이크한 프로필, 그 옆 윗줄에 모자이크한 아이디(와 작성 시기), 아랫줄에 댓글."""
     from PIL import Image, ImageDraw
     width, h = STRIP_W, card_box(plan)[1]
     raw = str(card.get("text", ""))
@@ -582,54 +582,27 @@ def card_strip_image(card: dict, plan: dict, dropped: list):
         dropped.append(gone)
     reg = plan.get("font_regular")
     ink, gray = (15, 15, 15, 255), (96, 96, 96, 255)
-    f_meta, f_cnt = util.font(26, False, reg), util.font(28, False, reg)
-    ax, top, foot = 124, 60, 58           # 댓글 왼쪽 x, 댓글이 시작하는 y, 아래 아이콘 줄 높이
-    fr, lines, lh, cut = fit_card_text(text, width - ax - 34, h - top - foot - 6, reg)
+    ax, top = 128, 58
+    fr, lines, lh, cut = fit_card_text(text, width - ax - 28, h - top - 12, reg)
     if cut:
         dropped.append("(댓글이 길어 끝을 줄임)")
-    S = 2
-    im = Image.new("RGBA", (width * S, h * S), (0, 0, 0, 0))
-    ImageDraw.Draw(im).rounded_rectangle([0, 0, width * S - 1, h * S - 1], radius=28 * S, fill=(255, 255, 255, 252))
-    im = im.resize((width, h), Image.LANCZOS)
+    im = Image.new("RGBA", (width, h), (255, 255, 255, 255))
     d = ImageDraw.Draw(im)
     seed = int(hashlib.md5(raw.encode("utf-8")).hexdigest()[:8], 16)
-    skin = [(214, 180, 160), (190, 150, 130), (120, 110, 120), (230, 210, 200), (90, 80, 90), (170, 190, 210)]
-
-    def avatar(size, xy, sd):
-        av = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        _mosaic(ImageDraw.Draw(av), (0, 0, size, size), sd, max(6, size // 6), skin)
-        mask = Image.new("L", (size * 4, size * 4), 0)
-        ImageDraw.Draw(mask).ellipse([0, 0, size * 4 - 1, size * 4 - 1], fill=255)
-        im.paste(av, xy, mask.resize((size, size), Image.LANCZOS))
-
-    # 윗줄: 프로필, 아이디(모자이크) · 작성 시기, 오른쪽 위 점 세 개
-    avatar(80, (26, 22), seed)
-    name_w = 150 + seed % 80
-    _mosaic(d, (ax, 24, ax + name_w, 24 + 24), seed + 1, 12,
+    av = Image.new("RGBA", (84, 84), (0, 0, 0, 0))
+    _mosaic(ImageDraw.Draw(av), (0, 0, 84, 84), seed, 14,
+            [(214, 180, 160), (190, 150, 130), (120, 110, 120), (230, 210, 200), (90, 80, 90), (170, 190, 210)])
+    mask = Image.new("L", (84 * 4, 84 * 4), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, 84 * 4 - 1, 84 * 4 - 1], fill=255)
+    im.paste(av, (24, (h - 84) // 2), mask.resize((84, 84), Image.LANCZOS))
+    name_w = 170 + seed % 90
+    _mosaic(d, (ax, 22, ax + name_w, 22 + 24), seed + 1, 12,
             [(60, 60, 60), (110, 110, 110), (150, 150, 150), (200, 200, 200), (85, 85, 85)])
     if card.get("when"):
-        d.text((ax + name_w + 12, 19), f"· {card['when']}", font=f_meta, fill=gray)
-    for k in range(3):
-        d.ellipse([width - 44, 24 + k * 12, width - 38, 30 + k * 12], fill=gray)
-
-    # 댓글
-    y = top + max(0, (h - top - foot - 6 - lh * len(lines)) // 2)
+        d.text((ax + name_w + 12, 17), card["when"], font=util.font(26, False, reg), fill=gray)
+    y = top + max(0, (h - top - 12 - lh * len(lines)) // 2)
     for i, ln in enumerate(lines):
         d.text((ax, y + i * lh), ln, font=fr, fill=ink)
-
-    # 아랫줄: 좋아요 수, 싫어요, 답글, (채널이 누른 하트)
-    by = h - foot + 12
-    _thumb_icon(d, ax, by, 32, gray)
-    likes = str(card.get("likes", "") or "")
-    d.text((ax + 44, by - 2), likes, font=f_cnt, fill=gray)
-    x = ax + 44 + int(f_cnt.getlength(likes)) + (36 if likes else 8)
-    _thumb_icon(d, x, by + 2, 32, gray, down=True)
-    x += 32 + 44
-    _reply_icon(d, x, by, 32, gray)
-    if card.get("heart"):
-        x += 32 + 44
-        avatar(34, (x, by - 1), seed + 7)
-        _heart(d, x + 30, by + 28, 22, (255, 48, 64, 255))
     return im
 
 
@@ -637,7 +610,7 @@ def card_capture_image(card: dict, plan: dict, base_dir: Path):
     """실제 유튜브 댓글 캡처를 그대로 쓴다. 다시 그리지 않고, 상자(너비·높이) 안에 들어가게 비율대로 줄이기만 한다.
     프로필 사진과 아이디 자리(mosaic)만 모자이크한다."""
     from PIL import Image
-    h = card_box(plan)[1]
+    h = int(plan["layout"].get("card_max_h") or 230)
     src = card_image({**card, "width": STRIP_W}, plan, [], base_dir)
     if src.height > h:
         k = h / src.height
@@ -646,7 +619,7 @@ def card_capture_image(card: dict, plan: dict, base_dir: Path):
 
 
 def place_card(card: dict, plan: dict, dropped: list, base_dir: Path):
-    """댓글 카드 (이미지, x, y). 자막 바로 아래의 고정된 자리·크기(출처 문구는 덮고, 얼굴·제품은 가리지 않는다).
+    """댓글 카드 (이미지, x, y). 영상 바로 아래 검은 띠의 고정된 자리(영상 속 인물·제품·자막을 가리지 않는다).
     카드에 "on_video": true 를 주거나 pos 를 숫자(y)로 줄 때만 예전처럼 영상 위에 놓는다."""
     L = plan["layout"]
     pos = card.get("pos", "below")

@@ -64,7 +64,7 @@ python shorts.py auto <편>        # 또는 --all
 - 원본 글씨: plan 맨 위 `erase`(영상 내내 같은 자리의 글씨)와 구간의 `erase`는 원본 좌표 사각형 `[[x,y,w,h], …]`을 주변 화소로 메운다.
   구간에 `"mirror": false`를 주면 그 구간만 거울반전을 하지 않는다. 우선순위는 RULES.md(피하기 → 지우기 → 반전 풀기).
 - `cards`: `seg`(뜨기 시작하는 timeline 순번), `offset`, `dur`, `text`(원문 그대로), `likes`, `heart`.
-  카드는 자막 바로 아래에서 `layout.card_bottom`까지의 고정 상자에 뜨고(출처 문구를 덮는다), 긴 댓글은 글씨를 줄여 맞춘다.
+  카드는 영상 바로 아래 띠(`layout.card_gap`, 그린 상자 높이 `card_h`)에 화면 폭으로 붙고 그 아래에 출처 문구가 온다. 긴 댓글은 글씨를 줄여 맞춘다.
   표시 시간은 `build.card_seconds`가 글자 수로 정한다(읽기에 살짝 모자라게. 비율은 `card_read`). plan의 `dur`는 `"dur_fixed": true`일 때만 쓴다.
   영상 위에 올리려면 `"on_video": true`와 `pos`(top/mid/bottom) 또는 `pos`에 y 숫자.
   실제 캡처 이미지를 쓰려면 `image`(파일명)와 `mosaic`([[x,y,w,h], …] 가릴 영역)를 준다.
@@ -84,6 +84,8 @@ python shorts.py auto <편>        # 또는 --all
 - `pipeline/asr_words.py` 음성 인식(어절별 시각) · `pipeline/sheets.py` 프레임 시트 · `pipeline/build.py` 렌더링
 - `pipeline/checks.py` 규칙 검사·쉼 제거 · `pipeline/qa.py` 완성본 검수
 - `pipeline/tts.py` 일레븐랩스 · `pipeline/comments.py` 댓글 · `pipeline/brain.py` Claude API 판단 단계
+- `pipeline/center.py` 인물 가운데 맞춤(얼굴 찾기, onnxruntime + UltraFace 모델 1MB). sherpa-onnx와 한 프로세스에서 함께 불러오면
+  충돌할 수 있어 `shorts.py`는 따로 실행한다. `shorts.py center <편>` 또는 `auto`가 TTS 전에 부른다. 컷에 `"center": false`면 건너뛴다
 - `pipeline/capture.py` 실제 유튜브 댓글 캡처(playwright로 PC의 Edge·Chrome 사용). `shorts.py capture <편>` 또는 `auto`가 렌더 전에 부른다.
   카드에 `image`(`input/<편>/card_*.png`)와 `mosaic`을 붙인다. 유튜브 화면 구조가 바뀌면 이 파일의 선택자(`THREAD`, `READ_JS`, 가릴 곳)를 고친다
 - 검증: 테스트 도구는 없다. 고친 뒤에는 실제로 한 편을 `render` → `qa` 해 보고 프레임 시트를 본다.
