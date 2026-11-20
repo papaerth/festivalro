@@ -37,6 +37,33 @@ def like_label(n: int) -> str:
     return str(n)
 
 
+def when_label(ts: float | None, now: float | None = None) -> str:
+    """유튜브처럼: 3시간 전, 5일 전, 2주 전, 4개월 전, 1년 전. 시각을 모르면 빈 문자열."""
+    import time
+    if not ts:
+        return ""
+    sec = max(0, (now or time.time()) - float(ts))
+    if sec < 3600:
+        return f"{max(1, int(sec // 60))}분 전"
+    if sec < 86400:
+        return f"{int(sec // 3600)}시간 전"
+    if sec < 7 * 86400:
+        return f"{int(sec // 86400)}일 전"
+    if sec < 30 * 86400:
+        return f"{int(sec // (7 * 86400))}주 전"
+    if sec < 365 * 86400:
+        return f"{int(sec // (30 * 86400))}개월 전"
+    return f"{int(sec // (365 * 86400))}년 전"
+
+
+def _iso_ts(s: str) -> float | None:
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+    except (ValueError, AttributeError):
+        return None
+
+
 def _get(url: str) -> dict:
     with urllib.request.urlopen(url, timeout=60) as r:
         return json.loads(r.read())
@@ -52,7 +79,8 @@ def _via_api(vid: str, key: str, n: int) -> dict:
     comments = []
     for it in c.get("items", []):
         s = it["snippet"]["topLevelComment"]["snippet"]
-        comments.append({"text": s.get("textOriginal") or s.get("textDisplay", ""), "likes": int(s.get("likeCount", 0))})
+        comments.append({"text": s.get("textOriginal") or s.get("textDisplay", ""), "likes": int(s.get("likeCount", 0)),
+                         "when": when_label(_iso_ts(s.get("publishedAt", "")))})
     return {"title": sn.get("title", ""), "channel": sn.get("channelTitle", ""),
             "description": sn.get("description", "")[:3000], "comments": comments}
 
@@ -64,7 +92,7 @@ def _via_ytdlp(url: str, n: int) -> dict:
     if r.returncode != 0:
         raise RuntimeError(r.stderr.decode("utf-8", "replace")[-400:])
     d = json.loads(r.stdout)
-    comments = [{"text": c.get("text", ""), "likes": int(c.get("like_count") or 0)}
+    comments = [{"text": c.get("text", ""), "likes": int(c.get("like_count") or 0), "when": when_label(c.get("timestamp"))}
                 for c in d.get("comments") or [] if c.get("parent") in (None, "root")]
     return {"title": d.get("title", ""), "channel": d.get("channel") or d.get("uploader", ""),
             "description": (d.get("description") or "")[:3000], "comments": comments}

@@ -378,7 +378,8 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
             src = comments[c["comment"]]
             cards.append({"seg": c["seg"], "offset": round(c["offset"], 2), "dur": card_seconds(src["text"]),
                           "text": src["text"], "likes": src.get("likes_label", str(src.get("likes", ""))),
-                          "heart": bool(c["heart"]), "pos": c["pos"]})
+                          "heart": bool(c["heart"]), "pos": c["pos"],
+                          **({"when": src["when"]} if src.get("when") else {})})
     top = d["combos"][0]
     plan = {
         "product": product, "brand": pick.get("brand", ""), "channel": channel,

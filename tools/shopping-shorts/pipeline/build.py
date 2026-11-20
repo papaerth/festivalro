@@ -563,9 +563,16 @@ def fit_card_text(text: str, room_w: int, room_h: int, explicit=None):
     return f, lines, 28, True
 
 
+def _reply_icon(d, x, y, s, color):
+    """답글(말풍선) 아이콘 — 선 그림."""
+    d.rounded_rectangle([x, y + s * 0.08, x + s, y + s * 0.74], radius=s * 0.14, outline=color, width=3)
+    d.line([(x + s * 0.22, y + s * 0.74), (x + s * 0.22, y + s * 0.98), (x + s * 0.48, y + s * 0.74)], fill=color, width=3)
+
+
 def card_strip_image(card: dict, plan: dict, dropped: list):
-    """자막 아래에 띄우는 댓글 상자(RGBA). 자리와 크기는 고정이고, 댓글은 그 안에 가장 큰 글씨로 맞춘다.
-    윗줄에 모자이크한 프로필·이름과 좋아요, 그 아래에 댓글."""
+    """자막 아래에 띄우는 댓글 상자(RGBA). 유튜브 앱의 댓글 한 줄처럼 그린다:
+    프로필(모자이크) · 아이디(모자이크)와 작성 시기 · 오른쪽 위 점 세 개 / 댓글 / 좋아요 수 · 싫어요 · 답글 · (채널 하트).
+    자리와 크기는 고정이고, 댓글은 그 안에 가장 큰 글씨로 맞춘다."""
     from PIL import Image, ImageDraw
     width, h = STRIP_W, card_box(plan)[1]
     raw = str(card.get("text", ""))
@@ -574,35 +581,55 @@ def card_strip_image(card: dict, plan: dict, dropped: list):
     if gone:
         dropped.append(gone)
     reg = plan.get("font_regular")
-    fs = util.font(30, False, reg)
-    ax, top = 124, 66
-    fr, lines, lh, cut = fit_card_text(text, width - ax - 28, h - top - 18, reg)
+    ink, gray = (15, 15, 15, 255), (96, 96, 96, 255)
+    f_meta, f_cnt = util.font(26, False, reg), util.font(28, False, reg)
+    ax, top, foot = 124, 60, 58           # 댓글 왼쪽 x, 댓글이 시작하는 y, 아래 아이콘 줄 높이
+    fr, lines, lh, cut = fit_card_text(text, width - ax - 34, h - top - foot - 6, reg)
     if cut:
         dropped.append("(댓글이 길어 끝을 줄임)")
     S = 2
     im = Image.new("RGBA", (width * S, h * S), (0, 0, 0, 0))
-    ImageDraw.Draw(im).rounded_rectangle([0, 0, width * S - 1, h * S - 1], radius=30 * S, fill=(255, 255, 255, 250))
+    ImageDraw.Draw(im).rounded_rectangle([0, 0, width * S - 1, h * S - 1], radius=28 * S, fill=(255, 255, 255, 252))
     im = im.resize((width, h), Image.LANCZOS)
     d = ImageDraw.Draw(im)
     seed = int(hashlib.md5(raw.encode("utf-8")).hexdigest()[:8], 16)
-    av = Image.new("RGBA", (84, 84), (0, 0, 0, 0))
-    _mosaic(ImageDraw.Draw(av), (0, 0, 84, 84), seed, 14,
-            [(214, 180, 160), (190, 150, 130), (120, 110, 120), (230, 210, 200), (90, 80, 90), (170, 190, 210)])
-    mask = Image.new("L", (84 * 4, 84 * 4), 0)
-    ImageDraw.Draw(mask).ellipse([0, 0, 84 * 4 - 1, 84 * 4 - 1], fill=255)
-    im.paste(av, (24, 22), mask.resize((84, 84), Image.LANCZOS))
-    _mosaic(d, (ax, 24, ax + 150 + seed % 80, 24 + 24), seed + 1, 12,
+    skin = [(214, 180, 160), (190, 150, 130), (120, 110, 120), (230, 210, 200), (90, 80, 90), (170, 190, 210)]
+
+    def avatar(size, xy, sd):
+        av = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        _mosaic(ImageDraw.Draw(av), (0, 0, size, size), sd, max(6, size // 6), skin)
+        mask = Image.new("L", (size * 4, size * 4), 0)
+        ImageDraw.Draw(mask).ellipse([0, 0, size * 4 - 1, size * 4 - 1], fill=255)
+        im.paste(av, xy, mask.resize((size, size), Image.LANCZOS))
+
+    # 윗줄: 프로필, 아이디(모자이크) · 작성 시기, 오른쪽 위 점 세 개
+    avatar(80, (26, 22), seed)
+    name_w = 150 + seed % 80
+    _mosaic(d, (ax, 24, ax + name_w, 24 + 24), seed + 1, 12,
             [(60, 60, 60), (110, 110, 110), (150, 150, 150), (200, 200, 200), (85, 85, 85)])
-    gray = (96, 96, 96, 255)
-    likes = str(card.get("likes", "") or "")
-    x = width - 30 - int(fs.getlength(likes))
-    d.text((x, 16), likes, font=fs, fill=gray)
-    _thumb_icon(d, x - 44, 18, 32, gray)
-    if card.get("heart"):
-        _heart(d, x - 44 - 32, 36, 34, (255, 48, 64, 255))
-    y = top + max(0, (h - top - 18 - lh * len(lines)) // 2)       # 댓글은 남는 높이의 가운데에
+    if card.get("when"):
+        d.text((ax + name_w + 12, 19), f"· {card['when']}", font=f_meta, fill=gray)
+    for k in range(3):
+        d.ellipse([width - 44, 24 + k * 12, width - 38, 30 + k * 12], fill=gray)
+
+    # 댓글
+    y = top + max(0, (h - top - foot - 6 - lh * len(lines)) // 2)
     for i, ln in enumerate(lines):
-        d.text((ax, y + i * lh), ln, font=fr, fill=(15, 15, 15, 255))
+        d.text((ax, y + i * lh), ln, font=fr, fill=ink)
+
+    # 아랫줄: 좋아요 수, 싫어요, 답글, (채널이 누른 하트)
+    by = h - foot + 12
+    _thumb_icon(d, ax, by, 32, gray)
+    likes = str(card.get("likes", "") or "")
+    d.text((ax + 44, by - 2), likes, font=f_cnt, fill=gray)
+    x = ax + 44 + int(f_cnt.getlength(likes)) + (36 if likes else 8)
+    _thumb_icon(d, x, by + 2, 32, gray, down=True)
+    x += 32 + 44
+    _reply_icon(d, x, by, 32, gray)
+    if card.get("heart"):
+        x += 32 + 44
+        avatar(34, (x, by - 1), seed + 7)
+        _heart(d, x + 30, by + 28, 22, (255, 48, 64, 255))
     return im
 
 
