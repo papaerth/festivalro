@@ -18,7 +18,7 @@ if __package__ in (None, ""):
 from pipeline import asr_words, util  # noqa: E402
 
 MODEL = os.environ.get("SHORTS_MODEL", "claude-opus-5-5")
-SFX = ["", "whoosh", "pop", "ding", "sparkle"]
+SFX = ["", "pop", "ding", "sparkle"]     # 컷 전환 '휙'(whoosh)은 쓰지 않는다
 
 
 def system_prompt() -> str:

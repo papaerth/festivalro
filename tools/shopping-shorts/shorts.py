@@ -183,6 +183,20 @@ def stage_tts(ep: Episode):
     tts.ensure(plan, ep.inp, ep.work)
 
 
+def stage_capture(ep: Episode) -> list[str]:
+    """고른 댓글을 실제 유튜브 댓글창에서 캡처해 카드로 쓴다. 안 되면 그린 상자를 쓰고 이유를 돌려준다."""
+    from pipeline import capture
+    plan = util.read_json(ep.w("plan.json"))
+    before = [(c.get("image"), c.get("mosaic")) for c in plan.get("cards") or []]
+    notes = capture.capture_for_plan(plan, ep.info["url"], ep.inp)
+    if before != [(c.get("image"), c.get("mosaic")) for c in plan.get("cards") or []]:
+        util.write_json(ep.w("plan.json"), plan)
+    for n in notes:
+        log(f"[캡처] {n}")
+    util.write_json(ep.w("capture.json"), {"notes": notes})
+    return notes
+
+
 def _outputs_fresh(ep: Episode) -> bool:
     res = ep.out / "_plan_resolved.json"
     if not res.exists():
@@ -267,6 +281,7 @@ def stage_copy(ep: Episode) -> Path:
         why = (yt.get("error") or "댓글 없음").strip().splitlines()[-1][:120]
         checks_.append(f"댓글 카드를 넣지 못했습니다: {why}")
     checks_ += [f"[검수] {i}" for i in q.get("issues", [])] + list(q.get("notes", []))
+    checks_ += [f"[댓글 캡처] {n}" for n in (util.read_json(ep.w("capture.json"), {}) or {}).get("notes", [])]
     rv = util.read_json(ep.w("review.json"), {}) or {}
     checks_ += [f"[화면 검수] {it.get('seg', 0) + 1}번째 장면: {it.get('problem', '')}"
                 for it in rv.get("issues", []) if it.get("fix") == "none" and it.get("problem")]
@@ -363,6 +378,7 @@ def auto(ep: Episode, redo: str | None = None, review: bool = True, uvr_model=No
     if not (ep.w("plan.json").exists() and ep.w("copy.json").exists()):
         stage_design(ep)
     stage_tts(ep)
+    stage_capture(ep)
     if not _outputs_fresh(ep):
         stage_render(ep, uvr_model)
     q = stage_qa(ep)
@@ -412,6 +428,7 @@ def main():
                       ("design", "컷 설계·문구(API)"), ("tts", "TTS 음성 만들기"),
                       ("qa", "완성본 검수"), ("copy", "업로드 문구·보고 쓰기"), ("status", "단계별 진행 상태")]:
         sub.add_parser(name, help=hlp).add_argument("name")
+    sub.add_parser("capture", help="실제 유튜브 댓글 캡처").add_argument("name")
     p = sub.add_parser("zoom", help="구간 프레임 시트(x좌표 눈금)와 어절 시각")
     p.add_argument("name")
     p.add_argument("--a", type=float)
@@ -468,6 +485,8 @@ def main():
         raise SystemExit(1 if stage_check(ep, a.fix)["errors"] else 0)
     elif a.cmd == "tts":
         stage_tts(ep)
+    elif a.cmd == "capture":
+        print("\n".join(stage_capture(ep)) or "캡처를 마쳤습니다.")
     elif a.cmd == "render":
         stage_render(ep, a.uvr_model, a.no_uvr)
     elif a.cmd == "qa":

@@ -71,7 +71,7 @@ python shorts.py auto <편>        # 또는 --all
 - `ranges`: 고른 제품이 나오는 원본 구간 `[[시작, 끝], …]`(analysis의 `pick.ranges`에서 옴). 있으면 규칙 검사가
   모든 컷·정지 화면·썸네일이 이 안에 있는지 본다. 제품과 무관한 장면은 넣지 않는다.
 - `title`: 화면 상단 두 줄(= 썸네일 문구). `thumbnail`: `{"t","x0"}`. 구간의 `note`는 그 장면에 무엇이 보이는지(보고의 장면 구성에 나온다).
-- `sfx_files`: `{"whoosh": "파일.wav", …}` 로 실제 효과음 파일을 쓸 수 있다(없으면 합성음).
+- `sfx_files`: `{"ding": "파일.wav", …}` 로 실제 효과음 파일을 쓸 수 있다(없으면 합성음). 컷 전환 소리(`whoosh`)는 렌더링에서 뺀다(`sfx_off`).
 - 화면 배치·속도 등 고정값은 `pipeline/build.py`의 `DEFAULTS`. plan의 `layout`으로 편마다 덮어쓸 수 있다.
 
 ## 스크립트
@@ -84,6 +84,8 @@ python shorts.py auto <편>        # 또는 --all
 - `pipeline/asr_words.py` 음성 인식(어절별 시각) · `pipeline/sheets.py` 프레임 시트 · `pipeline/build.py` 렌더링
 - `pipeline/checks.py` 규칙 검사·쉼 제거 · `pipeline/qa.py` 완성본 검수
 - `pipeline/tts.py` 일레븐랩스 · `pipeline/comments.py` 댓글 · `pipeline/brain.py` Claude API 판단 단계
+- `pipeline/capture.py` 실제 유튜브 댓글 캡처(playwright로 PC의 Edge·Chrome 사용). `shorts.py capture <편>` 또는 `auto`가 렌더 전에 부른다.
+  카드에 `image`(`input/<편>/card_*.png`)와 `mosaic`을 붙인다. 유튜브 화면 구조가 바뀌면 이 파일의 선택자(`THREAD`, `READ_JS`, 가릴 곳)를 고친다
 - 검증: 테스트 도구는 없다. 고친 뒤에는 실제로 한 편을 `render` → `qa` 해 보고 프레임 시트를 본다.
 
 ## 원격(웹) 세션에서

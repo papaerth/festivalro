@@ -224,9 +224,10 @@ def validate(plan: dict, meta: dict, assets: Path | None = None, asr: dict | Non
         said = _norm("".join(w["w"] for w in words if float(last["a"]) - 0.2 <= w["t"] < float(last["b"])))
         if not any(_norm(w) in said for w in pname):
             W.append("마지막 컷에서 제품명이 들리지 않습니다(루프 마무리 권고).")
-    n_sfx = sum(1 for s in tl if s.get("sfx")) + sum(1 for s in tl for sb in (s.get("subs") or []) if sb.get("sfx"))
-    if not 3 <= n_sfx <= 7:
-        W.append(f"효과음이 {n_sfx}개입니다. 5개 안팎이 기준입니다.")
+    n_sfx = sum(1 for s in tl if s.get("sfx") and s["sfx"] != "whoosh") + \
+        sum(1 for s in tl for sb in (s.get("subs") or []) if sb.get("sfx") and sb["sfx"] != "whoosh")
+    if not 2 <= n_sfx <= 5:
+        W.append(f"효과음이 {n_sfx}개입니다. 3개 안팎이 기준입니다(컷 전환 소리는 쓰지 않습니다).")
     return {"errors": E, "warnings": W, "est_duration": round(total, 2)}
 
 

@@ -634,15 +634,15 @@ def card_strip_image(card: dict, plan: dict, dropped: list):
 
 
 def card_capture_image(card: dict, plan: dict, base_dir: Path):
-    """실제 캡처 이미지를 댓글 상자 크기에 맞춰 넣는다(비율 유지, 모자이크 적용)."""
+    """실제 유튜브 댓글 캡처를 그대로 쓴다. 다시 그리지 않고, 상자(너비·높이) 안에 들어가게 비율대로 줄이기만 한다.
+    프로필 사진과 아이디 자리(mosaic)만 모자이크한다."""
     from PIL import Image
-    width, h = STRIP_W, card_box(plan)[1]
+    h = card_box(plan)[1]
     src = card_image({**card, "width": STRIP_W}, plan, [], base_dir)
-    k = min(width / src.width, h / src.height)
-    src = src.resize((max(1, int(src.width * k)), max(1, int(src.height * k))), Image.LANCZOS)
-    im = Image.new("RGBA", (width, h), (0, 0, 0, 0))
-    im.alpha_composite(src, ((width - src.width) // 2, (h - src.height) // 2))
-    return im
+    if src.height > h:
+        k = h / src.height
+        src = src.resize((max(1, int(src.width * k)), h), Image.LANCZOS)
+    return src
 
 
 def place_card(card: dict, plan: dict, dropped: list, base_dir: Path):
@@ -820,7 +820,8 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
     src_font = util.font(L["source_size"], False, fr_)
 
     def add_sfx(kind, t):
-        if kind:
+        # 컷 전환 '휙' 소리는 쓰지 않는다(거슬린다는 피드백). 이전에 만든 plan 에 남아 있어도 넣지 않는다
+        if kind and kind not in (plan.get("sfx_off") or ["whoosh"]):
             sfx_out.append({"type": kind, "t": round(t, 3)})
 
     for r in segs:

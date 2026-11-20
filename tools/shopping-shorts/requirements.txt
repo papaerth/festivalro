@@ -3,3 +3,4 @@ pillow
 sherpa-onnx
 anthropic>=1.0    # 전체 자동 실행(shorts.py auto)에만 필요
 yt-dlp            # 댓글 가져오기(YOUTUBE_API_KEY 가 있으면 없어도 됨)
+playwright        # 실제 유튜브 댓글 캡처(PC의 Edge·Chrome 을 쓴다. 없으면 그린 댓글 상자로 대신)
