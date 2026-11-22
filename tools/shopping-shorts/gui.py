@@ -94,6 +94,36 @@ def episode_video(name: str) -> Path | None:
     return vids[0] if vids else None
 
 
+def same_video(a: Path, b: Path) -> bool:
+    """같은 영상 파일인지(같은 경로이거나, 크기와 확장자가 같으면 같은 것으로 본다)."""
+    try:
+        return a.resolve() == b.resolve() or (a.stat().st_size == b.stat().st_size and a.suffix.lower() == b.suffix.lower())
+    except OSError:
+        return False
+
+
+def inputs_match(name: str, video: str, video2: str, exact: bool = False) -> bool:
+    """창에 넣은 영상이 그 편에 이미 든 영상과 같은지.
+    exact=False: 넣은 칸만 견준다(칸을 비워 두었거나 두 번째 영상을 새로 더하는 것은 같은 편으로 본다).
+    exact=True: 영상 개수까지 같아야 한다(새 작업이 이전 작업과 똑같은 입력인지 볼 때)."""
+    have = episode_videos(name)
+    picked = [Path(v.strip()) if v.strip() else None for v in (video, video2)]
+    if exact and len([p for p in picked if p]) != len(have):
+        return False
+    return all(same_video(p, have[i]) for i, p in enumerate(picked) if p and i < len(have)) and bool(have)
+
+
+def unique_episode(name: str) -> str:
+    """이미 있는 편과 겹치지 않는 이름(같은 이름이 있으면 _2, _3 … 을 붙인다)."""
+    taken = {p.name for d in ("input", "work", "output") if (ROOT / d).is_dir() for p in (ROOT / d).iterdir() if p.is_dir()}
+    if name not in taken:
+        return name
+    k = 2
+    while f"{name}_{k}" in taken:
+        k += 1
+    return f"{name}_{k}"
+
+
 def load_episode(name: str) -> dict:
     d = ROOT / "input" / name
     info = read_json(d / "info.json", {}) or {}
@@ -460,8 +490,12 @@ def run_gui(argv: list[str]):
 
     def set_video(p: str):
         v_video.set(p)
-        if not v_name.get().strip():
-            v_name.set(episode_from_video(p))
+        if state["name"]:        # 이미 연 편에서는 편 이름을 건드리지 않는다
+            return
+        auto = episode_from_video(p)
+        if not v_name.get().strip() or v_name.get().strip() == state.get("auto_name"):
+            v_name.set(auto)     # 새 작업의 편 이름은 고른 영상의 파일 이름을 따라간다
+            state["auto_name"] = auto
 
     def paste_into(var):
         """복사해 둔 링크를 칸에 넣는다."""
@@ -516,6 +550,7 @@ def run_gui(argv: list[str]):
         set_text(t_vidiq, ep["vidiq"])
         set_text(t_feedback, ep["feedback"])
         state["name"] = name
+        state["cleared"] = False
         t_log.configure(state="normal")
         t_log.delete("1.0", "end")
         t_log.configure(state="disabled")
@@ -1098,7 +1133,39 @@ def run_gui(argv: list[str]):
         root.after(120, poll)
 
     def run(force_redo: str | None = None):
-        name = safe_episode(v_name.get() or episode_from_video(v_video.get()))
+        video, video2 = v_video.get().strip(), v_video2.get().strip()
+        fresh_notes = []
+        opened = state["name"]
+        if not opened and not video:
+            messagebox.showwarning("확인해 주세요", "원본 영상을 골라 주세요.")
+            return
+        if opened and (ROOT / "input" / opened).is_dir() and video and not inputs_match(opened, video, video2):
+            # 연 편에 다른 영상을 넣었다 → 이전 편에 섞지 않고 새 작업으로
+            if not messagebox.askyesno("다른 영상입니다", f"지금 넣은 영상은 '{opened}' 편의 영상과 다릅니다.\n\n"
+                                       "새 작업으로 만들까요?\n(이전 작업은 [이전 작업 보기]에 그대로 남습니다)"):
+                return
+            opened = ""
+            v_name.set("")
+            for w in (t_feedback,):
+                set_text(w, "")
+            v_redo.set("이어서 하기")
+            force_redo = None
+        name = safe_episode(v_name.get() or episode_from_video(video))
+        if not opened and name and (name in existing_episodes() or unique_episode(name) != name):
+            # 새 작업인데 같은 이름의 이전 작업이 있다 → 이전 작업의 분석·설계·영상을 물려받지 않게 새 이름으로
+            resume = False
+            if not state.get("cleared") and inputs_match(name, video, video2, exact=True):
+                ans = messagebox.askyesnocancel(
+                    "같은 영상의 이전 작업이 있습니다",
+                    f"'{name}' 이라는 이전 작업이 있고, 넣은 영상도 같습니다.\n\n"
+                    "[예] 새로 만들기 — 처음부터 다시(새 이름으로)\n[아니요] 이전 작업을 이어서 하기")
+                if ans is None:
+                    return
+                resume = ans is False
+            if not resume:
+                new = unique_episode(name)
+                fresh_notes.append(f"'{name}' 이라는 이전 작업이 있어 새 작업 '{new}' 로 만듭니다. 이전 작업의 내용은 물려받지 않습니다.")
+                name = new
         v_name.set(name)
         if is_active(name):
             messagebox.showinfo("만들기", f"'{name}' 편은 이미 만드는 중입니다.")
@@ -1115,6 +1182,12 @@ def run_gui(argv: list[str]):
             messagebox.showerror("파일을 준비하지 못했습니다", str(e))
             return
         state["name"] = name
+        state["cleared"] = False
+        notes[:0] = fresh_notes
+        ep_now = load_episode(name)       # 편 폴더에 복사된 영상으로 칸을 맞춘다
+        v_video.set(ep_now["video"])
+        if ep_now["video2"]:
+            v_video2.set(ep_now["video2"])
         save_state(last=name)
         cb_name.configure(values=existing_episodes())
         two = bool(v_video2.get().strip())
@@ -1236,7 +1309,8 @@ def run_gui(argv: list[str]):
 
     def remember():
         name = state["name"]
-        draft = {} if name else {"video": v_video.get(), "url": v_url.get(), "name": v_name.get(),
+        draft = {} if name else {"cleared": bool(state.get("cleared")),
+                                 "video": v_video.get(), "url": v_url.get(), "name": v_name.get(),
                                  "video2": v_video2.get(), "url2": v_url2.get(),
                                  "inpock": v_inpock.get(), "product": v_product.get(),
                                  "vidiq": t_vidiq.get("1.0", "end").strip()}
@@ -1273,6 +1347,7 @@ def run_gui(argv: list[str]):
         open_episode(episode_summaries()[0]["name"])
     elif saved.get("draft"):  # 만들기 전에 닫은 입력 내용
         d = saved["draft"]
+        state["cleared"] = bool(d.get("cleared"))
         v_video.set(d.get("video", ""))
         v_url.set(d.get("url", ""))
         v_video2.set(d.get("video2", ""))
@@ -1289,6 +1364,8 @@ def run_gui(argv: list[str]):
         만든 파일은 지우지 않는다(이전 작업은 [이전 작업 보기]에 남는다)."""
         state["name"] = ""
         state["shown"] = None
+        state["cleared"] = True       # 이 뒤에 넣는 영상은 늘 새 작업이다(같은 이름의 이전 작업을 이어받지 않는다)
+        state["auto_name"] = ""
         for v in (v_video, v_url, v_video2, v_url2, v_name, v_inpock, v_product, v_img[0], v_img[1]):
             v.set("")
         v_redo.set("이어서 하기")
@@ -1305,7 +1382,7 @@ def run_gui(argv: list[str]):
         save_state(last="", draft={"cleared": True}, geometry=root.geometry())
         sync_buttons()
         making = sum(1 for j in jobs.values() if j["status"] in ("대기", "진행"))
-        v_status.set("모두 지웠습니다. 새 원본 영상을 고르고 유튜브 링크를 붙여 넣은 뒤 [만들기]를 누르세요. "
+        v_status.set("모두 지웠습니다. 이제 넣는 영상은 새 작업으로 처음부터 만듭니다. 원본 영상과 링크를 넣고 [만들기]를 누르세요. "
                      + (f"만들고 있던 {making}개는 뒤에서 계속 진행됩니다([작업 목록])." if making
                         else "이전 작업은 [이전 작업 보기]에 그대로 있습니다."))
 
