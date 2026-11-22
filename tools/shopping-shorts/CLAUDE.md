@@ -88,6 +88,8 @@ python shorts.py auto <편>        # 또는 --all
 ## 스크립트
 - `gui.py` 바탕화면 아이콘으로 여는 창(영상·링크·vidIQ 분석을 받아 `shorts.py auto` 실행, 업데이트, 아이콘 만들기).
   표준 라이브러리만 쓴다(numpy 등을 읽지 않는다). `쇼츠만들기.bat`이 명령창 없이 연다.
+- `ui_theme.py` 창의 모양(색, 둥근 버튼·입력 칸·카드, 알약 탭 `Tabs`, 진행 단계 `Stepper`). 표준 라이브러리만 쓰고 둥근 모서리 그림(PNG)을
+  직접 만든다. 색을 바꾸려면 맨 위의 `C`. 창의 단계 표시는 진행 기록 줄의 머리말로 정한다(`gui.STEP_MARKS`) — 새 단계 머리말을 만들면 거기에도 넣는다
 - `preview_gui.py` 미리보기 창(글자체·크기 고르기, 앱별 화면 요소 덧그리기). 고른 값은 `settings.json`(깃 제외)에 저장되고
   `build.apply_defaults`가 읽는다(`font_title`, `font_sub`, `title_size`, `sub_size`, `title_bold`, `sub_bold`,
   `music_file`, `music_volume`. plan에 직접 적은 값이 우선). `music_file`이 있으면 `<제품명>_음악.mp4`도 만든다.

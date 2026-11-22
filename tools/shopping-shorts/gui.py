@@ -34,6 +34,19 @@ UPDATE_ZIPS = [
     "https://github.com/papaerth/festivalro/archive/refs/heads/main.zip",
 ]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+# 창의 진행 단계 표시. 진행 기록 줄의 머리말로 지금 어느 단계인지 안다.
+STEPS = ["대사 읽기", "제품 선정", "컷 설계", "음성 · 댓글", "영상 만들기", "검수 · 문구"]
+STEP_MARKS = [("[준비]", 0), ("[분석]", 1), ("[설계]", 2), ("[다듬음]", 2), ("[가운데 맞춤]", 3), ("[TTS]", 3), ("[캡처]", 3),
+              ("[배경음 제거]", 4), ("[영상]", 4), ("[완료]", 4), ("[검수 반영]", 4), ("길이 ", 5), ("검수 통과", 5), ("■ 만든 것", 5)]
+REDO_STEP = {"analyze": 1, "design": 2, "tts": 3, "render": 4}
+
+
+def step_of(line: str) -> int | None:
+    """진행 기록 한 줄이 알려 주는 단계 순번(모르면 None)."""
+    for mark, k in STEP_MARKS:
+        if line.startswith(mark):
+            return k
+    return None
 
 
 # ------------------------------------------------------------------ 창 없이도 쓰는 기능
@@ -354,46 +367,84 @@ def run_gui(argv: list[str]):
     root = tk.Tk()
     root.title("쇼핑 쇼츠 만들기")
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
-    root.geometry(f"{min(1000, sw - 40)}x{min(920, sh - 90)}+20+10")
-    root.minsize(760, 560)
+    root.geometry(f"{min(1040, sw - 40)}x{min(940, sh - 90)}+20+10")
+    root.minsize(880, 600)
 
-    # 글꼴: 한글이 또렷한 맑은 고딕을 조금 크게
-    fam = "맑은 고딕" if "맑은 고딕" in tkfont.families() else tkfont.nametofont("TkDefaultFont").actual("family")
+    # 글꼴과 모양(색·둥근 버튼·카드는 ui_theme.py)
+    import ui_theme
+    fams = set(tkfont.families())
+    fam = next((f for f in ("Pretendard", "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans CJK KR")
+                if f in fams), tkfont.nametofont("TkDefaultFont").actual("family"))
     for nm in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
         tkfont.nametofont(nm).configure(family=fam, size=11)
-    F_BODY, F_HEAD, F_TITLE = (fam, 12), (fam, 13, "bold"), (fam, 16, "bold")
-    INK, BLUE, RED, AMBER, GRAY = "#1c1c1c", "#0b57d0", "#c5221f", "#a85a00", "#5f6368"
-    ttk.Style().configure("Go.TButton", font=(fam, 12, "bold"))
+    T = ui_theme.apply(root, fam)
+    root._shorts_theme = T      # 딸린 창(미리보기)이 같은 모양을 다시 입히지 않게
+    C = T.C
+    F_BODY, F_HEAD, F_TITLE = (fam, 12), (fam, 12, "bold"), (fam, 18, "bold")
+    INK, BLUE, RED, AMBER, GRAY = C["ink"], C["accent"], C["err"], C["warn"], C["sub"]
 
-    pad = {"padx": 8, "pady": 3}
     v_video, v_url, v_name = tk.StringVar(), tk.StringVar(), tk.StringVar()
     v_video2, v_url2 = tk.StringVar(), tk.StringVar()      # 같은 제품의 두 번째 영상(섞어 만들 때만)
     v_inpock, v_product, v_redo = tk.StringVar(), tk.StringVar(), tk.StringVar(value="이어서 하기")
     v_img = [tk.StringVar(), tk.StringVar()]
     v_status = tk.StringVar(value="원본 영상을 고르고 유튜브 링크를 붙여 넣은 뒤 [만들기]를 누르세요.")
+    v_summary = tk.StringVar()
     state = {"name": ""}
     q: queue.Queue = queue.Queue()
 
-    frm = ttk.Frame(root, padding=10)
-    frm.pack(fill="both", expand=True)
-    frm.columnconfigure(1, weight=1)
+    app = ttk.Frame(root, style="Bg.TFrame", padding=(18, 14, 18, 10))
+    app.pack(fill="both", expand=True)
 
-    optional = []   # 완료 뒤 접어 두는 선택 입력 줄(인포크·제품명, TTS 이미지, vidIQ)
+    # ---- 맨 위: 이름과 자주 쓰는 버튼
+    top = ttk.Frame(app, style="Bg.TFrame")
+    top.pack(fill="x")
+    ttl = ttk.Frame(top, style="Bg.TFrame")
+    ttl.pack(side="left")
+    ttk.Label(ttl, text="쇼츠 만들기", style="BgTitle.TLabel").pack(anchor="w")
+    ttk.Label(ttl, text="영상과 링크만 넣으면 영상 2종 · 썸네일 · 업로드 문구까지 한 번에",
+              style="BgSub.TLabel").pack(anchor="w")
+    ttk.Button(top, text="이전 작업 보기", style="Bg.TButton", command=lambda: pick_previous()).pack(side="right")
+    ttk.Button(top, text="미리보기 · 글자체", style="Bg.TButton", command=lambda: open_preview()).pack(side="right", padx=8)
+    ttk.Button(top, text="모두 지우기 (새 영상)", style="Bg.Ghost.TButton", command=lambda: new_work()).pack(side="right")
 
-    def row(r, label, widget, button=None, fold=False):
-        lb = ttk.Label(frm, text=label)
-        lb.grid(row=r, column=0, sticky="w", **pad)
-        widget.grid(row=r, column=1, sticky="ew", **pad)
+    # ---- ① 영상 넣기
+    card_in = ttk.Frame(app, style="Card.TFrame", padding=(20, 12, 20, 14))
+    card_in.pack(fill="x", pady=(12, 0))
+    in_head = ttk.Frame(card_in)
+    in_head.pack(fill="x")
+    ttk.Label(in_head, text="①  영상 넣기", style="H.TLabel").pack(side="left")
+    ttk.Label(in_head, textvariable=v_summary, style="Sub.TLabel").pack(side="left", padx=14)
+    b_fold = ttk.Button(in_head, text="입력 칸 접기 ▲", style="Ghost.TButton", command=lambda: fold(not state.get("folded")))
+    b_fold.pack(side="right")
+    body = ttk.Frame(card_in)
+    body.pack(fill="x", pady=(6, 0))
+    body.columnconfigure(1, weight=1)
+
+    def field(r, label, widget, button=None):
+        """입력 한 줄: 이름표, 칸, (버튼). 만든 위젯들을 돌려준다(접었다 펼 때 쓴다)."""
+        lb = ttk.Label(body, text=label, style="Field.TLabel")
+        lb.grid(row=r, column=0, sticky="w", padx=(0, 16), pady=4)
+        widget.grid(row=r, column=1, sticky="ew", pady=4)
         if button:
-            button.grid(row=r, column=2, sticky="ew", **pad)
-        if fold:
-            optional.extend([lb, widget] + ([button] if button else []))
+            button.grid(row=r, column=2, sticky="ew", padx=(8, 0), pady=4)
+        return [lb, widget] + ([button] if button else [])
+
+    def refresh_summary(*_):
+        """입력 칸을 접었을 때 머리줄에 무엇을 넣었는지 한 줄로 보여 준다."""
+        if not state.get("folded"):
+            v_summary.set("")
+            return
+        vids = " + ".join(Path(v).name for v in (v_video.get(), v_video2.get()) if v.strip())
+        v_summary.set("   ·   ".join(x for x in (state["name"] or v_name.get().strip(), vids) if x)[:90])
 
     def fold(hide: bool):
-        for w in optional:
-            w.grid_remove() if hide else w.grid()
-        b_fold.configure(text="입력 칸 모두 보기 ▼" if hide else "입력 칸 줄이기 ▲")
         state["folded"] = hide
+        if hide:
+            body.pack_forget()
+        else:
+            body.pack(fill="x", pady=(6, 0))
+        b_fold.configure(text="입력 칸 펼치기 ▼" if hide else "입력 칸 접기 ▲")
+        refresh_summary()
 
     def pick_video():
         p = filedialog.askopenfilename(title="원본 영상 고르기",
@@ -412,9 +463,44 @@ def run_gui(argv: list[str]):
         if not v_name.get().strip():
             v_name.set(episode_from_video(p))
 
+    def paste_into(var):
+        """복사해 둔 링크를 칸에 넣는다."""
+        try:
+            text = root.clipboard_get().strip()
+        except tk.TclError:
+            text = ""
+        if text:
+            var.set(text.splitlines()[0].strip())
+        else:
+            v_status.set("복사해 둔 링크가 없습니다. 유튜브에서 링크를 복사한 뒤 눌러 주세요.")
+
     def set_text(widget, text: str):
         widget.delete("1.0", "end")
         widget.insert("1.0", text)
+
+    def show_mix(on: bool):
+        """두 번째 영상 칸(같은 제품의 영상 둘을 섞을 때)을 보이거나 감춘다."""
+        state["mix"] = on
+        for w in mix_rows:
+            w.grid() if on else w.grid_remove()
+        b_mix.configure(text="두 번째 영상 빼기  ✕" if on else "＋  같은 제품의 영상 하나 더 섞기",
+                        style="Ghost.TButton" if on else "Soft.TButton")
+
+    def toggle_mix():
+        if not state.get("mix"):
+            show_mix(True)
+            return
+        if len(episode_videos(state["name"])) > 1:
+            messagebox.showinfo("두 번째 영상", "이미 두 영상으로 만든 편입니다.\n영상 하나로 만들려면 [모두 지우기 (새 영상)] 뒤 새로 시작하세요.")
+            return
+        v_video2.set("")
+        v_url2.set("")
+        show_mix(False)
+
+    def show_opt(on: bool):
+        state["opt"] = on
+        opt.grid() if on else opt.grid_remove()
+        b_opt.configure(text="추가 설정 접기 ▲" if on else "추가 설정 ▾   편 이름 · TTS 이미지 · vidIQ 분석")
 
     def open_episode(name: str):
         """편 하나를 창에 불러온다: 입력 내용, 결과, 업로드 문구, 진행 기록."""
@@ -426,6 +512,7 @@ def run_gui(argv: list[str]):
         v_video.set(ep["video"])
         v_video2.set(ep["video2"])
         v_url2.set(ep["url2"])
+        show_mix(bool(ep["video2"]))
         set_text(t_vidiq, ep["vidiq"])
         set_text(t_feedback, ep["feedback"])
         state["name"] = name
@@ -461,17 +548,20 @@ def run_gui(argv: list[str]):
             return
         win = tk.Toplevel(root)
         win.title("이전 작업 보기")
-        win.geometry(f"760x{min(520, 150 + 30 * len(items))}")
+        win.geometry(f"780x{min(560, 190 + 36 * len(items))}")
         win.transient(root)
-        ttk.Label(win, text="다시 볼 작업을 두 번 누르거나, 고른 뒤 [열기]를 누르세요.", padding=8).pack(anchor="w")
+        ui_theme.style_toplevel(win)
+        ttk.Label(win, text="다시 볼 작업을 두 번 누르거나, 고른 뒤 [열기]를 누르세요.", padding=(12, 10), style="Sub.TLabel").pack(anchor="w")
         cols = ("name", "product", "status", "when")
         tree = ttk.Treeview(win, columns=cols, show="headings", selectmode="browse")
         for c, title, w in zip(cols, ("편 이름", "제품", "상태", "마지막 작업"), (170, 270, 180, 110)):
-            tree.heading(c, text=title)
+            tree.heading(c, text=title, anchor="w")
             tree.column(c, width=w, anchor="w")
         for e in items:
             tree.insert("", "end", iid=e["name"], values=(e["name"], e["product"], e["status"], e["when"]))
-        tree.pack(fill="both", expand=True, padx=8)
+        bar2 = ttk.Frame(win, padding=12)
+        bar2.pack(side="bottom", fill="x")      # 버튼 줄을 먼저 붙여 창이 작아도 잘리지 않게
+        tree.pack(fill="both", expand=True, padx=12)
         tree.selection_set(items[0]["name"])
 
         def choose(_=None):
@@ -482,43 +572,52 @@ def run_gui(argv: list[str]):
 
         tree.bind("<Double-1>", choose)
         tree.bind("<Return>", choose)
-        bar2 = ttk.Frame(win, padding=8)
-        bar2.pack(fill="x")
         ttk.Button(bar2, text="열기", style="Go.TButton", command=choose).pack(side="right")
         ttk.Button(bar2, text="닫기", command=win.destroy).pack(side="right", padx=8)
         state["prev_win"] = win
 
-    row(0, "원본 영상", ttk.Entry(frm, textvariable=v_video), ttk.Button(frm, text="파일 고르기", command=pick_video))
-    row(1, "유튜브 링크", ttk.Entry(frm, textvariable=v_url),
-        ttk.Button(frm, text="모두 지우기 (새 영상)", command=lambda: new_work()))
-    row(2, "영상 2 (선택)", ttk.Entry(frm, textvariable=v_video2),
-        ttk.Button(frm, text="두 번째 영상 고르기", command=pick_video2), fold=True)
-    link2 = ttk.Frame(frm)
-    link2.columnconfigure(0, weight=1)
-    ttk.Entry(link2, textvariable=v_url2).grid(row=0, column=0, sticky="ew")
-    ttk.Label(link2, text="  같은 제품을 다룬 영상 둘을 섞을 때만 채웁니다", foreground=GRAY).grid(row=0, column=1, sticky="e")
-    row(3, "영상 2 링크", link2, fold=True)
-    cb_name = ttk.Combobox(frm, textvariable=v_name, values=existing_episodes())
-    cb_name.bind("<<ComboboxSelected>>", on_episode)
-    cb_name.bind("<FocusOut>", on_episode)
-    row(4, "편 이름", cb_name, ttk.Button(frm, text="이전 작업 보기", command=pick_previous))
-    sub = ttk.Frame(frm)
+    field(0, "원본 영상", ttk.Entry(body, textvariable=v_video), ttk.Button(body, text="파일 고르기", command=pick_video))
+    field(1, "유튜브 링크", ttk.Entry(body, textvariable=v_url),
+          ttk.Button(body, text="붙여넣기", command=lambda: paste_into(v_url)))
+    mix_rows = field(2, "영상 2", ttk.Entry(body, textvariable=v_video2),
+                     ttk.Button(body, text="두 번째 영상 고르기", command=pick_video2))
+    mix_rows += field(3, "영상 2 링크", ttk.Entry(body, textvariable=v_url2),
+                      ttk.Button(body, text="붙여넣기", command=lambda: paste_into(v_url2)))
+    sub = ttk.Frame(body)
     sub.columnconfigure(3, weight=1)
     ttk.Entry(sub, textvariable=v_inpock, width=12).grid(row=0, column=0, sticky="w")
-    ttk.Label(sub, text="    제품명(정했을 때만)").grid(row=0, column=2, sticky="e")
-    ttk.Entry(sub, textvariable=v_product).grid(row=0, column=3, sticky="ew", padx=(8, 0))
-    row(5, "인포크 번호", sub, fold=True)
+    ttk.Label(sub, text="제품명", style="Field.TLabel").grid(row=0, column=2, sticky="e", padx=(24, 12))
+    ttk.Entry(sub, textvariable=v_product).grid(row=0, column=3, sticky="ew")
+    ttk.Label(sub, text="정했을 때만 적어요", style="Faint.TLabel").grid(row=0, column=4, padx=(10, 0))
+    field(4, "인포크 번호", sub)
+    toggles = ttk.Frame(body)
+    toggles.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+    b_mix = ttk.Button(toggles, style="Soft.TButton", command=toggle_mix)
+    b_mix.pack(side="left")
+    b_opt = ttk.Button(toggles, style="Ghost.TButton", command=lambda: show_opt(not state.get("opt")))
+    b_opt.pack(side="left", padx=8)
 
-    imgs = ttk.Frame(frm)
+    # 추가 설정(접어 둔다): 편 이름, TTS 이미지, vidIQ
+    opt = ttk.Frame(body)
+    opt.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+    opt.columnconfigure(1, weight=1)
+    ttk.Label(opt, text="편 이름", style="Field.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 16), pady=4)
+    cb_name = ttk.Combobox(opt, textvariable=v_name, values=existing_episodes())
+    cb_name.bind("<<ComboboxSelected>>", on_episode)
+    cb_name.bind("<FocusOut>", on_episode)
+    cb_name.grid(row=0, column=1, sticky="ew", pady=4)
+    ttk.Label(opt, text="비워 두면 영상 파일 이름으로 정해요", style="Faint.TLabel").grid(row=0, column=2, padx=(10, 0))
+    ttk.Label(opt, text="TTS 이미지", style="Field.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 16), pady=4)
+    imgs = ttk.Frame(opt)
     for i in range(2):
         def pick(i=i):
             p = filedialog.askopenfilename(title=f"TTS 이미지 {i + 1}",
                                            filetypes=[("이미지", "*.jpg *.jpeg *.png *.webp")])
             if p:
                 v_img[i].set(p)
-        ttk.Button(imgs, text=f"이미지 {i + 1} 고르기", command=pick).grid(row=0, column=i * 2, padx=(0, 6))
-        ttk.Label(imgs, textvariable=v_img[i], width=26, foreground=GRAY).grid(row=0, column=i * 2 + 1, padx=(0, 12))
-    row(6, "TTS 이미지(선택)", imgs, fold=True)
+        ttk.Button(imgs, text=f"이미지 {i + 1} 고르기", command=pick).grid(row=0, column=i * 2, padx=(0, 8))
+        ttk.Label(imgs, textvariable=v_img[i], width=24, style="Sub.TLabel").grid(row=0, column=i * 2 + 1, padx=(0, 12))
+    imgs.grid(row=1, column=1, columnspan=2, sticky="w", pady=4)
 
     def copy_question():
         url = v_url.get().strip()
@@ -530,25 +629,19 @@ def run_gui(argv: list[str]):
         root.clipboard_append(vidiq_question(url, v_url2.get().strip() if v_video2.get().strip() else ""))
         v_status.set("vidIQ 질문을 복사했습니다. Claude 앱에 붙여 넣고, 받은 답을 vidIQ 칸에 붙여 넣으세요.")
 
-    head = ttk.Frame(frm)
-    ttk.Label(head, text="vidIQ 분석 붙여 넣기(선택) — 제품 선정과 후킹 장면 판단에 함께 씁니다").pack(side="left")
-    ttk.Button(head, text="vidIQ 질문 복사", command=copy_question).pack(side="right")
-    head.grid(row=7, column=0, columnspan=3, sticky="ew", **pad)
-    t_vidiq = tk.Text(frm, height=3, wrap="word", undo=True, font=(fam, 11), foreground=INK, background="white")
-    t_vidiq.grid(row=8, column=0, columnspan=3, sticky="ew", **pad)
-    optional.extend([head, t_vidiq])
-
-    bar = ttk.Frame(frm)
-    bar.grid(row=9, column=0, columnspan=3, sticky="ew", **pad)
-    ttk.Combobox(bar, textvariable=v_redo, values=list(REDO), state="readonly", width=18).pack(side="left")
-    b_run = ttk.Button(bar, text="만들기", style="Go.TButton")
-    b_run.pack(side="left", padx=8)
-    b_stop = ttk.Button(bar, text="중지", state="disabled")
-    b_stop.pack(side="left")
-    b_open = ttk.Button(bar, text="결과 폴더 열기")
-    b_open.pack(side="left", padx=8)
-    b_fold = ttk.Button(bar, text="입력 칸 줄이기 ▲", command=lambda: fold(not state.get("folded")))
-    b_fold.pack(side="right")
+    ttk.Label(opt, text="vidIQ 분석", style="Field.TLabel").grid(row=2, column=0, sticky="nw", padx=(0, 16), pady=(8, 4))
+    t_vidiq = tk.Text(opt, height=3, wrap="word", undo=True, font=(fam, 11), padx=8, pady=6)
+    ui_theme.style_text(t_vidiq, T)
+    t_vidiq.grid(row=2, column=1, sticky="ew", pady=4)
+    vq = ttk.Frame(opt)
+    vq.grid(row=2, column=2, sticky="n", padx=(8, 0), pady=4)
+    ttk.Button(vq, text="vidIQ 질문 복사", command=copy_question).pack(anchor="e")
+    ttk.Label(vq, text="받은 답을 붙여 넣으면\n제품 선정에 함께 써요", style="Faint.TLabel", justify="right").pack(anchor="e", pady=(4, 0))
+    show_mix(False)
+    show_opt(False)
+    v_video2.trace_add("write", lambda *_: v_video2.get().strip() and not state.get("mix") and show_mix(True))
+    for v in (v_video, v_video2, v_name):
+        v.trace_add("write", refresh_summary)
 
     def open_preview():
         """글자체를 고르고 앱(쇼츠·틱톡·릴스)에서 보일 모습을 확인하는 창."""
@@ -560,67 +653,104 @@ def run_gui(argv: list[str]):
         name = state["name"] or safe_episode(v_name.get())
         state["preview_win"] = preview_gui.open_window(root, name, fam, lambda: run("render"))
 
-    ttk.Button(bar, text="미리보기 · 글자체", command=open_preview).pack(side="right", padx=8)
-    ttk.Label(frm, textvariable=v_status, foreground=BLUE, font=(fam, 12, "bold"), wraplength=940,
-              justify="left").grid(row=10, column=0, columnspan=3, sticky="w", **pad)
+    # ---- ② 만들기: 큰 버튼, 진행 단계, 지금 상태
+    card_go = ttk.Frame(app, style="Card.TFrame", padding=(20, 12, 20, 12))
+    card_go.pack(fill="x", pady=(10, 0))
+    bar = ttk.Frame(card_go)
+    bar.pack(fill="x")
+    ttk.Label(bar, text="②  만들기", style="H.TLabel").pack(side="left", padx=(0, 18))
+    b_run = ttk.Button(bar, text="▶  만들기", style="Primary.TButton")
+    b_run.pack(side="left")
+    b_stop = ttk.Button(bar, text="중지", style="Stop.TButton", state="disabled")
+    b_stop.pack(side="left", padx=8)
+    ttk.Combobox(bar, textvariable=v_redo, values=list(REDO), state="readonly", width=17).pack(side="right")
+    ttk.Label(bar, text="다시 만들 때", style="Sub.TLabel").pack(side="right", padx=(0, 8))
+    stepper = ui_theme.Stepper(card_go, T, STEPS)
+    stepper.cv.pack(fill="x", pady=(12, 0))
+    l_status = ttk.Label(card_go, textvariable=v_status, style="Status.TLabel", justify="left")
+    l_status.pack(fill="x", pady=(2, 0))
+    l_status.bind("<Configure>", lambda e: l_status.configure(wraplength=max(240, e.width - 6)))
 
-    # ---- 아래쪽: [결과] 와 [진행 기록] 두 장
-    ver_bar = ttk.Frame(frm)
-    ver_bar.grid(row=11, column=0, columnspan=3, sticky="ew", **pad)
-    ttk.Label(ver_bar, text="버전").pack(side="left")
+    def status_color(*_):
+        s_ = v_status.get()
+        l_status.configure(foreground=C["ok"] if s_.startswith("완료") else
+                           C["err"] if ("멈췄" in s_ or "못했습니다" in s_ or s_.startswith("[오류]")) else C["accent"])
+
+    v_status.trace_add("write", status_color)
+
+    # ---- 맨 아래: 가끔 쓰는 것
+    foot = ttk.Frame(app, style="Bg.TFrame")
+    foot.pack(side="bottom", fill="x", pady=(8, 0))
+
+    # ---- ③ 결과: 알약 탭 네 장
+    card_res = ttk.Frame(app, style="Card.TFrame", padding=(20, 12, 20, 16))
+    card_res.pack(fill="both", expand=True, pady=(10, 0))
+    res_head = ttk.Frame(card_res)
+    res_head.pack(fill="x")
+    ttk.Label(res_head, text="③  결과", style="H.TLabel").pack(side="left", padx=(0, 18))
+    tab_bar = ttk.Frame(res_head)
+    tab_bar.pack(side="left")
+    b_open = ttk.Button(res_head, text="결과 폴더 열기")
+    b_open.pack(side="right")
     v_ver = tk.StringVar()
-    cb_ver = ttk.Combobox(ver_bar, textvariable=v_ver, state="readonly", width=44)
-    cb_ver.pack(side="left", padx=8)
-    b_ver = ttk.Button(ver_bar, text="이 버전 폴더 열기")
-    b_ver.pack(side="left")
-    ttk.Label(ver_bar, text="   다시 만들 때마다 새 버전으로 남습니다", foreground=GRAY).pack(side="left")
-    nb = ttk.Notebook(frm)
-    nb.grid(row=12, column=0, columnspan=3, sticky="nsew", **pad)
-    frm.rowconfigure(12, weight=1)
+    cb_ver = ttk.Combobox(res_head, textvariable=v_ver, state="readonly", width=28)
+    cb_ver.pack(side="right", padx=8)
+    ttk.Label(res_head, text="버전", style="Sub.TLabel").pack(side="right")
+    stack = ttk.Frame(card_res)
+    stack.pack(fill="both", expand=True, pady=(10, 0))
+    nb = ui_theme.Tabs(tab_bar, stack)
 
     def text_pane(parent, **kw):
         box = ttk.Frame(parent)
-        t = tk.Text(box, wrap="word", state="disabled", background="white", foreground=INK, font=F_BODY,
-                    padx=14, pady=10, spacing1=2, spacing3=4, relief="flat", **kw)
+        t = tk.Text(box, wrap="word", state="disabled", font=F_BODY, padx=6, pady=8, spacing1=2, spacing3=4, **kw)
+        ui_theme.style_text(t, T, boxed=False)
         sb = ttk.Scrollbar(box, command=t.yview)
         t.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         t.pack(side="left", fill="both", expand=True)
         return box, t
 
-    tab_res = ttk.Frame(nb)
+    tab_res = ttk.Frame(stack)
     tab_res.rowconfigure(1, weight=1)
     tab_res.columnconfigure(0, weight=1)
-    box_res, t_res = text_pane(tab_res, height=10)
+    box_res, t_res = text_pane(tab_res, height=5)
     box_res.grid(row=1, column=0, sticky="nsew")
-    t_res.tag_configure("title", font=F_TITLE, foreground=INK, spacing3=8)
-    t_res.tag_configure("h", font=F_HEAD, foreground=BLUE, spacing1=10, spacing3=4)
-    t_res.tag_configure("item", lmargin1=18, lmargin2=34)
-    t_res.tag_configure("warn", lmargin1=18, lmargin2=34, foreground=RED)
-    t_res.tag_configure("soft", lmargin1=18, lmargin2=34, foreground=AMBER)
-    t_res.tag_configure("dim", lmargin1=18, lmargin2=34, foreground=GRAY)
+    t_res.tag_configure("title", font=F_TITLE, foreground=INK, spacing3=6)
+    t_res.tag_configure("h", font=F_HEAD, foreground=BLUE, spacing1=14, spacing3=5)
+    t_res.tag_configure("item", lmargin1=14, lmargin2=34)
+    t_res.tag_configure("warn", lmargin1=14, lmargin2=34, foreground=RED)
+    t_res.tag_configure("soft", lmargin1=14, lmargin2=34, foreground=AMBER)
+    t_res.tag_configure("dim", lmargin1=14, lmargin2=34, foreground=GRAY)
 
-    alt_box = ttk.LabelFrame(tab_res, text="차순위 후보로 다시 만들기 (제품 태그 검색이 안 될 때)", padding=6)
-    alt_box.grid(row=2, column=0, sticky="ew", pady=(6, 0))
-    fb_box = ttk.LabelFrame(tab_res, text="수정 요청 — 고칠 점을 적고 버튼(또는 Ctrl+Enter)을 누르면 수정본을 새 버전으로 만듭니다",
-                            padding=6)
-    fb_box.grid(row=3, column=0, sticky="ew", pady=(6, 0))
-    fb_box.columnconfigure(0, weight=1)
-    t_feedback = tk.Text(fb_box, height=2, wrap="word", undo=True, font=(fam, 11), foreground=INK, background="white")
-    t_feedback.grid(row=0, column=0, sticky="ew")
-    b_fb = ttk.Button(fb_box, text="수정 요청 반영해서\n다시 만들기")
-    b_fb.grid(row=0, column=1, sticky="ns", padx=(8, 0))
+    ui_theme.hline(tab_res).grid(row=2, column=0, sticky="ew", pady=(6, 10))
+    alt_wrap = ttk.Frame(tab_res)
+    alt_wrap.grid(row=3, column=0, sticky="ew")
+    ttk.Label(alt_wrap, text="제품 태그 검색이 안 되면", style="Field.TLabel").pack(side="left", padx=(0, 12))
+    alt_box = ttk.Frame(alt_wrap)
+    alt_box.pack(side="left", fill="x", expand=True)
+    fb_box = ttk.Frame(tab_res)
+    fb_box.grid(row=4, column=0, sticky="ew", pady=(10, 0))
+    fb_box.columnconfigure(1, weight=1)
+    fb_l = ttk.Frame(fb_box)
+    fb_l.grid(row=0, column=0, sticky="nw", padx=(0, 12))
+    ttk.Label(fb_l, text="수정 요청", style="Field.TLabel").pack(anchor="w")
+    ttk.Label(fb_l, text="고칠 점을 적으면\n수정본을 새 버전으로", style="Faint.TLabel").pack(anchor="w")
+    t_feedback = tk.Text(fb_box, height=2, wrap="word", undo=True, font=(fam, 11), padx=8, pady=6)
+    ui_theme.style_text(t_feedback, T)
+    t_feedback.grid(row=0, column=1, sticky="ew")
+    b_fb = ttk.Button(fb_box, text="수정본 만들기", style="Soft.TButton")
+    b_fb.grid(row=0, column=2, sticky="ns", padx=(8, 0))
 
-    tab_up = ttk.Frame(nb)
-    box_up, t_up = text_pane(tab_up, height=10)
+    tab_up = ttk.Frame(stack)
+    box_up, t_up = text_pane(tab_up, height=5)
     box_up.pack(fill="both", expand=True)
-    t_up.tag_configure("h", font=F_HEAD, foreground=BLUE, spacing1=10, spacing3=4)
+    t_up.tag_configure("h", font=F_HEAD, foreground=BLUE, spacing1=14, spacing3=5)
     t_up.tag_configure("copy", lmargin1=8, lmargin2=8, spacing1=8)
-    t_up.tag_configure("quote", lmargin1=84, lmargin2=84, foreground=INK, background="#f3f6fc")
-    t_up.tag_configure("dim", lmargin1=84, lmargin2=84, foreground=GRAY)
+    t_up.tag_configure("quote", lmargin1=92, lmargin2=92, rmargin=12, foreground=INK, background=C["quote"], spacing1=3)
+    t_up.tag_configure("dim", lmargin1=92, lmargin2=92, foreground=GRAY)
 
-    tab_log = ttk.Frame(nb)
-    box_log, t_log = text_pane(tab_log, height=10)
+    tab_log = ttk.Frame(stack)
+    box_log, t_log = text_pane(tab_log, height=5)
     box_log.pack(fill="both", expand=True)
     t_log.configure(font=(fam, 11), spacing1=0, spacing3=1)
     t_log.tag_configure("err", foreground=RED, font=(fam, 11, "bold"))
@@ -628,30 +758,26 @@ def run_gui(argv: list[str]):
     t_log.tag_configure("stage", foreground=BLUE)
     t_log.tag_configure("head", font=(fam, 12, "bold"), spacing1=8)
     t_log.tag_configure("dim", foreground=GRAY)
-    tab_jobs = ttk.Frame(nb)
-    jtop = ttk.Frame(tab_jobs, padding=(4, 8))
+    tab_jobs = ttk.Frame(stack)
+    jtop = ttk.Frame(tab_jobs, padding=(0, 4, 0, 8))
     jtop.pack(fill="x")
     v_par = tk.IntVar(value=max(1, min(4, int(load_state().get("parallel") or 2))))
-    ttk.Label(jtop, text="동시에 만들 개수").pack(side="left")
+    ttk.Label(jtop, text="동시에 만들 개수", style="Field.TLabel").pack(side="left")
     ttk.Spinbox(jtop, from_=1, to=4, textvariable=v_par, width=4, state="readonly",
-                command=lambda: pump_queue()).pack(side="left", padx=6)
-    ttk.Label(jtop, text="줄을 두 번 누르면 그 작업이 열립니다.", foreground=GRAY).pack(side="left", padx=8)
-    ttk.Label(tab_jobs, text="  만들기를 누른 뒤 [모두 지우기]로 다음 영상을 넣고 또 만들기를 누르면 함께 진행됩니다. "
-                             "개수를 넘는 작업은 차례를 기다립니다.", foreground=GRAY).pack(anchor="w", pady=(0, 6))
+                command=lambda: pump_queue()).pack(side="left", padx=8)
+    ttk.Label(jtop, text="[만들기]를 누른 뒤 [모두 지우기]로 다음 영상을 넣고 또 [만들기]를 누르면 함께 진행돼요. "
+                         "줄을 두 번 누르면 그 작업이 열립니다.", style="Faint.TLabel").pack(side="left", padx=8)
     tree_jobs = ttk.Treeview(tab_jobs, columns=("name", "status", "stage", "when"), show="headings", selectmode="browse")
     for c, title, w in zip(("name", "status", "stage", "when"), ("편 이름", "상태", "지금 하는 일", "시작"), (190, 80, 520, 90)):
-        tree_jobs.heading(c, text=title)
+        tree_jobs.heading(c, text=title, anchor="w")
         tree_jobs.column(c, width=w, anchor="w")
     tree_jobs.pack(fill="both", expand=True)
     tree_jobs.bind("<Double-1>", lambda e: tree_jobs.selection() and open_episode(tree_jobs.selection()[0]))
 
-    nb.add(tab_res, text="  결과  ")
-    nb.add(tab_up, text="  업로드 문구 복사  ")
-    nb.add(tab_log, text="  진행 기록  ")
-    nb.add(tab_jobs, text="  작업 목록  ")
-
-    foot = ttk.Frame(frm)
-    foot.grid(row=13, column=0, columnspan=3, sticky="ew", **pad)
+    nb.add(tab_res, text="결과")
+    nb.add(tab_up, text="업로드 문구")
+    nb.add(tab_log, text="진행 기록")
+    nb.add(tab_jobs, text="작업 목록")
 
     def log(msg: str, save: bool = True):
         log_to(state["name"], msg, save)
@@ -716,11 +842,11 @@ def run_gui(argv: list[str]):
             up("결과가 나오면 제목·설명·핀 댓글을 여기서 [복사]로 가져갈 수 있습니다.")
             put("아직 만든 결과가 없습니다.", "dim")
             put("[만들기]를 누르면 진행 상황은 '진행 기록'에, 끝난 뒤 결과는 여기에 나옵니다.", "dim")
-            ttk.Label(alt_box, text="결과가 나오면 후보가 여기에 표시됩니다.", foreground=GRAY).pack(anchor="w")
+            ttk.Label(alt_box, text="결과가 나오면 차순위 후보 버튼이 여기에 나와요.", style="Sub.TLabel").pack(anchor="w")
         elif "plain" in data:
             put(data["plain"], "")
             up("이 버전은 예전 방식으로 만들어 복사 버튼이 없습니다. 한 번 더 [만들기] 하면 생깁니다.")
-            ttk.Label(alt_box, text="이 편을 한 번 더 [만들기] 하면 후보 버튼이 표시됩니다.", foreground=GRAY).pack(anchor="w")
+            ttk.Label(alt_box, text="이 편을 한 번 더 [만들기] 하면 후보 버튼이 표시됩니다.", style="Sub.TLabel").pack(anchor="w")
         else:
             dur = f"  ·  {data['duration']}초" if data.get("duration") else ""
             put(f"{data.get('product', name)}{dur}", "title")
@@ -748,11 +874,11 @@ def run_gui(argv: list[str]):
                 put(f"{i}.  {a.get('brand', '')} {a.get('name', '')}".rstrip())
                 if a.get("reason"):
                     put(f"     {a['reason']}", "dim")
-            put("제목·설명·핀 댓글은 위의 [업로드 문구 복사] 장에서 버튼으로 복사합니다.", "dim")
+            put("제목·설명·핀 댓글은 위의 [업로드 문구] 탭에서 버튼으로 복사합니다.", "dim")
 
             def copy_row(label, text, what, show=None):
                 t_up.insert("end", " ", "copy")
-                t_up.window_create("end", window=ttk.Button(t_up, text="복사", width=6,
+                t_up.window_create("end", window=ttk.Button(t_up, text="복사", width=5, style="Small.Soft.TButton",
                                                             command=lambda: copy_text(text, what)))
                 t_up.insert("end", f"  {label}\n", "copy")
                 if show:
@@ -774,7 +900,7 @@ def run_gui(argv: list[str]):
             put("  ·  ".join(data.get("files", [])), "dim")
             if not alts:
                 put("(후보가 없습니다)", "dim")
-                ttk.Label(alt_box, text="후보가 없습니다.", foreground=GRAY).pack(anchor="w")
+                ttk.Label(alt_box, text="후보가 없습니다.", style="Sub.TLabel").pack(anchor="w")
             for a in alts if latest else []:
                 pname = f"{a.get('brand', '')} {a.get('name', '')}".strip()
 
@@ -786,7 +912,7 @@ def run_gui(argv: list[str]):
                 ttk.Button(alt_box, text=f"{pname} (으)로 다시 만들기", command=remake).pack(side="left", padx=(0, 8))
         if data and "plain" not in data and not latest:
             ttk.Label(alt_box, text="이전 버전을 보고 있습니다. 다시 만들기는 최신 버전에서 합니다.",
-                      foreground=GRAY).pack(anchor="w")
+                      style="Sub.TLabel").pack(anchor="w")
         for t in (t_res, t_up):
             t.configure(state="disabled")
             t.yview_moveto(0)
@@ -838,6 +964,22 @@ def run_gui(argv: list[str]):
                 w.configure(state="disabled" if on else "normal")
         b_stop.configure(state="normal" if is_active(state["name"]) else "disabled")
         refresh_jobs()
+        refresh_stepper()
+
+    def refresh_stepper():
+        """지금 보고 있는 편이 어느 단계인지 그린다."""
+        name = state["name"]
+        j = jobs.get(name)
+        if j and j["status"] in ("대기", "진행"):
+            stepper.set(j.get("step", 0), "run")
+        elif j and j["status"] == "멈춤":
+            stepper.set(j.get("step", 0), "fail")
+        elif j and j["status"] == "중지":
+            stepper.set(j.get("step", 0), "idle")
+        elif name and load_result(name):
+            stepper.set(len(STEPS), "done")
+        else:
+            stepper.set(-1, "idle")
 
     def refresh_jobs():
         order = {"진행": 0, "대기": 1}
@@ -846,7 +988,7 @@ def run_gui(argv: list[str]):
         for name, j in rows:
             tree_jobs.insert("", "end", iid=name, values=(name, j["status"], j["stage"], j["when"]))
         n = sum(1 for j in jobs.values() if j["status"] in ("대기", "진행"))
-        nb.tab(tab_jobs, text=f"  작업 목록 ({n}개 진행)  " if n else "  작업 목록  ")
+        nb.tab(tab_jobs, text=f"작업 목록 · {n}개 진행" if n else "작업 목록")
 
     def start_job(name: str):
         j = jobs[name]
@@ -879,7 +1021,8 @@ def run_gui(argv: list[str]):
     def submit(name: str, cmd: list[str], notes: list[str], revised: bool):
         import time
         jobs[name] = {"proc": None, "status": "대기", "cmd": cmd, "revised": revised, "stage": "차례를 기다리는 중",
-                      "when": time.strftime("%H:%M:%S")}
+                      "when": time.strftime("%H:%M:%S"),
+                      "step": REDO_STEP.get(cmd[cmd.index("--redo") + 1], 0) if "--redo" in cmd else 0}
         waiting.append(name)
         log_to(name, f"━━ {name} 시작 ({time.strftime('%Y-%m-%d %H:%M')}) ━━")
         for n in notes:
@@ -911,7 +1054,7 @@ def run_gui(argv: list[str]):
                 fold(True)
                 v_status.set(f"완료: '{name}' 편을 만들었습니다. 아래 [결과]를 확인하세요.")
                 if notify("완료", f"{what}.\n\n지금 폴더를 열어 영상을 볼까요?\n"
-                          "제목·설명·핀 댓글은 [업로드 문구 복사]에서 가져갈 수 있습니다.", ask=True):
+                          "제목·설명·핀 댓글은 [업로드 문구] 탭에서 복사할 수 있습니다.", ask=True):
                     open_out()
             elif notify("완료", f"{what}.\n\n지금 이 작업을 열어 볼까요?", ask=True):
                 open_episode(name)
@@ -931,6 +1074,11 @@ def run_gui(argv: list[str]):
                 if kind == "line":
                     log_to(name, val)
                     line = val.strip()
+                    k = step_of(line)
+                    if k is not None and name in jobs and jobs[name].get("step") != k:
+                        jobs[name]["step"] = k
+                        if name == state["name"]:
+                            refresh_stepper()
                     if line.startswith("[") and "]" in line and not line.startswith(("[Claude]", "[영상]")):
                         if name in jobs:
                             jobs[name]["stage"] = line[:70]
@@ -980,6 +1128,7 @@ def run_gui(argv: list[str]):
         for ln in read_log_tail(name, 60):
             log_to(name, ln, save=False)
         nb.select(tab_log)
+        fold(True)       # 만드는 동안은 입력 칸을 접어 진행 기록을 넓게 보여 준다
         submit(name, cmd, notes, "--redo" in cmd)
 
     def run_feedback():
@@ -1079,12 +1228,11 @@ def run_gui(argv: list[str]):
     b_fb.configure(command=run_feedback)
     b_stop.configure(command=stop)
     b_open.configure(command=open_out)
-    b_ver.configure(command=open_out)
     cb_ver.bind("<<ComboboxSelected>>", on_version)
     t_feedback.bind("<Control-Return>", lambda e: (run_feedback(), "break")[1])
-    ttk.Button(foot, text="바탕화면 아이콘 만들기", command=shortcut).pack(side="left")
-    ttk.Button(foot, text="키 설정(.env)", command=edit_env).pack(side="left", padx=8)
-    ttk.Button(foot, text="프로그램 업데이트", command=update).pack(side="left")
+    for text_, cmd_ in (("프로그램 업데이트", update), ("키 설정(.env)", edit_env), ("바탕화면 아이콘 만들기", shortcut)):
+        ttk.Button(foot, text=text_, style="Bg.Ghost.TButton", command=cmd_).pack(side="left", padx=(0, 4))
+    ttk.Label(foot, text="막히면 [진행 기록] 탭의 빨간 줄을 확인하세요", style="BgSub.TLabel", font=T.f_small).pack(side="right")
 
     def remember():
         name = state["name"]
@@ -1150,6 +1298,7 @@ def run_gui(argv: list[str]):
         t_log.delete("1.0", "end")
         t_log.configure(state="disabled")
         show_result("")
+        show_mix(False)
         fold(False)
         nb.select(tab_res)
         cb_name.configure(values=existing_episodes())

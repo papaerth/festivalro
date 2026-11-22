@@ -93,12 +93,20 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     disp_w = int(disp_h * 9 / 16)
     win.geometry(f"{disp_w + 480}x{max(disp_h + 40, min(sh - 90, 800))}")
     win.transient(root)
+    try:      # 본 창과 같은 모양(색·둥근 버튼). 따로 열렸을 때는 여기서 입힌다
+        import ui_theme
+        if not getattr(root, "_shorts_theme", None):
+            root._shorts_theme = ui_theme.apply(root, fam)
+        ui_theme.style_toplevel(win)
+        UI = ui_theme.C
+    except Exception:
+        ui_theme, UI = None, {"accent": "#0b57d0", "sub": "#5f6368", "ink": "#1c1c1c", "warn": "#a85a00"}
 
-    left = ttk.Frame(win, padding=8)
+    left = ttk.Frame(win, padding=(14, 14, 8, 14))
     left.pack(side="left", fill="y")
-    canvas = tk.Label(left, background="#202020", width=disp_w, height=disp_h)
+    canvas = tk.Label(left, background="#16181D", width=disp_w, height=disp_h, borderwidth=0)
     canvas.pack()
-    right = ttk.Frame(win, padding=(4, 10, 12, 10))
+    right = ttk.Frame(win, padding=(8, 8, 16, 12))
     right.pack(side="left", fill="both", expand=True)
 
     v_title_font, v_sub_font = tk.StringVar(value=DEFAULT_NAME), tk.StringVar(value=DEFAULT_NAME)
@@ -118,12 +126,14 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     bar.pack(side="bottom", fill="x", pady=(6, 0))
 
     def section(text):
-        ttk.Label(right, text=text, font=(fam, 12, "bold"), foreground="#0b57d0").pack(anchor="w", pady=(8, 2))
+        ttk.Label(right, text=text, font=(fam, 12, "bold"), foreground=UI["accent"]).pack(anchor="w", pady=(10, 3))
 
     section("볼 장면")
     box = ttk.Frame(right)
     box.pack(fill="x")
     lb = tk.Listbox(box, height=5, exportselection=False, font=(fam, 11), activestyle="none")
+    if ui_theme:
+        ui_theme.style_listbox(lb)
     sb_ = ttk.Scrollbar(box, command=lb.yview)
     lb.configure(yscrollcommand=sb_.set)
     sb_.pack(side="right", fill="y")
@@ -154,11 +164,11 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     for key, label in [("", "없음 (완성본 그대로)")] + list(platforms.PLATFORMS.items()):
         ttk.Radiobutton(right, text=label, value=key, variable=v_platform, command=lambda: schedule()).pack(anchor="w")
     ttk.Label(right, text="버튼과 글자가 놓이는 자리를 비슷하게 흉내 낸 것입니다.\n기기와 앱 버전에 따라 조금 다릅니다.",
-              foreground="#5f6368").pack(anchor="w", pady=(2, 0))
+              foreground=UI["sub"]).pack(anchor="w", pady=(2, 0))
 
     section("배경 음악")
     ttk.Label(right, text="목소리만 있는 버전 밑에 깔아 '_음악.mp4' 파일을 하나 더 만듭니다.",
-              foreground="#5f6368").pack(anchor="w")
+              foreground=UI["sub"]).pack(anchor="w")
 
     def music_label():
         p = v_music.get()
@@ -191,7 +201,7 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
         except OSError as e:
             messagebox.showerror("음악", str(e), parent=win)
 
-    ttk.Label(right, textvariable=v_music_label, foreground="#1c1c1c").pack(anchor="w")
+    ttk.Label(right, textvariable=v_music_label, foreground=UI["ink"]).pack(anchor="w")
     m1 = ttk.Frame(right)
     m1.pack(fill="x", pady=(2, 0))
     ttk.Button(m1, text="음악 파일 고르기", command=pick_music).pack(side="left")
@@ -207,7 +217,7 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     ttk.Button(m2, text="유튜브 오디오 보관함 열기", command=open_library).pack(side="right")
     music_label()
 
-    ttk.Label(right, textvariable=v_note, foreground="#a85a00", wraplength=420, justify="left").pack(anchor="w", pady=(6, 2))
+    ttk.Label(right, textvariable=v_note, foreground=UI["warn"], wraplength=420, justify="left").pack(anchor="w", pady=(6, 2))
 
     def current() -> dict:
         def num(v, default):
