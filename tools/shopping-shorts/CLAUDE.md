@@ -63,6 +63,7 @@ python shorts.py auto <편>        # 또는 --all
 - 둘째 영상의 작업 파일은 이름 뒤에 `_2`: `meta_2.json`, `words_2.json`, `transcript_2.txt`, `comments_2.json`, `words_zoom_2.txt`.
   프레임 시트는 `overviewB_*.jpg`, `zoomB_<n>_*.jpg`. 댓글을 직접 줄 때는 `input/<편>/comments_2.json`.
 - `analysis.json`: 제품·후킹·`pick`·`pick.ranges` 항목마다 `"src": "A"|"B"`, 그리고 `channel_b`, `burned_in_b`.
+  (모델에게는 `burned_in`과 `crop`을 `[A, B]` 목록으로 받고, 프로그램이 `burned_in_b`·`crop_b`로 풀어 적는다.)
 - `plan.json`: 둘째 영상의 장면(컷·정지 화면)과 `thumbnail`, 그 영상의 댓글 카드에 `"src": 1`. 둘째 영상의 크롭은 `crop_b`,
   영상 내내 지울 글씨는 `erase_b`.
   출처 문구는 `source_text`(A)와 `source_text_b`(B)이고, 렌더링이 그 장면의 영상 것만 띄운다(`build.source_text_at`). `ranges`는 `[[시작, 끝, 영상 번호(0|1)], …]`. 시각·x0는 모두 그 영상 기준이다.
@@ -97,6 +98,10 @@ python shorts.py auto <편>        # 또는 --all
 - `pipeline/asr_words.py` 음성 인식(어절별 시각) · `pipeline/sheets.py` 프레임 시트 · `pipeline/build.py` 렌더링
 - `pipeline/checks.py` 규칙 검사·쉼 제거 · `pipeline/qa.py` 완성본 검수
 - `pipeline/tts.py` 일레븐랩스 · `pipeline/comments.py` 댓글 · `pipeline/brain.py` Claude API 판단 단계
+  - 답 형식(JSON 스키마)은 `brain.analysis_schema(two)`·`design_schema(two)`. **스키마에 칸을 더할 때는 조심한다** — 크면 API가
+    `400 The compiled grammar is too large` 로 거절한다(실제로 두 영상 칸을 더했다가 겪었다). 영상이 하나일 때는 영상 B 칸을 아예 넣지 않고,
+    선택(optional) 칸·`anyOf`는 쓰지 않는다. 그래도 거절되면 `ask_json`이 형식 강제 없이 다시 묻고(스키마를 글로 붙임)
+    `conform`으로 답을 스키마 모양에 맞춘다. `SHORTS_LOOSE_JSON=1` 이면 처음부터 그 방식으로 묻는다.
 - `pipeline/center.py` 인물 가운데 맞춤(얼굴 찾기, onnxruntime + UltraFace 모델 1MB). sherpa-onnx와 한 프로세스에서 함께 불러오면
   충돌할 수 있어 `shorts.py`는 따로 실행한다. `shorts.py center <편>` 또는 `auto`가 TTS 전에 부른다. 컷에 `"center": false`면 건너뛴다
 - `pipeline/capture.py` 실제 유튜브 댓글 캡처(playwright로 PC의 Edge·Chrome 사용). `shorts.py capture <편>` 또는 `auto`가 렌더 전에 부른다.

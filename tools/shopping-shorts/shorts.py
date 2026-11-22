@@ -180,7 +180,7 @@ def stage_design(ep: Episode, max_rounds: int = 3):
     history, plan, copy, res = None, None, None, None
     for rnd in range(1, max_rounds + 2):
         log(f"[설계] {'컷 설계 중…' if rnd == 1 else f'규칙 검사에서 걸린 부분 고치는 중… ({rnd - 1}차)'}")
-        d, history = brain.ask_json(content, brain.DESIGN_SCHEMA, history)
+        d, history = brain.ask_json(content, brain.design_schema(len(metas) > 1), history)
         plan, copy = brain.to_plan(d, an, ep.info, yt, len(metas), channels)
         util.write_json(ep.w("plan.json"), plan)
         full = load_plan(ep.w("plan.json"))

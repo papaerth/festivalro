@@ -44,15 +44,63 @@ def _has_credentials() -> bool:
     return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
 
 
-def ask_json(content: list, schema: dict, history: list | None = None) -> tuple[dict, list]:
-    """구조화 출력(JSON 스키마)으로 답을 받는다. (답, 이어서 쓸 대화 기록)"""
+_LOOSE: set[str] = set()      # API가 "너무 복잡하다"고 거절한 스키마(형식 강제 없이 묻는다)
+
+
+def _too_complex(e) -> bool:
+    """구조화 출력의 스키마 한도(문법 크기·복잡도·컴파일 시간)에 걸린 400 인지."""
+    m = str(getattr(e, "message", "") or e).lower()
+    return "grammar" in m or "too complex" in m or ("schema" in m and ("too large" in m or "compil" in m))
+
+
+def extract_json(text: str):
+    """모델 답에서 JSON 객체 하나를 꺼낸다(앞뒤 설명이나 코드 울타리가 붙어 있어도)."""
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[1] if "\n" in t else t
+        t = t.rsplit("```", 1)[0]
+    i, j = t.find("{"), t.rfind("}")
+    if i < 0 or j <= i:
+        raise ValueError("JSON 객체가 없습니다")
+    return json.loads(t[i:j + 1])
+
+
+def conform(schema: dict, v):
+    """답을 스키마 모양에 맞춘다: 빠진 칸은 기본값으로 채우고, 자료형을 맞추고, 모르는 칸은 버린다.
+    형식 강제 없이 받은 답도 뒤 단계가 그대로 읽을 수 있게 한다."""
+    t = schema.get("type")
+    if t == "object":
+        v = v if isinstance(v, dict) else {}
+        return {k: conform(sub, v.get(k)) for k, sub in schema.get("properties", {}).items()}
+    if t == "array":
+        return [conform(schema.get("items", {}), x) for x in v] if isinstance(v, list) else []
+    if "enum" in schema:
+        opts = schema["enum"]
+        if v in opts:
+            return v
+        low = {str(o).lower(): o for o in opts}
+        return low.get(str(v).strip().lower(), opts[0])
+    if t == "string":
+        return "" if v is None else str(v)
+    if t == "boolean":
+        return v if isinstance(v, bool) else str(v).strip().lower() in ("true", "1", "yes")
+    if t in ("number", "integer"):
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            f = 0.0
+        return int(round(f)) if t == "integer" else f
+    return v
+
+
+def _send(messages: list, schema: dict | None) -> object:
+    """요청 한 번. schema 가 있으면 구조화 출력(형식 강제)으로, 없으면 형식 강제 없이."""
     anthropic, client = _client()
-    messages = list(history or []) + [{"role": "user", "content": content}]
+    cfg = {"effort": os.environ.get("SHORTS_EFFORT", "high")}
+    if schema is not None:
+        cfg["format"] = {"type": "json_schema", "schema": schema}
     kw = dict(model=os.environ.get("SHORTS_MODEL", MODEL), max_tokens=32000, system=system_prompt(),
-              thinking={"type": "adaptive"},
-              output_config={"effort": os.environ.get("SHORTS_EFFORT", "high"),
-                             "format": {"type": "json_schema", "schema": schema}},
-              messages=messages)
+              thinking={"type": "adaptive"}, output_config=cfg, messages=messages)
     if not os.environ.get("SHORTS_NO_FALLBACK"):
         # 모델이 요청을 거절하면 서버가 다른 모델로 같은 요청을 한 번 더 처리한다
         kw.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
@@ -64,6 +112,8 @@ def ask_json(content: list, schema: dict, history: list | None = None) -> tuple[
     except anthropic.RateLimitError:
         util.die("Claude API 사용량 한도에 걸렸습니다. 잠시 뒤 같은 명령을 다시 실행하면 이어서 진행합니다.")
     except anthropic.BadRequestError as e:
+        if schema is not None and _too_complex(e):
+            raise SchemaTooComplex(str(e.message)) from e
         util.die(f"Claude API 요청이 거부됐습니다(400): {e.message}")
     except anthropic.APIStatusError as e:
         util.die(f"Claude API 오류({e.status_code}): {e.message}")
@@ -79,13 +129,50 @@ def ask_json(content: list, schema: dict, history: list | None = None) -> tuple[
         util.die("모델이 이 요청을 처리하지 않았습니다(refusal).")
     if msg.stop_reason == "max_tokens":
         util.die("모델 답이 길이 한도에서 잘렸습니다. 다시 실행해 주세요.")
+    u = msg.usage
+    util.log(f"[Claude] 입력 {u.input_tokens:,} · 출력 {u.output_tokens:,} 토큰 ({msg.model})")
+    return msg
+
+
+class SchemaTooComplex(Exception):
+    pass
+
+
+def _text_of(msg) -> str:
     text = next((b.text for b in msg.content if b.type == "text"), None)
     if text is None:
         util.die("모델 답에 본문이 없습니다.")
-    data = json.loads(text)
-    u = msg.usage
-    util.log(f"[Claude] 입력 {u.input_tokens:,} · 출력 {u.output_tokens:,} 토큰 ({msg.model})")
-    return data, messages + [{"role": "assistant", "content": msg.content}]
+    return text
+
+
+def ask_json(content: list, schema: dict, history: list | None = None) -> tuple[dict, list]:
+    """JSON 스키마에 맞는 답을 받는다. (답, 이어서 쓸 대화 기록)
+
+    먼저 구조화 출력(형식 강제)으로 묻는다. API가 스키마가 너무 크다고 거절하면(400 compiled grammar is too large 등)
+    같은 요청을 형식 강제 없이 보내고 — 스키마를 글로 붙여 JSON만 답하게 한다 — 받은 답을 스키마 모양에 맞춘다."""
+    key = json.dumps(schema, sort_keys=True)
+    if key not in _LOOSE and not os.environ.get("SHORTS_LOOSE_JSON"):
+        messages = list(history or []) + [{"role": "user", "content": content}]
+        try:
+            msg = _send(messages, schema)
+            return conform(schema, json.loads(_text_of(msg))), messages + [{"role": "assistant", "content": msg.content}]
+        except SchemaTooComplex:
+            _LOOSE.add(key)
+            util.log("[Claude] 답 형식이 커서 형식 강제 없이 다시 요청합니다(결과는 같습니다).")
+    note = ("\n\n[답하는 형식]\n설명이나 코드 울타리 없이 JSON 객체 하나만 출력합니다. 아래 JSON 스키마의 모든 칸을 빠짐없이 채우고, "
+            "스키마에 없는 칸은 넣지 않습니다.\n" + json.dumps(schema, ensure_ascii=False))
+    messages = list(history or []) + [{"role": "user", "content": list(content) + [{"type": "text", "text": note}]}]
+    for attempt in (1, 2, 3):
+        msg = _send(messages, None)
+        messages = messages + [{"role": "assistant", "content": msg.content}]
+        try:
+            return conform(schema, extract_json(_text_of(msg))), messages
+        except ValueError as e:
+            if attempt == 3:
+                util.die(f"모델 답을 JSON으로 읽지 못했습니다({e}). 같은 명령을 다시 실행해 주세요.")
+            messages = messages + [{"role": "user", "content": [{"type": "text", "text":
+                       f"방금 답을 JSON으로 읽을 수 없습니다({e}). 설명 없이 올바른 JSON 객체 하나만 다시 출력하세요."}]}]
+    raise AssertionError("unreachable")
 
 
 def img_block(path) -> dict:
@@ -110,6 +197,7 @@ def _arr(items: dict) -> dict:
 
 
 S, N, I, B = {"type": "string"}, {"type": "number"}, {"type": "integer"}, {"type": "boolean"}
+HEARTS = "❤♥💕💖💗💓💞💘💝🩷🧡💛💚💙💜🤍"      # 댓글에 하트가 있으면 그린 카드에도 하트를 그린다
 SRC = {"type": "string", "enum": ["A", "B"]}     # 원본 영상이 둘일 때 어느 영상인지(하나면 늘 A)
 LABEL = ["A", "B"]
 
@@ -160,21 +248,30 @@ def card_candidates(comments: list, limit: int = 60) -> tuple[str, bool]:
 
 
 # ------------------------------------------------------------------ 1) 분석·제품 선정
-ANALYSIS_SCHEMA = _obj({
-    "channel": S,
-    "celebrity": S,
-    "paid_ad": B,
-    "paid_ad_note": S,
-    "channel_b": S,
-    "burned_in": _obj({"caption_top_y": I, "left_label_right_x": I, "right_label_left_x": I, "note": S}),
-    "burned_in_b": _obj({"caption_top_y": I, "left_label_right_x": I, "right_label_left_x": I, "note": S}),
-    "products": _arr(_obj({"src": SRC, "brand": S, "name": S, "start": N, "end": N, "closeups": _arr(N), "demos": _arr(N),
-                           "quote": S, "sellable": S})),
-    "hooks": _arr(_obj({"src": SRC, "t": N, "product": S, "why": S})),
-    "pick": _obj({"brand": S, "name": S, "src": SRC, "start": N, "end": N, "reason": S,
-                  "ranges": _arr(_obj({"src": SRC, "start": N, "end": N, "what": S}))}),
-    "alternates": _arr(_obj({"brand": S, "name": S, "reason": S})),
-})
+BURNED = {"caption_top_y": I, "left_label_right_x": I, "right_label_left_x": I, "note": S}
+
+
+def analysis_schema(two: bool = False) -> dict:
+    """분석 답의 형식. 스키마가 크면 API가 거절하므로(compiled grammar is too large) 영상이 하나일 때는
+    영상 B에 관한 칸을 아예 넣지 않는다. 둘일 때만 src(A|B)와 channel_b 가 더해지고 burned_in 이 [A, B] 목록이 된다."""
+    src = {"src": SRC} if two else {}
+    return _obj({
+        "channel": S,
+        "celebrity": S,
+        "paid_ad": B,
+        "paid_ad_note": S,
+        **({"channel_b": S} if two else {}),
+        "burned_in": _arr(_obj(BURNED)) if two else _obj(BURNED),
+        "products": _arr(_obj({**src, "brand": S, "name": S, "start": N, "end": N, "closeups": _arr(N), "demos": _arr(N),
+                               "quote": S, "sellable": S})),
+        "hooks": _arr(_obj({**src, "t": N, "product": S, "why": S})),
+        "pick": _obj({"brand": S, "name": S, **src, "start": N, "end": N, "reason": S,
+                      "ranges": _arr(_obj({**src, "start": N, "end": N, "what": S}))}),
+        "alternates": _arr(_obj({"brand": S, "name": S, "reason": S})),
+    })
+
+
+ANALYSIS_SCHEMA = analysis_schema(False)
 
 
 def vidiq_block(vidiq: str, limit: int = 20000) -> str:
@@ -255,13 +352,13 @@ def analyze(meta, asr, sheets, info: dict, yt, vidiq: str = "", feedback: str = 
 {chr(10).join(parts) if two else parts[0]}
 
 채워야 할 것
-- src 가 있는 항목은 어느 영상인지 A 또는 B 로 적습니다(영상이 하나면 모두 A).
-- channel: 출처 표기에 쓸 유튜브 채널명(영상 A). channel_b: 영상 B의 채널명(영상이 하나면 빈 문자열).
+{"- src 가 있는 항목은 어느 영상인지 A 또는 B 로 적습니다." if two else ""}
+- channel: 출처 표기에 쓸 유튜브 채널명{"(영상 A). channel_b: 영상 B의 채널명" if two else ""}.
   celebrity: 화자(연예인) 이름. 모르면 빈 문자열.
 - paid_ad / paid_ad_note: 원본이 특정 브랜드의 유료 광고 영상인지(화면의 고지 문구, 설명란, 대사 근거).
 - burned_in: 원본 화면에 박힌 글자의 위치(원본 픽셀). caption_top_y는 아래쪽 자막 영역의 위쪽 경계 y(없으면 영상 높이),
   left_label_right_x는 왼쪽 위 라벨이 끝나는 x(없으면 0), right_label_left_x는 오른쪽 위 고지 문구가 시작하는 x(없으면 영상 너비).
-  burned_in 은 영상 A, burned_in_b 는 영상 B의 것(영상이 하나면 burned_in_b 는 0과 빈 문자열로 채웁니다).
+  {"영상이 둘이므로 burned_in 은 [영상 A의 것, 영상 B의 것] 순서의 목록으로 적습니다." if two else ""}
 - products: 영상에 나오는 모든 제품. start/end는 소개 구간, closeups는 제품 클로즈업 시각, demos는 바르거나 시연하는 시각,
   quote는 화자의 가장 강한 한마디(대사 그대로), sellable은 쿠팡 판매·제품 태그 가능성에 대한 한 줄 판단.
 - hooks: 20~40대 여성이 쇼츠 첫 3초에 멈출 후킹 순간 TOP 10 (표정·리액션·반전 발언·비포애프터·제형 클로즈업 우선).
@@ -271,35 +368,45 @@ def analyze(meta, asr, sheets, info: dict, yt, vidiq: str = "", feedback: str = 
   컷은 이 구간들 안에서만 뽑으므로, 넉넉히 잡지 말고 정확히 잡습니다.
   영상이 둘이면 두 영상 각각에서 그 제품이 나오는 구간을 모두 적습니다(한쪽에 전혀 안 나오면 그 영상의 구간은 없어도 됩니다).
 - alternates: 차순위 후보 정확히 2개와 이유."""
-    data, _ = ask_json(content + [{"type": "text", "text": ask}], ANALYSIS_SCHEMA)
+    data, _ = ask_json(content + [{"type": "text", "text": ask}], analysis_schema(two))
+    if two and isinstance(data.get("burned_in"), list):     # [A, B] 목록을 예전 모양(burned_in, burned_in_b)으로
+        both = data["burned_in"] + [{}, {}]
+        data["burned_in"], data["burned_in_b"] = both[0], both[1]
     return data
 
 
 # ------------------------------------------------------------------ 2) 컷 설계·문구
 RECT = _obj({"x": I, "y": I, "w": I, "h": I})
-DESIGN_SCHEMA = _obj({
-    "combos": _arr(_obj({"top1": S, "top2": S, "title": S})),
-    "crop": _obj({"size": I, "x_min": I, "x_max": I}),
-    "crop_b": _obj({"size": I, "x_min": I, "x_max": I}),
-    "erase": _arr(RECT),
-    "erase_b": _arr(RECT),
-    "timeline": _arr(_obj({
-        "type": {"type": "string", "enum": ["cut", "tts"]},
-        "src": SRC,
-        "a": N, "b": N, "x0": I, "shows": S,
-        "unmirror": B, "erase": _arr(RECT),
-        "subs": _arr(_obj({"t": N, "text": S, "em": B, "sfx": {"type": "string", "enum": SFX}})),
-        "sfx": {"type": "string", "enum": SFX},
-        "text": S, "image": S, "still_t": N,
-    })),
-    "cards": _arr(_obj({"comment": I, "seg": I, "offset": N, "dur": N, "heart": B,
-                        "pos": {"type": "string", "enum": ["top", "mid", "bottom"]}})),
-    "thumbnail": _obj({"src": SRC, "t": N, "x0": I}),
-    "description": _obj({"hook_line": S, "body_lines": _arr(S), "closing_line": S, "hashtags": _arr(S)}),
-    "pin_question": S,
-    "notes": S,
-    "revision": S,
-})
+CROP = {"size": I, "x_min": I, "x_max": I}
+
+
+def design_schema(two: bool = False) -> dict:
+    """컷 설계 답의 형식. 영상이 하나일 때는 영상 B에 관한 칸이 없다(스키마가 크면 API가 거절한다).
+    둘일 때만 timeline·thumbnail 에 src(A|B)가 더해지고 crop 이 [A, B] 목록이 된다."""
+    src = {"src": SRC} if two else {}
+    return _obj({
+        "combos": _arr(_obj({"top1": S, "top2": S, "title": S})),
+        "crop": _arr(_obj(CROP)) if two else _obj(CROP),
+        "erase": _arr(RECT),
+        "timeline": _arr(_obj({
+            "type": {"type": "string", "enum": ["cut", "tts"]},
+            **src,
+            "a": N, "b": N, "x0": I, "shows": S,
+            "unmirror": B, "erase": _arr(RECT),
+            "subs": _arr(_obj({"t": N, "text": S, "em": B, "sfx": {"type": "string", "enum": SFX}})),
+            "sfx": {"type": "string", "enum": SFX},
+            "text": S, "image": S, "still_t": N,
+        })),
+        "cards": _arr(_obj({"comment": I, "seg": I, "offset": N})),
+        "thumbnail": _obj({**src, "t": N, "x0": I}),
+        "description": _obj({"hook_line": S, "body_lines": _arr(S), "closing_line": S, "hashtags": _arr(S)}),
+        "pin_question": S,
+        "notes": S,
+        "revision": S,
+    })
+
+
+DESIGN_SCHEMA = design_schema(False)
 
 
 def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
@@ -363,11 +470,9 @@ def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
   업로드 제목은 피드에서 손을 멈추게 하는 후킹 문장으로 씁니다(궁금증·반전·구체적인 상황이나 숫자, 40자 이내).
   세 개는 서로 다른 각도로 씁니다.
 - crop: size는 1:1 크롭 한 변(보통 {crops[0]}), x_min/x_max는 크롭이 들어가도 되는 원본 x 범위(모서리 라벨·고지 문구를 피한 범위).
-  crop 은 영상 A, crop_b 는 영상 B의 것입니다(영상이 하나면 crop_b 는 crop 과 같게). erase 와 erase_b 도 같습니다.
-- src: 영상이 하나면 모든 src 는 "A" 입니다.
-- 원본 글씨는 규칙의 순서대로 처리합니다: ① 안 보이게 컷과 x0를 고른다 ② 작고 단순한 배경 위라 깔끔히 지워지면 erase
+{("  영상이 둘이므로 crop 은 [영상 A의 것, 영상 B의 것] 순서의 목록으로 적습니다(B의 size 는 보통 " + str(crops[-1]) + ")." + chr(10)) if two else ""}- 원본 글씨는 규칙의 순서대로 처리합니다: ① 안 보이게 컷과 x0를 고른다 ② 작고 단순한 배경 위라 깔끔히 지워지면 erase
   ③ 그래도 읽히는 글씨가 크롭 안에 남는 컷은 unmirror=true.
-  · erase(맨 위): 영상 내내 같은 자리에 있는 글씨(채널 로고, 고지 문구)를 지울 사각형들. 원본 픽셀 x, y, w, h. 없으면 [].
+  · erase(맨 위): 영상{" A" if two else ""} 내내 같은 자리에 있는 글씨(채널 로고, 고지 문구)를 지울 사각형들. 원본 픽셀 x, y, w, h. 없으면 [].{" 영상 B의 글씨는 그 구간의 erase 로 지웁니다." if two else ""}
   · timeline 각 항목의 erase: 그 구간에만 있는 글씨를 지울 사각형들. 없으면 [].
   · timeline 각 항목의 unmirror: 그 구간의 거울반전을 풀지. 글씨가 안 보이거나 erase로 다 지워지면 false.
   사각형은 글씨보다 사방 8픽셀쯤 넉넉히 잡되, 얼굴·손·제품에 닿지 않게 합니다. 지우면 얼룩이 남을 것 같으면 지우지 말고 unmirror를 씁니다.
@@ -378,11 +483,11 @@ def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
     sfx는 컷 시작 효과음 또는 "". text와 image는 "", still_t는 -1.
   · TTS: type "tts", text 문구, image는 사용자 이미지 파일명 또는 "", image가 ""이면 still_t(정지 화면 시각)와 x0
     (정지 화면에도 unmirror·erase를 같은 기준으로 씁니다). a/b는 -1, subs는 [].
-- cards: comment는 위 후보의 번호, seg는 카드가 뜨기 시작하는 timeline 순번(0부터), offset은 그 구간 시작 뒤 초, dur는 표시 시간.
+- cards: comment는 위 후보의 번호, seg는 카드가 뜨기 시작하는 timeline 순번(0부터), offset은 그 구간 시작 뒤 초.
   이 제품과 가장 관련 있는 댓글을 먼저 고르고, 관련성이 비슷하면 위쪽(좋아요가 많은 것)을 고릅니다.
-  표시 시간은 프로그램이 댓글 길이로 정합니다(읽기에 살짝 모자라게, 약 2~4초). dur에는 3을 적고,
+  표시 시간은 프로그램이 댓글 길이로 정합니다(읽기에 살짝 모자라게, 약 2~4초).
   두 카드가 동시에 화면에 뜨지 않게 4초 넘게 간격을 둡니다(영상 끝 4초 전까지 뜨도록 seg와 offset을 잡습니다).
-  카드는 영상 바로 아래 띠에 뜨므로 얼굴이나 제품을 가리지 않습니다. pos는 쓰이지 않으니 "top"으로 둡니다.
+  카드는 영상 바로 아래 띠에 뜨므로 얼굴이나 제품을 가리지 않습니다.
   댓글을 가져오지 못했으면 빈 배열.
 - thumbnail: 썸네일로 쓸 원본 시각과 x0(표정이 가장 좋은 순간).
 - description: hook_line(쓰게 된 계기 한 줄), body_lines(영상에서 직접 말한 내용 2~3줄), closing_line, hashtags(# 포함 15개 안팎).
@@ -443,30 +548,32 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict, n_src: int = 1, chann
             src = comments[c["comment"]]
             cards.append({"seg": c["seg"], "offset": round(c["offset"], 2), "dur": card_seconds(src["text"]),
                           "text": src["text"], "likes": src.get("likes_label", str(src.get("likes", ""))),
-                          "heart": bool(c["heart"]), "pos": c["pos"],
+                          "heart": bool(c.get("heart")) or any(h in src["text"] for h in HEARTS),
+                          "pos": c.get("pos") or "top",
                           **({"when": src["when"]} if src.get("when") else {}),
                           **({"src": 1} if src.get("src") else {})})
+    if not d.get("combos") or not d.get("timeline"):
+        util.die("모델 답에 제목 조합이나 장면 구성이 비어 있습니다. 같은 명령을 다시 실행해 주세요(멈춘 곳부터 이어서 합니다).")
     top = d["combos"][0]
+    crops_d = d["crop"] if isinstance(d["crop"], list) else [d["crop"], d.get("crop_b")]
+    crops_d = [c for c in crops_d if c] or [{"size": 840, "x_min": 0, "x_max": 1920}]
+    crop_a, crop_b = crops_d[0], (crops_d[1] if len(crops_d) > 1 else crops_d[0])
     def credit(c: str) -> str:
         return f"출처 : 유튜브 '{c}'" if c else ""
     plan = {
         "product": product, "brand": pick.get("brand", ""), "channel": channel,
         "source_text": credit(channel),
         "title": [top["top1"], top["top2"]],
-        "crop": {"size": d["crop"]["size"], "y0": 0, "x_min": d["crop"]["x_min"], "x_max": d["crop"]["x_max"]},
+        "crop": {"size": crop_a["size"], "y0": 0, "x_min": crop_a["x_min"], "x_max": crop_a["x_max"]},
         "timeline": tl, "cards": cards,
         "thumbnail": {"t": round(d["thumbnail"]["t"], 2), "x0": d["thumbnail"]["x0"]},
     }
     if n_src > 1:
         if channel_b and channel_b != channel:      # 영상 B의 장면이 나올 때는 B의 출처만 적는다
             plan["source_text_b"] = credit(channel_b)
-        cb = d.get("crop_b") or d["crop"]
-        plan["crop_b"] = {"size": cb["size"], "y0": 0, "x_min": cb["x_min"], "x_max": cb["x_max"]}
+        plan["crop_b"] = {"size": crop_b["size"], "y0": 0, "x_min": crop_b["x_min"], "x_max": crop_b["x_max"]}
         if which(d["thumbnail"].get("src")):
             plan["thumbnail"]["src"] = 1
-        static_b = [[r["x"], r["y"], r["w"], r["h"]] for r in d.get("erase_b") or [] if r["w"] > 1 and r["h"] > 1]
-        if static_b:
-            plan["erase_b"] = static_b
     if product_ranges(analysis):
         plan["ranges"] = product_ranges(analysis)     # 이 제품이 나오는 구간(규칙 검사가 컷이 이 안에 있는지 본다)
     static = [[r["x"], r["y"], r["w"], r["h"]] for r in d.get("erase") or [] if r["w"] > 1 and r["h"] > 1]
