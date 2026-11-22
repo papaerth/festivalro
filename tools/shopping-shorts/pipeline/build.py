@@ -201,14 +201,18 @@ def card_image(card: dict, plan: dict, dropped: list, base_dir: Path):
     width = int(card.get("width", 960))
     if card.get("image"):
         # 실제 캡처 이미지를 쓰는 경우: mosaic 에 준 사각형들을 모자이크한다
-        im = Image.open(base_dir / card["image"]).convert("RGBA")
+        im = Image.open(Path(base_dir) / card["image"]).convert("RGBA")
         sx = width / im.width
         im = im.resize((width, int(im.height * sx)), Image.LANCZOS)
-        for x, y, w, h in card.get("mosaic", []):
-            box = tuple(int(v * sx) for v in (x, y, x + w, y + h))
+        for x, y, w, h in card.get("mosaic", []):     # 프로필 사진과 핸들 자리만 알아볼 수 없게 흐린다
+            box = (max(0, int(x * sx)), max(0, int(y * sx)), min(im.width, int((x + w) * sx)), min(im.height, int((y + h) * sx)))
+            if box[2] - box[0] < 2 or box[3] - box[1] < 2:
+                continue
             reg = im.crop(box)
-            small = reg.resize((max(1, reg.width // 14), max(1, reg.height // 14)), Image.BILINEAR)
-            im.paste(small.resize(reg.size, Image.NEAREST), box)
+            # 먼저 아주 작게 줄였다 키워 글자 모양을 없앤 뒤 부드럽게 흐린다(흐리기만 하면 큰 글자는 읽힐 수 있다)
+            small = reg.resize((max(1, reg.width // 12), max(1, reg.height // 12)), Image.BILINEAR)
+            reg = small.resize(reg.size, Image.BILINEAR).filter(ImageFilter.GaussianBlur(max(4, reg.height // 6)))
+            im.paste(reg, box)
         return im
     raw = str(card.get("text", ""))
     text = EMOJI.sub("", raw)
@@ -594,10 +598,14 @@ def card_strip_image(card: dict, plan: dict, dropped: list):
             [(214, 180, 160), (190, 150, 130), (120, 110, 120), (230, 210, 200), (90, 80, 90), (170, 190, 210)])
     mask = Image.new("L", (84 * 4, 84 * 4), 0)
     ImageDraw.Draw(mask).ellipse([0, 0, 84 * 4 - 1, 84 * 4 - 1], fill=255)
+    from PIL import ImageFilter
+    av = av.filter(ImageFilter.GaussianBlur(7))
     im.paste(av, (24, (h - 84) // 2), mask.resize((84, 84), Image.LANCZOS))
     name_w = 170 + seed % 90
-    _mosaic(d, (ax, 22, ax + name_w, 22 + 24), seed + 1, 12,
+    nm = Image.new("RGB", (name_w, 24), (255, 255, 255))
+    _mosaic(ImageDraw.Draw(nm), (0, 0, name_w, 24), seed + 1, 12,
             [(60, 60, 60), (110, 110, 110), (150, 150, 150), (200, 200, 200), (85, 85, 85)])
+    im.paste(nm.filter(ImageFilter.GaussianBlur(5)), (ax, 22))
     if card.get("when"):
         d.text((ax + name_w + 12, 17), card["when"], font=util.font(26, False, reg), fill=gray)
     y = top + max(0, (h - top - 12 - lh * len(lines)) // 2)

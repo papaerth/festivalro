@@ -202,7 +202,7 @@ def stage_capture(ep: Episode) -> list[str]:
     from pipeline import capture
     plan = util.read_json(ep.w("plan.json"))
     before = [(c.get("image"), c.get("mosaic")) for c in plan.get("cards") or []]
-    notes = capture.capture_for_plan(plan, ep.info["url"], ep.inp)
+    notes = capture.capture_for_plan(plan, ep.info["url"], ep.inp, debug_dir=ep.work)
     if before != [(c.get("image"), c.get("mosaic")) for c in plan.get("cards") or []]:
         util.write_json(ep.w("plan.json"), plan)
     for n in notes:
