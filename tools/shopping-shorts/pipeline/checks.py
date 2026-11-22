@@ -15,7 +15,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pipeline import util  # noqa: E402
-from pipeline.build import EMOJI, crop_of, load_plan, trim_silence  # noqa: E402
+from pipeline.build import crop_of, load_plan, trim_silence  # noqa: E402
 
 MAX_SEC = 20.0
 TTS_MAX_CHARS = 18
@@ -246,8 +246,6 @@ def validate(plan: dict, meta, assets: Path | None = None, asr=None) -> dict:
             E.append(f"cards[{k}].seg 가 timeline 범위를 벗어났습니다.")
         if not str(cdd.get("text", "")).strip() and not cdd.get("image"):
             E.append(f"cards[{k}]: 댓글 원문이 비었습니다.")
-        if cdd.get("text") and len(re.sub(r"\s+", " ", EMOJI.sub("", str(cdd["text"]))).strip()) >= 20:
-            W.append(f"cards[{k}] '{str(cdd['text'])[:24]}…': 20자 이상입니다. 카드 댓글은 20자 미만이 기준입니다.")
 
     # 마무리(루프), 효과음
     last = tl[-1]

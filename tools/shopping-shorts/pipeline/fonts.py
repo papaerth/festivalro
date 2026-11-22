@@ -18,6 +18,54 @@ EXTS = (".ttf", ".otf", ".ttc")
 CACHE = util.ROOT / "work" / "fonts_cache.json"
 
 
+# 버튼 한 번으로 받는 무료 글자체(구글 폰트, SIL Open Font License — 영상에 써도 된다). (보일 이름, 저장소 안 경로)
+FONT_BASE = "https://raw.githubusercontent.com/google/fonts/main/ofl/"
+RECOMMENDED = [
+    ("Black Han Sans · 굵고 힘 있는 제목", "blackhansans/BlackHanSans-Regular.ttf"),
+    ("Do Hyeon · 또박또박한 고딕", "dohyeon/DoHyeon-Regular.ttf"),
+    ("Jua · 둥글고 귀여운", "jua/Jua-Regular.ttf"),
+    ("Bagel Fat One · 통통한 강조", "bagelfatone/BagelFatOne-Regular.ttf"),
+    ("Gasoek One · 묵직한 강조", "gasoekone/GasoekOne-Regular.ttf"),
+    ("Gugi · 각진 개성", "gugi/Gugi-Regular.ttf"),
+    ("Sunflower Bold · 깔끔한 굵은 글씨", "sunflower/Sunflower-Bold.ttf"),
+    ("Nanum Gothic ExtraBold · 무난한 굵은 고딕", "nanumgothic/NanumGothic-ExtraBold.ttf"),
+    ("Gaegu Bold · 손글씨", "gaegu/Gaegu-Bold.ttf"),
+    ("Nanum Pen Script · 펜 손글씨", "nanumpenscript/NanumPenScript-Regular.ttf"),
+    ("Single Day · 가벼운 손글씨", "singleday/SingleDay-Regular.ttf"),
+    ("Yeon Sung · 붓글씨 느낌", "yeonsung/YeonSung-Regular.ttf"),
+]
+
+
+def user_font_dir() -> Path:
+    """사용자가 글자체 파일(.ttf .otf)을 넣는 폴더. 여기 넣은 글자체는 설치하지 않아도 목록에 나온다."""
+    d = util.ROOT / "fonts"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def download_recommended(log=print) -> int:
+    """추천 무료 글자체를 fonts 폴더로 내려받는다(이미 있는 것은 건너뛴다). 새로 받은 개수를 돌려준다."""
+    import urllib.request
+    d, n = user_font_dir(), 0
+    for name, rel in RECOMMENDED:
+        dst = d / Path(rel).name
+        if dst.exists() and dst.stat().st_size > 10000:
+            continue
+        try:
+            log(f"받는 중: {name}")
+            with urllib.request.urlopen(FONT_BASE + rel, timeout=90) as r:
+                data = r.read()
+            if data[:4] not in (b"\x00\x01\x00\x00", b"OTTO", b"true", b"ttcf"):
+                raise OSError("글자체 파일이 아닙니다")
+            tmp = dst.with_suffix(".part")
+            tmp.write_bytes(data)
+            tmp.replace(dst)
+            n += 1
+        except OSError as e:
+            log(f"받지 못했습니다: {name} ({e})")
+    return n
+
+
 def font_dirs() -> list[Path]:
     dirs = [util.ROOT / "fonts"]
     if os.name == "nt":

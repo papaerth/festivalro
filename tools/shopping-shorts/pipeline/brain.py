@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -218,7 +219,7 @@ def comments_text(comments: list, limit: int = 100) -> str:
                      for i, c in enumerate(comments[:limit]))
 
 
-CARD_MAX_CHARS = 20     # 카드에 쓸 댓글은 이 글자 수 미만
+CARD_MAX_CHARS = 50     # 영상 아래 띠에 읽을 만하게 들어가는 길이(이보다 긴 댓글은 후보에서 뺀다). 글자 수 규정은 따로 없다
 
 
 def card_seconds(text: str) -> float:
@@ -233,18 +234,17 @@ def card_len(text: str) -> int:
     return len(re.sub(r"\s+", " ", EMOJI.sub("", str(text))).strip())
 
 
-def card_candidates(comments: list, limit: int = 60) -> tuple[str, bool]:
-    """카드 후보 목록 글(좋아요 많은 순, 번호는 원래 댓글 번호)과 '20자 미만만 추렸는지'.
-    20자 미만 댓글이 둘도 안 되면 전체에서 고르게 한다."""
-    idx = [i for i, c in enumerate(comments) if 0 < card_len(c["text"]) < CARD_MAX_CHARS]
-    short = len(idx) >= 2
-    if not short:
+def card_candidates(comments: list, limit: int = 80) -> str:
+    """카드 후보 목록 글(좋아요 많은 순, 번호는 원래 댓글 번호). 길이로 거르지 않는다 — 띠에 안 들어갈 만큼 긴 것만 뺀다.
+    어느 댓글이 제품과 관련 있고 센스 있는지는 모델이 고른다."""
+    idx = [i for i, c in enumerate(comments) if 0 < card_len(c["text"]) <= CARD_MAX_CHARS]
+    if len(idx) < 2:
         idx = [i for i, c in enumerate(comments) if card_len(c["text"]) > 0]
     idx.sort(key=lambda i: -int(comments[i].get("likes") or 0))
     if not idx:
-        return "(댓글을 가져오지 못했습니다)", False
+        return "(댓글을 가져오지 못했습니다)"
     return "\n".join(f"#{i} (좋아요 {comments[i].get('likes_label', comments[i].get('likes', 0))}) "
-                     f"{comments[i]['text']}" for i in idx[:limit]), short
+                     f"{comments[i]['text']}" for i in idx[:limit])
 
 
 # ------------------------------------------------------------------ 1) 분석·제품 선정
@@ -293,7 +293,8 @@ def feedback_block(feedback: str, prev_plan: dict | None = None, prev_copy: dict
            "부딪치면 규칙 안에서 가장 가까운 방법을 택합니다]\n" + feedback[:4000] + "\n")
     if prev_plan:
         keep = {k: prev_plan.get(k) for k in ("title", "crop", "timeline", "cards", "thumbnail")}
-        out += ("\n[이전 설계 — 요청이 닿지 않는 부분은 이대로 둡니다]\n" + json.dumps(keep, ensure_ascii=False) + "\n")
+        out += ("\n[이전 설계 — 요청이 닿지 않는 부분은 이대로 둡니다. 자막의 key 는 강조 낱말이며, 새 답에서는 text 안에 *별표*로 적습니다]\n"
+                + json.dumps(keep, ensure_ascii=False) + "\n")
         if prev_copy:
             out += "[이전 제목·문구]\n" + json.dumps(
                 {k: prev_copy.get(k) for k in ("combos", "description", "pin_question")}, ensure_ascii=False) + "\n"
@@ -417,7 +418,7 @@ def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
     sheets = sheets if sheets and isinstance(sheets[0], (list, tuple)) else [sheets]
     two = len(metas) > 1
     pick = analysis["pick"]
-    cand_text, cand_short = card_candidates(yt.get("comments") or [])
+    cand_text = card_candidates(yt.get("comments") or [])
     ranges = product_ranges(analysis)
     whats = {(src_index(r.get("src")), float(r["start"]), float(r["end"])): r.get("what", "") for r in pick.get("ranges") or []}
     hooks = [h for h in analysis.get("hooks", [])
@@ -459,7 +460,7 @@ def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
 제품 정보: {json.dumps([p for p in analysis.get('products', []) if p.get('name') == pick['name']][:2], ensure_ascii=False)}
 {mix}
 {vidiq_block(vidiq, 8000)}{feedback_block(feedback, prev_plan, prev_copy)}
-[댓글 카드 후보 — {'두 영상의 댓글을 합쳐 ' if two else ''}{'20자 미만인 댓글만 추려 ' if cand_short else ''}좋아요 많은 순으로 놓았습니다. 번호(#)로 고릅니다. 원문과 좋아요 수는 프로그램이 그대로 넣습니다]
+[댓글 카드 후보 — {'두 영상의 댓글을 합쳐 ' if two else ''}좋아요 많은 순으로 놓았습니다. 번호(#)로 고릅니다. 원문과 좋아요 수는 프로그램이 그대로 넣습니다]
 {cand_text}
 
 [사용자가 준 TTS용 이미지]
@@ -479,14 +480,20 @@ def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
 - timeline: 재생 순서대로. 각 항목의 shows 에는 그 장면에서 화면에 무엇이 보이는지 한 줄로 적습니다
   (예: "트리 아래에 바스켓을 놓는 손"). 이 제품과의 관련을 설명할 수 없는 장면은 넣지 않습니다.
   · 컷: type "cut", a/b 원본 초, x0 크롭 왼쪽 x(인물의 얼굴이 크롭의 가로 정중앙에 오게. 얼굴이 없는 제품 장면은 제품이 가운데),
-    unmirror·erase(위 설명), subs 자막 묶음(t는 첫 어절 시작 시각, em은 노란 강조, sfx는 그 순간 효과음 또는 ""),
+    unmirror·erase(위 설명), subs 자막 묶음(t는 첫 어절 시작 시각, em은 덩이 전체 강조, sfx는 그 순간 효과음 또는 ""),
+    자막 text 안에서 힘줄 낱말 하나를 *별표*로 감쌀 수 있습니다(예: "진짜 *촉촉해요*"). 별표는 화면에 나오지 않고
+    그 낱말만 크고 색 있게 나옵니다. 화자가 힘주어 말한 낱말·제품의 효과·숫자·제품명에만, 자막 서너 덩이에 한 번꼴로 씁니다.
+    em(덩이 전체 강조)을 켠 덩이에는 별표를 쓰지 않습니다.
     sfx는 컷 시작 효과음 또는 "". text와 image는 "", still_t는 -1.
   · TTS: type "tts", text 문구, image는 사용자 이미지 파일명 또는 "", image가 ""이면 still_t(정지 화면 시각)와 x0
     (정지 화면에도 unmirror·erase를 같은 기준으로 씁니다). a/b는 -1, subs는 [].
 - cards: comment는 위 후보의 번호, seg는 카드가 뜨기 시작하는 timeline 순번(0부터), offset은 그 구간 시작 뒤 초.
-  이 제품과 가장 관련 있는 댓글을 먼저 고르고, 관련성이 비슷하면 위쪽(좋아요가 많은 것)을 고릅니다.
+  이 영상에서 고른 제품과 관련 있는 댓글을 센스 있게 고릅니다: 제품의 사용감·효과·사고 싶다는 반응,
+  "나만 몰랐네" 같은 공감, 피식 웃게 하는 재치 있는 한마디처럼 보는 사람이 "맞아" 하거나 궁금해지는 것.
+  글자 수 제한은 없습니다(지나가며 읽을 수 있는 한두 줄이면 됩니다). 좋아요 수는 비슷할 때만 참고합니다.
+  제품과 무관한 댓글(다른 제품, 화자의 외모·사생활, 영상 편집 이야기), 부정적이거나 논란이 될 댓글, 뜻 없는 감탄사만 있는 댓글은 고르지 않습니다.
   표시 시간은 프로그램이 댓글 길이로 정합니다(읽기에 살짝 모자라게, 약 2~4초).
-  두 카드가 동시에 화면에 뜨지 않게 4초 넘게 간격을 둡니다(영상 끝 4초 전까지 뜨도록 seg와 offset을 잡습니다).
+  두 카드가 동시에 화면에 뜨지 않게 5초 넘게 간격을 둡니다(영상 끝 4초 전까지 뜨도록 seg와 offset을 잡습니다).
   카드는 영상 바로 아래 띠에 뜨므로 얼굴이나 제품을 가리지 않습니다.
   댓글을 가져오지 못했으면 빈 배열.
 - thumbnail: 썸네일로 쓸 원본 시각과 x0(표정이 가장 좋은 순간).
@@ -498,6 +505,13 @@ def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
 
 완성 길이는 컷 길이 합 ÷ 1.1 + TTS 길이(대략 글자당 0.15초 + 0.3초)로 어림합니다."""
     return content + [{"type": "text", "text": ask}]
+
+
+def split_key(text: str) -> tuple[str, str]:
+    """자막 글에서 *별표*로 감싼 강조 낱말을 떼어 낸다. (별표 없는 글, 강조 낱말들)"""
+    keys = [k.strip() for k in re.findall(r"\*([^*]+)\*", text or "")]
+    plain = " ".join((text or "").replace("*", "").split())
+    return plain, " ".join(k for k in keys if k)
 
 
 def to_plan(d: dict, analysis: dict, info: dict, yt: dict, n_src: int = 1, channels: list | None = None) -> tuple[dict, dict]:
@@ -516,7 +530,10 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict, n_src: int = 1, chann
         if s["type"] == "cut":
             seg = {"type": "cut", "a": round(s["a"], 2), "b": round(s["b"], 2), "x0": s["x0"], "subs": []}
             for sb in s["subs"]:
-                item = {"t": round(sb["t"], 2), "text": sb["text"]}
+                text, key = split_key(sb["text"])
+                item = {"t": round(sb["t"], 2), "text": text}
+                if key and not sb["em"]:
+                    item["key"] = key       # 이 낱말만 크게·색 있게(강조 낱말)
                 if sb["em"]:
                     item["em"] = True
                 if sb["sfx"]:

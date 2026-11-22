@@ -70,7 +70,9 @@ python shorts.py auto <편>        # 또는 --all
 - 규칙 검사는 영상별로 본다(구간 겹침, 자막 시각, 제품 구간). 제품 구간이 있는 영상을 하나도 안 쓰면 오류다.
 
 ## plan.json 요점
-- `timeline`: 재생 순서. 컷은 `{"type":"cut","a","b","x0","subs":[{"t","text","em","sfx"}],"sfx"}`,
+- `timeline`: 재생 순서. 컷은 `{"type":"cut","a","b","x0","subs":[{"t","text","em","key","sfx"}],"sfx"}`,
+  (`key`는 그 덩이에서 크게·색 있게 그릴 강조 낱말. 자동 실행에서는 모델이 text 안에 `*별표*`로 표시하고 `brain.split_key`가 떼어 낸다 —
+  스키마를 키우지 않으려는 방법이다),
   TTS는 `{"type":"tts","text","audio":"tts1.mp3","image" 또는 "still_t"+"x0","sfx"}`.
 - `crop`: `size`(1:1 한 변, 1080p 기본 840), `y0`(기본 0), `x_min`/`x_max`(크롭이 들어가도 되는 원본 x 범위).
 - 원본 글씨: plan 맨 위 `erase`(영상 내내 같은 자리의 글씨)와 구간의 `erase`는 원본 좌표 사각형 `[[x,y,w,h], …]`을 주변 화소로 메운다.
@@ -93,8 +95,9 @@ python shorts.py auto <편>        # 또는 --all
   직접 만든다. 색을 바꾸려면 맨 위의 `C`. 창의 단계 표시는 진행 기록 줄의 머리말로 정한다(`gui.STEP_MARKS`) — 새 단계 머리말을 만들면 거기에도 넣는다
 - `preview_gui.py` 미리보기 창(글자체·크기 고르기, 앱별 화면 요소 덧그리기). 고른 값은 `settings.json`(깃 제외)에 저장되고
   `build.apply_defaults`가 읽는다(`font_title`, `font_sub`, `title_size`, `sub_size`, `title_bold`, `sub_bold`,
-  `music_file`, `music_volume`. plan에 직접 적은 값이 우선). `music_file`이 있으면 `<제품명>_음악.mp4`도 만든다.
-  `pipeline/fonts.py` 한글 글자체 목록 · `pipeline/platforms.py` 쇼츠·틱톡·릴스 화면 요소
+  `music_file`, `music_volume`, 자막 변화 `font_em`·`em_scale`·`sub_vary`·`sub_colors`(cycle|yellow)·`sub_anim`(pop|rise|none).
+  plan에 직접 적은 값이 우선). `music_file`이 있으면 `<제품명>_음악.mp4`도 만든다.
+  `pipeline/fonts.py` 한글 글자체 목록(윈도우 글자체 + `fonts/` 폴더, 깃 제외)과 추천 무료 글자체 내려받기(`RECOMMENDED`) · `pipeline/platforms.py` 쇼츠·틱톡·릴스 화면 요소
 - `pipeline/asr_words.py` 음성 인식(어절별 시각) · `pipeline/sheets.py` 프레임 시트 · `pipeline/build.py` 렌더링
 - `pipeline/checks.py` 규칙 검사·쉼 제거 · `pipeline/qa.py` 완성본 검수
 - `pipeline/tts.py` 일레븐랩스 · `pipeline/comments.py` 댓글 · `pipeline/brain.py` Claude API 판단 단계

@@ -29,12 +29,22 @@ from pipeline.util import FPS, SR  # noqa: E402
 CW, CH = 1080, 1920          # 완성본 캔버스(9:16)
 WHITE, YELLOW, BLACK = (255, 255, 255), (255, 230, 0), (0, 0, 0)
 
+# 자막 강조 색(노랑 → 민트 → 분홍 순으로 번갈아 쓴다)
+SUB_COLORS = [(255, 230, 0), (110, 240, 200), (255, 150, 195)]
+# 자막이 뜰 때의 움직임: 첫 프레임들의 크기 비율(그 뒤는 1.0). 강조 자막은 조금 더 크게 튄다.
+POP, POP_EM = [0.80, 0.97, 1.08, 1.03], [0.70, 0.95, 1.15, 1.07, 1.02]
+RISE = [(26, 0.35), (14, 0.7), (6, 0.92), (2, 1.0)]     # 아래에서 올라오기: (아래로 밀린 픽셀, 불투명도)
+
 DEFAULTS = {
     "speed": 1.1,
     "mirror": True,
     "color_filter": "eq=contrast=1.06:saturation=1.15:brightness=0.015,unsharp=5:5:0.4",
     "still_zoom": 0.05,
     "card_read": 0.85,         # 댓글 카드 표시 시간 = 읽는 데 드는 시간 × 이 비율(살짝 모자라게)
+    "sub_anim": "pop",         # 자막 등장 움직임: pop(톡 튀어나오기) · rise(아래에서 올라오기) · none
+    "sub_vary": True,          # 강조 낱말·강조 자막을 크게, 다른 색, 다른 글자체로
+    "sub_colors": "cycle",     # 강조 색: cycle(노랑·민트·분홍 번갈아) · yellow(노랑만)
+    "em_scale": 125,           # 강조 글자 크기(%)
     "layout": {
         "video_y": 420,        # 1:1 영상이 놓이는 세로 위치(1080×1080)
         "title_y": [205, 335],  # 상단 제목 두 줄의 가운데 y
@@ -58,6 +68,7 @@ def apply_defaults(plan: dict, settings: dict | None = None) -> dict:
     """plan에 고정 기본값과 사용자 설정(글자체·크기)을 채운다. plan에 직접 적은 값이 가장 우선."""
     st = util.settings() if settings is None else settings
     own_layout = plan.get("layout") or {}
+    own = set(plan)            # plan 에 직접 적혀 있던 값(기본값을 채우기 전)
     for k, v in DEFAULTS.items():
         if isinstance(v, dict):
             plan[k] = {**v, **(plan.get(k) or {})}
@@ -66,11 +77,11 @@ def apply_defaults(plan: dict, settings: dict | None = None) -> dict:
     for key in ("title_size", "sub_size"):
         if st.get(key) and key not in own_layout:
             plan["layout"][key] = int(st[key])
-    for key in ("font_title", "font_sub"):
+    for key in ("font_title", "font_sub", "font_em"):
         if st.get(key) and not plan.get(key):
             plan[key] = st[key]
-    for key in ("title_bold", "sub_bold", "music_file", "music_volume"):
-        if key in st and key not in plan:
+    for key in ("title_bold", "sub_bold", "music_file", "music_volume", "sub_anim", "sub_vary", "sub_colors", "em_scale"):
+        if key in st and key not in own:
             plan[key] = st[key]
     return plan
 
@@ -113,11 +124,81 @@ def title_base(plan: dict):
     return base
 
 
-def sub_image(text: str, em: bool, plan: dict):
-    """자막 한 덩이 이미지(흰색·검은 테두리, 강조는 노란색)."""
-    fnt = util.font(plan["layout"]["sub_size"], True, plan.get("font_sub") or plan.get("font_bold"))
-    return text_image(text, fnt, YELLOW if em else WHITE, stroke_w=6, max_w=CW - 60,
-                      bold=bold_px(fnt.size, bool(plan.get("sub_bold"))))
+def sub_color(plan: dict, n: int = 0):
+    """n번째 강조에 쓸 색."""
+    return SUB_COLORS[n % len(SUB_COLORS)] if plan.get("sub_colors", "cycle") == "cycle" else YELLOW
+
+
+def is_emph(sub: dict) -> bool:
+    """이 자막 덩이에 강조(덩이 전체 em 또는 강조 낱말 key)가 있는지."""
+    return bool(sub.get("em")) or bool(str(sub.get("key") or "").strip())
+
+
+def emph_index(plan: dict, seg_i: int, sub_i: int) -> int:
+    """timeline 의 이 자막 앞에 강조가 몇 번 나왔는지(강조 색을 번갈아 쓰는 순번). 미리보기와 렌더링이 같은 색을 쓰게 한다."""
+    n = 0
+    for i, seg in enumerate(plan.get("timeline") or []):
+        subs = seg.get("subs") or ([{"em": seg.get("em")}] if seg.get("type") == "tts" else [])
+        for k, sb in enumerate(subs):
+            if (i, k) >= (seg_i, sub_i):
+                return n
+            n += 1 if is_emph(sb) else 0
+    return n
+
+
+def rich_image(words: list[tuple], stroke_w: int, max_w: int, line_gap: int = 8):
+    """낱말마다 글자체·색이 다른 가운데 정렬 글자 이미지. words: [(글자, 글자체, 색, 굵게 픽셀), …]. 밑줄(기준선)을 맞춘다."""
+    from PIL import Image, ImageDraw
+    edge = stroke_w + max((bd for *_, bd in words), default=0)
+    lines, cur, cur_w = [], [], 0.0
+    for text, fnt, fill, bd in words:
+        w = fnt.getlength(text)
+        gap = fnt.getlength(" ") * 0.9 if cur else 0.0
+        if cur and cur_w + gap + w > max_w - 2 * edge:
+            lines.append(cur)
+            cur, cur_w, gap = [], 0.0, 0.0
+        cur.append((text, fnt, fill, bd, cur_w + gap, w))
+        cur_w += gap + w
+    if cur:
+        lines.append(cur)
+    sizes = [(max(it[4] + it[5] for it in ln), max(it[1].getmetrics()[0] for it in ln), max(it[1].getmetrics()[1] for it in ln))
+             for ln in lines] or [(0, 0, 0)]
+    W = int(max(w for w, _, _ in sizes)) + 2 * edge + 8
+    H = int(sum(a + d + line_gap for _, a, d in sizes)) + 2 * edge
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    for layer in ("stroke", "fill"):        # 테두리를 모두 먼저 그려 옆 낱말의 글자를 덮지 않게
+        y = edge
+        for ln, (lw, asc, desc) in zip(lines, sizes):
+            x0 = (W - lw) / 2
+            for text, fnt, fill, bd, x, _ in ln:
+                xy = (x0 + x, y + asc - fnt.getmetrics()[0])
+                if layer == "stroke" and stroke_w:
+                    d.text(xy, text, font=fnt, fill=BLACK + (255,), stroke_width=stroke_w + bd, stroke_fill=BLACK + (255,))
+                elif layer == "fill":
+                    d.text(xy, text, font=fnt, fill=tuple(fill) + (255,), stroke_width=bd, stroke_fill=tuple(fill) + (255,))
+            y += asc + desc + line_gap
+    return im
+
+
+def sub_image(text: str, em: bool, plan: dict, key: str = "", n: int = 0):
+    """자막 한 덩이 이미지(흰색·검은 테두리).
+
+    변화 주기(sub_vary)가 켜져 있으면 강조 덩이(em)는 통째로, 강조 낱말(key)은 그 낱말만 크게·색 있게·강조 글자체로 그린다.
+    n 은 강조 순번(색을 번갈아 쓴다). 꺼져 있으면 예전처럼 강조 덩이만 노란색."""
+    size = plan["layout"]["sub_size"]
+    base = util.font(size, True, plan.get("font_sub") or plan.get("font_bold"))
+    bd = bold_px(base.size, bool(plan.get("sub_bold")))
+    keys = set(str(key or "").split())
+    if not plan.get("sub_vary") or not (em or keys):
+        return text_image(text, base, YELLOW if em else WHITE, stroke_w=6, max_w=CW - 60, bold=bd)
+    big = max(size, int(round(size * float(plan.get("em_scale") or 125) / 100)))
+    emf = util.font(big, True, plan.get("font_em") or plan.get("font_sub") or plan.get("font_bold"))
+    ebd = bold_px(emf.size, bool(plan.get("sub_bold")))
+    color = sub_color(plan, n)
+    words = [(w, emf, color, ebd) if (em or any(k in w for k in keys)) else (w, base, WHITE, bd)
+             for w in text.split()]      # 강조 낱말이 든 어절을 통째로 강조한다
+    return rich_image(words, 6, CW - 60)
 
 
 def src_list(src) -> list[Path]:
@@ -536,15 +617,51 @@ def still_frames(im, n, zoom):
 
 
 class Overlay:
-    def __init__(self, im, cx, cy, f0, f1, fade_in=2, fade_out=0, top_left=None):
+    """화면에 얹는 그림 하나(자막·출처·댓글 상자). anim 으로 등장 움직임을 준다:
+    None(없음) · [크기 비율, …](톡 튀어나오기) · [(아래로 밀린 픽셀, 불투명도), …](아래에서 올라오기)."""
+
+    def __init__(self, im, cx, cy, f0, f1, fade_in=2, fade_out=0, top_left=None, anim=None):
+        self.f0, self.f1, self.fi, self.fo = f0, f1, fade_in, fade_out
+        self.base = self._layer(im, cx, cy, top_left)
+        self.first = []            # 등장 첫 프레임들에 쓸 (그림, 불투명도 배율)
+        for step in anim or []:
+            if isinstance(step, (tuple, list)):      # 아래에서 올라오기
+                dy, k = step
+                self.first.append((self._layer(im, cx, cy + dy, top_left and (top_left[0], top_left[1] + dy)), k))
+            else:                                    # 크기 변화(가운데를 기준으로)
+                w, h = max(2, round(im.width * step)), max(2, round(im.height * step))
+                c = (cx, cy) if not top_left else (top_left[0] + im.width / 2, top_left[1] + im.height / 2)
+                self.first.append((self._layer(im.resize((w, h)), c[0], c[1], None, clamp=False), 1.0))
+
+    @staticmethod
+    def _layer(im, cx, cy, top_left, clamp=True):
         arr = np.asarray(im.convert("RGBA"), dtype=np.float32)
-        self.rgb = arr[..., :3]
-        self.a = arr[..., 3:4] / 255.0
         h, w = arr.shape[:2]
-        self.x, self.y = top_left if top_left else (int(cx - w / 2), int(cy - h / 2))
-        self.x = max(0, min(self.x, CW - w))
-        self.y = max(0, min(self.y, CH - h))
-        self.w, self.h, self.f0, self.f1, self.fi, self.fo = w, h, f0, f1, fade_in, fade_out
+        x, y = top_left if top_left else (int(cx - w / 2), int(cy - h / 2))
+        if clamp:
+            x, y = max(0, min(x, CW - w)), max(0, min(y, CH - h))
+        # 캔버스 밖으로 나가는 부분은 잘라 둔다
+        sx, sy = max(0, -x), max(0, -y)
+        ex, ey = min(w, CW - x), min(h, CH - y)
+        arr = arr[sy:ey, sx:ex]
+        return {"rgb": arr[..., :3], "a": arr[..., 3:4] / 255.0, "x": x + sx, "y": y + sy,
+                "w": arr.shape[1], "h": arr.shape[0]}
+
+    @property
+    def x(self):
+        return self.base["x"]
+
+    @property
+    def y(self):
+        return self.base["y"]
+
+    @property
+    def w(self):
+        return self.base["w"]
+
+    @property
+    def h(self):
+        return self.base["h"]
 
     def blend(self, frame, f):
         k = 1.0
@@ -552,9 +669,21 @@ class Overlay:
             k = min(k, (f - self.f0 + 1) / self.fi)
         if self.fo:
             k = min(k, (self.f1 - f) / self.fo)
-        a = self.a * max(0.0, min(1.0, k))
-        reg = frame[self.y:self.y + self.h, self.x:self.x + self.w]
-        reg[:] = (reg * (1 - a) + self.rgb * a + 0.5).astype(np.uint8)
+        ly, n = self.base, f - self.f0
+        if 0 <= n < len(self.first):
+            ly, mul = self.first[n]
+            k = min(1.0, max(k, 0.0) * mul) if self.fi else mul
+        if ly["w"] <= 0 or ly["h"] <= 0:
+            return
+        a = ly["a"] * max(0.0, min(1.0, k))
+        reg = frame[ly["y"]:ly["y"] + ly["h"], ly["x"]:ly["x"] + ly["w"]]
+        reg[:] = (reg * (1 - a) + ly["rgb"] * a + 0.5).astype(np.uint8)
+
+
+def sub_anim(plan: dict, emph: bool = False):
+    """자막 등장 움직임 설정을 Overlay 의 anim 값으로."""
+    kind = plan.get("sub_anim") or "none"
+    return (POP_EM if emph else POP) if kind == "pop" else RISE if kind == "rise" else None
 
 
 def split_tts_text(text: str) -> list[str]:
@@ -582,9 +711,9 @@ def card_box(plan: dict) -> tuple[int, int]:
 
 def card_seconds(text: str, ratio: float = 0.85) -> float:
     """댓글 카드를 보여 줄 시간(초): 영상을 보면서 그 댓글을 읽는 데 드는 시간보다 살짝 짧게.
-    (알아차리는 데 1초 + 글자당 0.16초) × ratio, 1.8~4초 사이. 다 못 읽고 다시 보게 하려는 뜻이다."""
+    (알아차리는 데 1초 + 글자당 0.16초) × ratio, 1.8~5초 사이. 다 못 읽고 다시 보게 하려는 뜻이다."""
     n = len(re.sub(r"\s+", "", EMOJI.sub("", str(text))))
-    return round(max(1.8, min(4.0, (1.0 + 0.16 * n) * ratio)), 2)
+    return round(max(1.8, min(5.0, (1.0 + 0.16 * n) * ratio)), 2)
 
 
 def fit_card_text(text: str, room_w: int, room_h: int, explicit=None, max_size: int = 44):
@@ -732,7 +861,8 @@ def preview_frame(plan: dict, src, base_dir, scene: dict | None = None, show_car
     frame.paste(vid, (0, L["video_y"]))
     out = frame.convert("RGBA")
     if seg is not None and sub and str(sub.get("text", "")).strip():
-        im = sub_image(sub["text"], bool(sub.get("em")), plan)
+        im = sub_image(sub["text"], bool(sub.get("em")), plan, sub.get("key", ""),
+                       emph_index(plan, scene["seg"], scene.get("sub", 0)))
         out.alpha_composite(im, (int(CW / 2 - im.width / 2), int(L["sub_y"] - im.height / 2)))
     txt = source_text_at(plan, scene["seg"] if seg is not None else None)
     if txt:
@@ -852,6 +982,7 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
         if kind and kind not in (plan.get("sfx_off") or ["whoosh"]):
             sfx_out.append({"type": kind, "t": round(t, 3)})
 
+    emph_n = 0          # 지금까지 나온 강조 수(강조 색을 번갈아 쓴다)
     for r in segs:
         s = plan["timeline"][r["i"]]
         seg_t0, seg_t1 = r["f0"] / FPS, r["f1"] / FPS
@@ -877,8 +1008,11 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
             f0, f1 = int(round(t * FPS)), int(round(t_end * FPS))
             if f1 <= f0 or not str(sb.get("text", "")).strip():
                 continue
-            im = sub_image(sb["text"], bool(sb.get("em")), plan)
-            overlays.append(Overlay(im, CW / 2, L["sub_y"], f0, f1, fade_in=2))
+            emph = is_emph(sb)
+            im = sub_image(sb["text"], bool(sb.get("em")), plan, sb.get("key", ""), emph_n)
+            emph_n += 1 if emph else 0
+            anim = sub_anim(plan, emph)
+            overlays.append(Overlay(im, CW / 2, L["sub_y"], f0, f1, fade_in=0 if anim else 2, anim=anim))
             subs_out.append({"seg": r["i"], "start": round(f0 / FPS, 3), "end": round(f1 / FPS, 3),
                              "text": sb["text"], "kind": r["type"]})
             add_sfx(sb.get("sfx"), f0 / FPS)
