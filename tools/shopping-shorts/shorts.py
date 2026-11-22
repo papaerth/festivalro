@@ -24,7 +24,8 @@ from pipeline.util import Episode, log  # noqa: E402
 
 STAGES = ["prep", "analyze", "design", "tts", "render", "qa", "copy"]
 STAGE_FILES = {
-    "prep": ["meta.json", "words.json", "transcript.txt", "comments.json"],
+    "prep": ["meta.json", "words.json", "transcript.txt", "comments.json",
+             "meta_2.json", "words_2.json", "transcript_2.txt", "comments_2.json"],
     "analyze": ["analysis.json", "zoom.json"],
     "design": ["plan.json", "copy.json"],
     "tts": ["tts.json"],
@@ -32,93 +33,138 @@ STAGE_FILES = {
 
 
 # ------------------------------------------------------------------ 단계
-def stage_prep(ep: Episode):
-    """원본을 읽어 대사(음성 인식)·개요 프레임 시트·댓글을 준비한다."""
-    src = ep.source
-    meta = util.probe(src)
-    if "width" not in meta:
-        util.die(f"영상 스트림이 없는 파일입니다: {src}")
-    util.write_json(ep.w("meta.json"), {**meta, "source": src.name})
-    if not ep.w("words.json").exists():
-        log(f"[준비] 음성 인식 중… ({meta['duration']:.0f}초 분량)")
-        asr = asr_words.transcribe_file(src)
-        util.write_json(ep.w("words.json"), asr)
-        ep.w("transcript.txt").write_text(asr_words.as_text(asr), encoding="utf-8")
-    if not list(ep.work.glob("overview_*.jpg")):
-        log("[준비] 개요 프레임 시트 만드는 중…")
-        make_sheets(src, ep.w("overview"), step=2.0, cols=5, rows=4, thumb_w=320, max_sheets=30)
-    if not ep.w("comments.json").exists():
-        given = ep.inp / "comments.json"
-        if given.exists():
-            yt = util.read_json(given)
-            for c in yt.get("comments", []):
-                c.setdefault("likes_label", comments.like_label(int(c.get("likes", 0))))
-        elif ep.info["url"]:
-            log("[준비] 댓글 가져오는 중…")
-            yt = comments.fetch(ep.info["url"])
-            if yt["error"]:
-                log(f"[주의] {yt['error']}")
-        else:
-            yt = {"title": "", "channel": "", "description": "", "comments": [],
-                  "error": "유튜브 링크가 없어 댓글을 가져오지 않았습니다."}
-        util.write_json(ep.w("comments.json"), yt)
-    return meta
+def metas_of(ep: Episode) -> list[dict]:
+    """원본 영상별 정보(없으면 준비 단계를 돌린다)."""
+    out = [util.read_json(ep.w(f"meta{ep.sfx(i)}.json")) for i in range(len(ep.sources))]
+    return out if all(out) else stage_prep(ep)
+
+
+def asrs_of(ep: Episode) -> list[dict]:
+    return [util.read_json(ep.w(f"words{ep.sfx(i)}.json")) for i in range(len(ep.sources))]
+
+
+def yts_of(ep: Episode) -> list[dict]:
+    return [util.read_json(ep.w(f"comments{ep.sfx(i)}.json"), {}) or {} for i in range(len(ep.sources))]
+
+
+def merged_yt(yts: list[dict]) -> dict:
+    """영상별 댓글을 하나로 합친다(좋아요 많은 순). 댓글마다 src 에 어느 영상의 것인지 남긴다."""
+    if len(yts) == 1:
+        return yts[0]
+    cs = [{**c, "src": i} for i, y in enumerate(yts) for c in y.get("comments") or []]
+    cs.sort(key=lambda c: -int(c.get("likes") or 0))
+    return {**yts[0], "comments": cs, "error": " / ".join(y.get("error", "") for y in yts if y.get("error"))}
+
+
+def overview_sheets(ep: Episode, i: int) -> list[Path]:
+    return sorted(ep.work.glob("overview_*.jpg" if i == 0 else "overviewB_*.jpg"))
+
+
+def stage_prep(ep: Episode) -> list[dict]:
+    """원본(하나 또는 둘)을 읽어 대사(음성 인식)·개요 프레임 시트·댓글을 준비한다. 영상별 정보를 돌려준다."""
+    srcs, metas = ep.sources, []
+    two = len(srcs) > 1
+    if two:
+        log(f"[준비] 원본 영상 두 개를 섞는 편입니다: A={srcs[0].name}, B={srcs[1].name}")
+    for i, src in enumerate(srcs):
+        sfx, tag = ep.sfx(i), (f"영상 {'AB'[i]} " if two else "")
+        meta = util.probe(src)
+        if "width" not in meta:
+            util.die(f"영상 스트림이 없는 파일입니다: {src}")
+        util.write_json(ep.w(f"meta{sfx}.json"), {**meta, "source": src.name})
+        metas.append(meta)
+        if not ep.w(f"words{sfx}.json").exists():
+            log(f"[준비] {tag}음성 인식 중… ({meta['duration']:.0f}초 분량)")
+            asr = asr_words.transcribe_file(src)
+            util.write_json(ep.w(f"words{sfx}.json"), asr)
+            ep.w(f"transcript{sfx}.txt").write_text(asr_words.as_text(asr), encoding="utf-8")
+        if not overview_sheets(ep, i):
+            log(f"[준비] {tag}개요 프레임 시트 만드는 중…")
+            make_sheets(src, ep.w("overview" if i == 0 else "overviewB"), step=2.0, cols=5, rows=4, thumb_w=320,
+                        max_sheets=30 if not two else 16)
+        if not ep.w(f"comments{sfx}.json").exists():
+            given, url = ep.inp / f"comments{sfx}.json", ep.info["urls"][i]
+            if given.exists():
+                yt = util.read_json(given)
+                for c in yt.get("comments", []):
+                    c.setdefault("likes_label", comments.like_label(int(c.get("likes", 0))))
+            elif url:
+                log(f"[준비] {tag}댓글 가져오는 중…")
+                yt = comments.fetch(url)
+                if yt["error"]:
+                    log(f"[주의] {yt['error']}")
+            else:
+                yt = {"title": "", "channel": "", "description": "", "comments": [],
+                      "error": f"{tag}유튜브 링크가 없어 댓글을 가져오지 않았습니다."}
+            util.write_json(ep.w(f"comments{sfx}.json"), yt)
+    return metas
 
 
 def stage_analyze(ep: Episode):
     from pipeline import brain
-    meta, asr, yt = util.read_json(ep.w("meta.json")), util.read_json(ep.w("words.json")), util.read_json(ep.w("comments.json"))
-    if not asr["words"]:
-        util.die("음성 인식 결과가 비었습니다. 말소리가 있는 영상인지 확인하세요.")
-    log("[분석] 제품표·후킹 순위·제품 선정 중…")
+    metas, asrs, yts = metas_of(ep), asrs_of(ep), yts_of(ep)
+    for i, asr in enumerate(asrs):
+        if not asr or not asr["words"]:
+            which = f"영상 {'AB'[i]}의 " if len(asrs) > 1 else ""
+            util.die(f"{which}음성 인식 결과가 비었습니다. 말소리가 있는 영상인지 확인하세요.")
+    log("[분석] 제품표·후킹 순위·제품 선정 중…" + (" (두 영상을 함께 봅니다)" if len(metas) > 1 else ""))
     vidiq = ep.vidiq
     if vidiq:
         log("[분석] 붙여 넣은 vidIQ 분석을 함께 봅니다.")
-    an = brain.analyze(meta, asr, sorted(ep.work.glob("overview_*.jpg")), ep.info, yt, vidiq, ep.feedback)
+    sheets = [overview_sheets(ep, i) for i in range(len(metas))]
+    an = brain.analyze(metas, asrs, sheets, ep.info, yts, vidiq, ep.feedback)
     util.write_json(ep.w("analysis.json"), an)
     log(f"[분석] 선정: {an['pick'].get('brand', '')} {an['pick']['name']} — {an['pick']['reason']}")
     return an
 
 
 def stage_zoom(ep: Episode, a: float | None = None, b: float | None = None, step: float = 0.5):
-    """고른 제품이 나오는 구간들을 0.5초 간격·좌표 눈금 프레임 시트로 뽑고, 그 구간의 어절 시각을 정리한다."""
+    """고른 제품이 나오는 구간들을 0.5초 간격·좌표 눈금 프레임 시트로 뽑고, 그 구간의 어절 시각을 정리한다.
+    돌려주는 값은 모두 원본 영상별 목록: (구간의 음성 인식, 시트 파일, 기본 크롭 한 변)."""
     from pipeline.brain import product_ranges
-    meta = util.read_json(ep.w("meta.json")) or stage_prep(ep)
+    metas, asrs = metas_of(ep), asrs_of(ep)
     an = util.read_json(ep.w("analysis.json"), {}) or {}
     if a is not None and b is not None:
-        ranges = [[a, b]]
+        ranges = [[a, b, 0]]
     else:
         ranges = product_ranges(an)
         if not ranges:
             util.die("analysis.json 의 pick(start, end)이 없습니다. --a, --b 로 구간을 주세요.")
-    ranges = [[max(0.0, x - 1.0), min(meta["duration"], y + 1.0)] for x, y in ranges]
-    for p in ep.work.glob("zoom_*.jpg"):
+    for p in list(ep.work.glob("zoom_*.jpg")) + list(ep.work.glob("zoomB_*.jpg")):
         p.unlink()
-    crop = default_crop_size(meta)
-    total = sum(y - x for x, y in ranges) or 1.0
-    sheets = []
-    for k, (x, y) in enumerate(ranges, 1):     # 시트 수(최대 24장)를 구간 길이에 비례해 나눈다
-        share = max(1, round(24 * (y - x) / total))
-        sheets += make_sheets(ep.source, ep.w(f"zoom_{k}"), x, y, step, cols=4, rows=3, thumb_w=480, ruler=True,
-                              crop_size=crop, max_sheets=share)
-    asr = util.read_json(ep.w("words.json"))
+    total = sum(y - x for x, y, _ in ranges) or 1.0
+    out_asr, out_sheets, out_crop, saved = [], [], [], []
+    for i, meta in enumerate(metas):
+        mine = [[max(0.0, x - 1.0), min(meta["duration"], y + 1.0)] for x, y, k in ranges if k == i]
+        crop = default_crop_size(meta)
+        sheets = []
+        for n, (x, y) in enumerate(mine, 1):     # 시트 수(최대 24장)를 구간 길이에 비례해 나눈다
+            share = max(1, round(24 * (y - x) / total))
+            sheets += make_sheets(ep.sources[i], ep.w(f"{'zoom' if i == 0 else 'zoomB'}_{n}"), x, y, step, cols=4, rows=3,
+                                  thumb_w=480, ruler=True, crop_size=crop, max_sheets=share)
 
-    def inside(t0, t1=None):
-        return any(x <= t0 <= y or (t1 is not None and t1 > x and t0 < y) for x, y in ranges)
+        def inside(t0, t1=None, mine=mine):
+            return any(x <= t0 <= y or (t1 is not None and t1 > x and t0 < y) for x, y in mine)
 
-    zoom_asr = {"words": [w for w in asr["words"] if inside(w["t"])],
-                "speech": [sp for sp in asr["speech"] if inside(sp[0], sp[1])],
-                "lines": [ln for ln in asr["lines"] if inside(ln["a"], ln["b"])]}
-    ep.w("words_zoom.txt").write_text(asr_words.as_text(zoom_asr, words=True), encoding="utf-8")
-    util.write_json(ep.w("zoom.json"), {"ranges": ranges, "crop_default": crop, "sheets": [p.name for p in sheets]})
-    return zoom_asr, sheets, crop
+        asr = asrs[i] or {"words": [], "speech": [], "lines": []}
+        z = {"words": [w for w in asr["words"] if inside(w["t"])],
+             "speech": [sp for sp in asr["speech"] if inside(sp[0], sp[1])],
+             "lines": [ln for ln in asr["lines"] if inside(ln["a"], ln["b"])]}
+        ep.w(f"words_zoom{ep.sfx(i)}.txt").write_text(asr_words.as_text(z, words=True), encoding="utf-8")
+        out_asr.append(z)
+        out_sheets.append(sheets)
+        out_crop.append(crop)
+        saved.append({"ranges": mine, "crop_default": crop, "sheets": [p.name for p in sheets]})
+    util.write_json(ep.w("zoom.json"), {**saved[0], "sources": saved})
+    return out_asr, out_sheets, out_crop
 
 
 def stage_design(ep: Episode, max_rounds: int = 3):
     """컷 설계 → 규칙 검사 → (문제 있으면) 다시 설계. TTS 키가 있으면 실제 음성 길이로 한 번 더 확인."""
     from pipeline import brain, tts
-    meta, an, yt = util.read_json(ep.w("meta.json")), util.read_json(ep.w("analysis.json")), util.read_json(ep.w("comments.json"))
-    asr = util.read_json(ep.w("words.json"))
+    metas, asrs, yts = metas_of(ep), asrs_of(ep), yts_of(ep)
+    an = util.read_json(ep.w("analysis.json"))
+    yt = merged_yt(yts)
     zoom_asr, sheets, crop_default = stage_zoom(ep)
     images = [p.name for p in ep.images()]
     feedback, prev_plan, prev_copy = ep.feedback, None, None
@@ -128,19 +174,20 @@ def stage_design(ep: Episode, max_rounds: int = 3):
         product = ep.info["product"] or f"{an['pick'].get('brand', '')} {an['pick']['name']}".strip()
         if not prev_plan or prev_plan.get("product") != product:
             prev_plan = prev_copy = None      # 제품이 바뀌었으면 이전 설계는 참고하지 않는다
-    content = brain.design_request(meta, an, zoom_asr, sheets, ep.info, yt, images, crop_default, ep.vidiq,
+    content = brain.design_request(metas, an, zoom_asr, sheets, ep.info, yt, images, crop_default, ep.vidiq,
                                    feedback, prev_plan, prev_copy)
+    channels = [y.get("channel", "") for y in yts]
     history, plan, copy, res = None, None, None, None
     for rnd in range(1, max_rounds + 2):
         log(f"[설계] {'컷 설계 중…' if rnd == 1 else f'규칙 검사에서 걸린 부분 고치는 중… ({rnd - 1}차)'}")
         d, history = brain.ask_json(content, brain.DESIGN_SCHEMA, history)
-        plan, copy = brain.to_plan(d, an, ep.info, yt)
+        plan, copy = brain.to_plan(d, an, ep.info, yt, len(metas), channels)
         util.write_json(ep.w("plan.json"), plan)
         full = load_plan(ep.w("plan.json"))
-        res = checks.validate_tight(full, meta, ep.inp, asr)
+        res = checks.validate_tight(full, metas, ep.inp, asrs)
         if not res["errors"] and tts.available():
             tts.ensure(plan, ep.inp, ep.work)          # 실제 음성 길이로 20초 규칙을 다시 본다
-            res = checks.validate_tight(full, meta, ep.inp, asr)
+            res = checks.validate_tight(full, metas, ep.inp, asrs)
         if not res["errors"]:
             break
         log(checks.report(res))
@@ -149,17 +196,17 @@ def stage_design(ep: Episode, max_rounds: int = 3):
                      f"`python shorts.py auto {ep.name}` 을 다시 실행하세요.")
         extra = [w for w in res["warnings"] if "음성 인식" in w or "잘릴" in w]
         content = brain.repair_request(res["errors"] + extra)
-    plan, notes = checks.tighten(plan, asr)
+    plan, notes = checks.tighten(plan, asrs)
     for n in notes:
         log(f"[다듬음] {n}")
     util.write_json(ep.w("plan.json"), plan)
-    copy["warnings"] = checks.validate(load_plan(ep.w("plan.json")), meta, ep.inp, asr)["warnings"]
+    copy["warnings"] = checks.validate(load_plan(ep.w("plan.json")), metas, ep.inp, asrs)["warnings"]
     util.write_json(ep.w("copy.json"), copy)
     return plan
 
 
 def stage_check(ep: Episode, fix: bool = False) -> dict:
-    meta, asr = util.read_json(ep.w("meta.json")) or stage_prep(ep), util.read_json(ep.w("words.json"))
+    meta, asr = metas_of(ep), asrs_of(ep)
     if not ep.w("plan.json").exists():
         util.die(f"work/{ep.name}/plan.json 이 없습니다.")
     if fix:
@@ -187,7 +234,7 @@ def stage_center(ep: Episode) -> list[str]:
     """인물이 화면 가로 정중앙에 오도록 컷마다 x0 를 맞춘다(얼굴 찾기). 따로 띄운 프로세스에서 돈다."""
     import subprocess
     r = subprocess.run([sys.executable, "-X", "utf8", str(util.ROOT / "pipeline" / "center.py"),
-                        "--plan", str(ep.w("plan.json")), "--src", str(ep.source), "--write"],
+                        "--plan", str(ep.w("plan.json")), "--src", *[str(p) for p in ep.sources], "--write"],
                        capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     lines = [ln for ln in r.stdout.decode("utf-8", "replace").splitlines() if ln.strip()]
     if r.returncode != 0:
@@ -202,7 +249,7 @@ def stage_capture(ep: Episode) -> list[str]:
     from pipeline import capture
     plan = util.read_json(ep.w("plan.json"))
     before = [(c.get("image"), c.get("mosaic")) for c in plan.get("cards") or []]
-    notes = capture.capture_for_plan(plan, ep.info["url"], ep.inp, debug_dir=ep.work)
+    notes = capture.capture_for_plan(plan, ep.info["urls"][:len(ep.sources)], ep.inp, debug_dir=ep.work)
     if before != [(c.get("image"), c.get("mosaic")) for c in plan.get("cards") or []]:
         util.write_json(ep.w("plan.json"), plan)
     for n in notes:
@@ -225,13 +272,14 @@ def stage_render(ep: Episode, uvr_model=None, no_uvr=False):
     plan = util.read_json(ep.w("plan.json"))
     if plan is None:
         util.die(f"work/{ep.name}/plan.json 이 없습니다.")
-    meta = util.read_json(ep.w("meta.json")) or stage_prep(ep)   # 준비 단계를 건너뛰고 불렀을 때
-    asr = util.read_json(ep.w("words.json"))
+    meta, asr = metas_of(ep), asrs_of(ep)     # 준비 단계를 건너뛰고 불렀으면 여기서 준비한다
     res = checks.validate(load_plan(ep.w("plan.json")), meta, ep.inp, asr)
     if res["errors"]:
         print(checks.report(res))
         util.die("규칙 검사에서 오류가 나와 렌더링하지 않았습니다.")
-    return build(ep.w("plan.json"), ep.source, ep.out, plan.get("product") or ep.name, uvr_model, ep.inp, no_uvr)
+    srcs = ep.sources
+    return build(ep.w("plan.json"), srcs if len(srcs) > 1 else srcs[0], ep.out, plan.get("product") or ep.name,
+                 uvr_model, ep.inp, no_uvr)
 
 
 def stage_qa(ep: Episode) -> dict:
@@ -244,9 +292,10 @@ def stage_qa(ep: Episode) -> dict:
 def stage_review(ep: Episode, q: dict) -> list[str]:
     """모델이 완성본 프레임을 직접 보고, 고칠 것이 있으면 plan을 고친다. 고친 내용을 돌려준다."""
     from pipeline import brain
-    meta = util.read_json(ep.w("meta.json"))
+    meta = metas_of(ep)
     plan = util.read_json(ep.w("plan.json"))
-    size, _ = crop_of(load_plan(ep.w("plan.json")), meta)
+    full = load_plan(ep.w("plan.json"))
+    size = [crop_of(full, m, k)[0] for k, m in enumerate(meta)]
     rv = brain.review(util.read_json(ep.out / "_plan_resolved.json"), plan, q["sheets"], meta, size)
     util.write_json(ep.w("review.json"), rv)
     done = brain.apply_review(plan, rv, meta, size)
@@ -294,6 +343,12 @@ def stage_copy(ep: Episode) -> Path:
     if not plan.get("cards"):
         why = (yt.get("error") or "댓글 없음").strip().splitlines()[-1][:120]
         checks_.append(f"댓글 카드를 넣지 못했습니다: {why}")
+    if len(ep.sources) > 1:      # 두 영상을 섞는 편인데 한쪽 장면을 하나도 쓰지 못했으면 알린다
+        used = {min(int(sg.get("src", 0)), 1) for sg in plan.get("timeline", []) if not sg.get("image")}
+        for k in (0, 1):
+            if k not in used:
+                checks_.append(f"영상 {'AB'[k]}({ep.sources[k].name})에서는 이 제품이 나오는 쓸 만한 장면을 찾지 못해 "
+                               f"영상 {'AB'[1 - k]}의 장면만 썼습니다")
     checks_ += [f"[검수] {i}" for i in q.get("issues", [])] + list(q.get("notes", []))
     checks_ += [f"[댓글 캡처] {n}" for n in (util.read_json(ep.w("capture.json"), {}) or {}).get("notes", [])]
     rv = util.read_json(ep.w("review.json"), {}) or {}
@@ -302,6 +357,7 @@ def stage_copy(ep: Episode) -> Path:
     checks_ += [ln.strip() for ln in str(copy.get("notes") or "").splitlines() if ln.strip()]
     checks_ += [f"[권고] {w}" for w in copy.get("warnings", [])]
     pick = an.get("pick") or {}
+    n_src = len(ep.sources)
     data = {
         "episode": ep.name, "product": product, "duration": q.get("duration"),
         "version": (util.read_json(ep.w("version.json")) or {}).get("dir", ""),
@@ -315,8 +371,9 @@ def stage_copy(ep: Episode) -> Path:
         "revision": [ln.strip() for ln in str(copy.get("revision") or "").splitlines() if ln.strip()],
         "combos": [{"title": c.get("title", ""), "top": c.get("top", [])} for c in combos[:3]],
         "cuts": [{"kind": "나레이션" if sg.get("type") == "tts" else "컷",
-                  "at": (f"{sg['a']:.1f}~{sg['b']:.1f}초" if sg.get("type") == "cut" else
-                         sg.get("image") or f"{sg.get('still_t', 0):.1f}초 정지 화면"),
+                  "at": ("" if n_src < 2 or sg.get("image") else f"영상 {'AB'[min(int(sg.get('src', 0)), 1)]} ")
+                        + (f"{sg['a']:.1f}~{sg['b']:.1f}초" if sg.get("type") == "cut" else
+                           sg.get("image") or f"{sg.get('still_t', 0):.1f}초 정지 화면"),
                   "note": sg.get("note") or sg.get("text") or " ".join(x.get("text", "") for x in sg.get("subs") or [])}
                  for sg in plan.get("timeline", [])],
         "alternates": [{"brand": a.get("brand", ""), "name": a.get("name", ""), "reason": a.get("reason", "")}
@@ -353,7 +410,7 @@ def clear_from(ep: Episode, stage: str):
         for f in STAGE_FILES.get(st, []):
             ep.w(f).unlink(missing_ok=True)
         if st == "prep":
-            for p in ep.work.glob("overview_*.jpg"):
+            for p in list(ep.work.glob("overview_*.jpg")) + list(ep.work.glob("overviewB_*.jpg")):
                 p.unlink()
         if st == "render":
             (ep.out / "_plan_resolved.json").unlink(missing_ok=True)
@@ -385,7 +442,7 @@ def auto(ep: Episode, redo: str | None = None, review: bool = True, uvr_model=No
     if redo:
         clear_from(ep, redo)
     log(f"━━ {ep.name} ━━")
-    if not all(ep.w(f).exists() for f in ("meta.json", "words.json", "comments.json")):
+    if not all(ep.w(f"{f}{ep.sfx(i)}.json").exists() for i in range(len(ep.sources)) for f in ("meta", "words", "comments")):
         stage_prep(ep)
     if not ep.w("analysis.json").exists():
         stage_analyze(ep)
@@ -432,6 +489,7 @@ def main():
     p = sub.add_parser("new", help="편 폴더와 정보 파일 만들기")
     p.add_argument("name")
     p.add_argument("--url", default="")
+    p.add_argument("--url2", default="", help="같은 제품의 두 번째 영상 링크(영상 둘을 섞어 만들 때)")
     p.add_argument("--inpock", default="")
     p.add_argument("--product", default="")
     p.add_argument("--channel", default="")
@@ -467,7 +525,8 @@ def main():
         d = util.ROOT / "input" / a.name
         d.mkdir(parents=True, exist_ok=True)
         info = util.read_json(d / "info.json", {}) or {}
-        info.update({k: v for k, v in dict(url=a.url, inpock=a.inpock, product=a.product, channel=a.channel).items() if v})
+        info.update({k: v for k, v in dict(url=a.url, url2=a.url2, inpock=a.inpock, product=a.product,
+                                           channel=a.channel).items() if v})
         for k in ("url", "inpock", "product", "channel"):
             info.setdefault(k, "")
         util.write_json(d / "info.json", info)
@@ -492,13 +551,14 @@ def main():
     ep = Episode(a.name)
     if a.cmd == "prep":
         stage_prep(ep)
-        print(f"대사: {ep.w('transcript.txt')}\n개요 시트: {ep.work}/overview_*.jpg\n댓글: {ep.w('comments.json')}")
+        print(f"대사: {ep.work}/transcript*.txt\n개요 시트: {ep.work}/overview*.jpg\n댓글: {ep.work}/comments*.json")
     elif a.cmd == "analyze":
         stage_prep(ep)
         stage_analyze(ep)
     elif a.cmd == "zoom":
         _, sheets, _ = stage_zoom(ep, a.a, a.b, a.step)
-        print(f"어절 시각: {ep.w('words_zoom.txt')}\n" + "\n".join(str(s) for s in sheets))
+        for i, group in enumerate(sheets):
+            print(f"어절 시각: {ep.w(f'words_zoom{ep.sfx(i)}.txt')}\n" + "\n".join(str(x) for x in group))
     elif a.cmd == "design":
         stage_design(ep)
     elif a.cmd == "check":
@@ -517,7 +577,8 @@ def main():
         print(stage_copy(ep).read_text(encoding="utf-8"))
     elif a.cmd == "status":
         for st in STAGES[:4]:
-            print(f"{st:8s}", " ".join(f"{f}{'✓' if ep.w(f).exists() else '✗'}" for f in STAGE_FILES[st]))
+            print(f"{st:8s}", " ".join(f"{f}{'✓' if ep.w(f).exists() else '✗'}" for f in STAGE_FILES[st]
+                                       if "_2." not in f or len(ep.sources) > 1))
         print(f"{'render':8s}", "완료" if _outputs_fresh(ep) else "필요")
         print(f"{'copy':8s}", "완료" if list(ep.out.glob('*_보고.txt')) else "필요")
         print(f"{'폴더':8s}", ep.out)

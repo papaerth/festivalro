@@ -102,10 +102,20 @@ def sub_image(text: str, em: bool, plan: dict):
                       bold=bold_px(fnt.size, bool(plan.get("sub_bold"))))
 
 
-def crop_of(plan: dict, meta: dict) -> tuple[int, int]:
-    """(한 변, y0). 지정이 없으면 높이의 7/9(1080p → 840), 위쪽부터."""
+def src_list(src) -> list[Path]:
+    """원본 영상 경로를 목록으로(하나만 줘도, 둘을 줘도 된다)."""
+    return [Path(p) for p in src] if isinstance(src, (list, tuple)) else [Path(src)]
+
+
+def seg_src(seg: dict, n: int) -> int:
+    """그 장면이 몇 번째 원본 영상인지(0 또는 1)."""
+    return min(max(int(seg.get("src", 0) or 0), 0), n - 1)
+
+
+def crop_of(plan: dict, meta: dict, k: int = 0) -> tuple[int, int]:
+    """(한 변, y0). 지정이 없으면 높이의 7/9(1080p → 840), 위쪽부터. k 는 원본 영상 번호(둘째 영상은 crop_b)."""
     from pipeline.sheets import default_crop_size
-    c = plan.get("crop") or {}
+    c = plan.get("crop_b" if k else "crop") or {}
     size = int(c.get("size") or default_crop_size(meta))
     size = min(size, meta["width"], meta["height"]) // 2 * 2
     y0 = int(c.get("y0") or 0)
@@ -421,7 +431,8 @@ def seg_filters(seg: dict, size: int, y0: int, plan: dict, meta: dict | None = N
     구간에 "mirror": false 를 주면 그 구간만 거울반전을 하지 않는다(읽히는 글씨가 화면에 남을 때)."""
     vf = []
     W, H = (meta or {}).get("width"), (meta or {}).get("height")
-    for r in list(plan.get("erase") or []) + list(seg.get("erase") or []):
+    static = plan.get("erase_b" if int(seg.get("src", 0) or 0) else "erase") or []
+    for r in list(static) + list(seg.get("erase") or []):
         x, y, w, h = _rect(r)
         if W and H:      # delogo 는 화면 가장자리에 닿으면 안 된다
             x, y = max(1, min(x, W - 3)), max(1, min(y, H - 3))
@@ -479,6 +490,13 @@ def thumb_seg(plan: dict) -> dict:
     t = float(th.get("t", (first["a"] + min(0.3, (first["b"] - first["a"]) / 2)) if first else 0.0))
     host = next((s for s in tl if s.get("type") == "cut" and float(s["a"]) - 0.05 <= t <= float(s["b"]) + 0.05), first) or {}
     seg = {"still_t": t, "x0": th.get("x0", host.get("x0", 0))}
+    k_src = int(th.get("src", 0) or 0)
+    if k_src:
+        seg["src"] = k_src
+        host = next((s for s in tl if s.get("type") == "cut" and int(s.get("src", 0) or 0) == k_src
+                     and float(s["a"]) - 0.05 <= t <= float(s["b"]) + 0.05), {})
+    elif int(host.get("src", 0) or 0):
+        host = {}
     for k in ("mirror", "erase"):
         if k in th or k in host:
             seg[k] = th.get(k, host.get(k))
@@ -664,7 +682,7 @@ def preview_frame(plan: dict, src, base_dir, scene: dict | None = None, show_car
     if seg and seg.get("type") == "cut":
         subs = seg.get("subs") or []
         sub = subs[min(scene.get("sub", 0), len(subs) - 1)] if subs else None
-        want = {**{k: seg[k] for k in ("mirror", "erase") if k in seg},
+        want = {**{k: seg[k] for k in ("mirror", "erase", "src") if k in seg},
                 "still_t": float(sub["t"]) + 0.15 if sub else float(seg["a"]) + 0.2, "x0": seg.get("x0", 0)}
     elif seg:
         chunks = split_tts_text(seg.get("text", ""))
@@ -674,10 +692,14 @@ def preview_frame(plan: dict, src, base_dir, scene: dict | None = None, show_car
         want = thumb_seg(plan)
     vid = None
     if src:
-        meta = meta or util.probe(src)
-        size, y0 = crop_of(plan, meta)
+        srcs = src_list(src)
+        k = seg_src(want, len(srcs))
+        metas = meta if isinstance(meta, list) else [meta] if meta else []
+        meta = metas[k] if k < len(metas) and metas[k] else util.probe(srcs[k])
+        src = srcs[k]
+        size, y0 = crop_of(plan, meta, k)
         key = (str(src), want.get("image"), want.get("still_t"), want.get("x0"), size, y0,
-               want.get("mirror", plan["mirror"]), json.dumps([plan.get("erase"), want.get("erase")]),
+               want.get("mirror", plan["mirror"]), json.dumps([plan.get("erase_b" if k else "erase"), want.get("erase")]),
                plan["color_filter"])
         vid = (cache or {}).get(key)
         if vid is None:
@@ -711,11 +733,13 @@ def preview_frame(plan: dict, src, base_dir, scene: dict | None = None, show_car
 # ------------------------------------------------------------------ 본체
 def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=False, only_thumbnail=False) -> dict:
     plan = load_plan(plan_path)
-    src, out_dir = Path(src), Path(out_dir)
+    srcs, out_dir = src_list(src), Path(out_dir)
+    src = srcs[0]
     base_dir = Path(assets) if assets else src.parent
     out_dir.mkdir(parents=True, exist_ok=True)
-    meta = util.probe(src)
-    size, y0 = crop_of(plan, meta)
+    metas = [util.probe(p) for p in srcs]
+    crops = [crop_of(plan, m, k) for k, m in enumerate(metas)]
+    size, y0 = crops[0]
     speed, L = float(plan["speed"]), plan["layout"]
     fr_ = plan.get("font_regular")
     name = util.safe_name(name)
@@ -729,7 +753,9 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
     if first_cut is None:
         util.die("plan에 컷이 하나도 없습니다.")
     thumb = base.copy()
-    thumb.paste(still_image(thumb_seg(plan), src, size, y0, plan, base_dir, meta), (0, L["video_y"]))
+    ts = thumb_seg(plan)
+    kt = seg_src(ts, len(srcs))
+    thumb.paste(still_image(ts, srcs[kt], crops[kt][0], crops[kt][1], plan, base_dir, metas[kt]), (0, L["video_y"]))
     thumb_path = out_dir / f"{name}_썸네일.jpg"
     thumb.save(thumb_path, quality=93)
     if only_thumbnail:
@@ -740,8 +766,9 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
     for i, s in enumerate(plan["timeline"]):
         r = {"i": i, "type": s["type"], "f0": f}
         if s["type"] == "cut":
-            a, b = float(s["a"]), min(float(s["b"]), meta["duration"])
-            r.update(a=a, b=b, x0=int(s.get("x0", 0)), n=max(1, int(round((b - a) / speed * FPS))))
+            k = seg_src(s, len(srcs))
+            a, b = float(s["a"]), min(float(s["b"]), metas[k]["duration"])
+            r.update(a=a, b=b, x0=int(s.get("x0", 0)), k=k, n=max(1, int(round((b - a) / speed * FPS))))
         elif s["type"] == "tts":
             ap = base_dir / s.get("audio", "")
             if not s.get("audio") or not ap.exists():
@@ -761,10 +788,11 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
     cuts = [r for r in segs if r["type"] == "cut"]
     mix_o = np.zeros((total_f * spf, 2), np.float32)
     mix_x = np.zeros_like(mix_o)
+    has_audio = all(m["has_audio"] for m in metas)
     for r in cuts:
-        r["au"] = util.read_audio(src, a=r["a"], b=r["b"], af=f"atempo={speed}") if meta["has_audio"] \
+        r["au"] = util.read_audio(srcs[r["k"]], a=r["a"], b=r["b"], af=f"atempo={speed}") if metas[r["k"]]["has_audio"] \
             else np.zeros((1, 2), np.float32)
-    if no_uvr or not meta["has_audio"]:
+    if no_uvr or not has_audio:
         util.log("[주의] 배경음 제거를 건너뜁니다. 배경음X 파일은 배경음O와 같은 소리입니다.")
         for r in cuts:
             r["vo"] = r["au"]
@@ -773,17 +801,20 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
         raws, spans = [], []
         for r in cuts:
             a0 = max(0.0, r["a"] - padd)
-            raws.append(util.read_audio(src, sr=44100, a=a0, b=min(meta["duration"], r["b"] + padd)))
+            raws.append(util.read_audio(srcs[r["k"]], sr=44100, a=a0, b=min(metas[r["k"]]["duration"], r["b"] + padd)))
             spans.append((int(round((r["a"] - a0) * 44100)), int(round((r["b"] - a0) * 44100))))
         util.log(f"[배경음 제거] {sum(len(x) for x in raws) / 44100:.1f}초 분량 처리 중…")
         for r, v, (i0, i1) in zip(cuts, separate_vocals(raws, uvr_model), spans):
             r["vo"] = util.filter_audio(v[i0:i1], 44100, f"atempo={speed}")
-    ref = np.concatenate([r["vo"] for r in cuts])
-    gain = min(10 ** (-20 / 20) / active_rms(ref), 8.0)   # 목소리를 -20dBFS 근처로
+    # 목소리를 -20dBFS 근처로. 원본 영상이 둘이면 영상마다 따로 맞춰 두 영상의 목소리 크기가 같게 한다
+    gains = {}
+    for k in sorted({r["k"] for r in cuts}):
+        ref = np.concatenate([r["vo"] for r in cuts if r["k"] == k])
+        gains[k] = min(10 ** (-20 / 20) / active_rms(ref), 8.0)
     for r in cuts:
         i0, n = r["f0"] * spf, r["n"] * spf
-        mix_o[i0:i0 + n] += fit_len(r["au"], n) * gain
-        mix_x[i0:i0 + n] += fit_len(r["vo"], n) * gain
+        mix_o[i0:i0 + n] += fit_len(r["au"], n) * gains[r["k"]]
+        mix_x[i0:i0 + n] += fit_len(r["vo"], n) * gains[r["k"]]
     tts_report = []
     for r in segs:
         if r["type"] != "tts":
@@ -891,9 +922,12 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
     for r in segs:
         s = plan["timeline"][r["i"]]
         if r["type"] == "cut":
-            frames = cut_frames(src, {**s, "a": r["a"], "b": r["b"]}, size, y0, plan, r["n"], meta)
+            k = r["k"]
+            frames = cut_frames(srcs[k], {**s, "a": r["a"], "b": r["b"]}, crops[k][0], crops[k][1], plan, r["n"], metas[k])
         else:
-            frames = still_frames(still_image(s, src, size, y0, plan, base_dir, meta), r["n"], plan["still_zoom"])
+            k = seg_src(s, len(srcs))
+            frames = still_frames(still_image(s, srcs[k], crops[k][0], crops[k][1], plan, base_dir, metas[k]),
+                                  r["n"], plan["still_zoom"])
         for fr in frames:
             frame = base_arr.copy()
             frame[vy:vy + 1080] = fr
@@ -933,15 +967,15 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
 
     resolved = {
         "name": name, "duration": round(total_f / FPS, 3), "fps": FPS, "speed": speed,
-        "source": str(src), "crop": {"size": size, "y0": y0}, "title": title,
+        "source": str(src), "sources": [str(p) for p in srcs], "crop": {"size": size, "y0": y0}, "title": title,
         "segments": [{"i": r["i"], "type": r["type"], "start": round(r["f0"] / FPS, 3),
                       "end": round(r["f1"] / FPS, 3),
-                      **({"a": r["a"], "b": r["b"], "x0": r["x0"],
+                      **({"a": r["a"], "b": r["b"], "x0": r["x0"], "src": r["k"],
                           "mirror": bool(plan["timeline"][r["i"]].get("mirror", plan["mirror"]))}
                          if r["type"] == "cut" else {"text": r["text"]})}
                      for r in segs],
         "subs": subs_out, "cards": cards_out, "sfx": sfx_out, "tts": tts_report,
-        "dropped_emoji": dropped, "bgm_removed": not (no_uvr or not meta["has_audio"]), "music": music_note,
+        "dropped_emoji": dropped, "bgm_removed": not (no_uvr or not has_audio), "music": music_note,
         "outputs": {**outs, "thumbnail": thumb_path.name},   # out_dir 안의 파일 이름
     }
     util.write_json(out_dir / "_plan_resolved.json", resolved)
@@ -952,7 +986,7 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
 def main():
     ap = argparse.ArgumentParser(description="쇼핑 쇼츠 렌더링")
     ap.add_argument("--plan", required=True)
-    ap.add_argument("--src", required=True, help="원본 영상")
+    ap.add_argument("--src", required=True, nargs="+", help="원본 영상(둘을 섞을 때는 두 개를 순서대로)")
     ap.add_argument("--out", required=True, help="출력 폴더")
     ap.add_argument("--name", required=True, help="제품명(파일 이름 앞부분)")
     ap.add_argument("--uvr-model", help="배경음 제거 모델(.onnx). 없으면 models/에 내려받는다")
@@ -960,7 +994,7 @@ def main():
     ap.add_argument("--no-uvr", action="store_true", help="배경음 제거를 건너뛴다(빠른 확인용)")
     ap.add_argument("--only-thumbnail", action="store_true")
     a = ap.parse_args()
-    build(a.plan, a.src, a.out, a.name, a.uvr_model, a.assets, a.no_uvr, a.only_thumbnail)
+    build(a.plan, a.src if len(a.src) > 1 else a.src[0], a.out, a.name, a.uvr_model, a.assets, a.no_uvr, a.only_thumbnail)
 
 
 if __name__ == "__main__":

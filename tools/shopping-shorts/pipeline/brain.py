@@ -110,6 +110,17 @@ def _arr(items: dict) -> dict:
 
 
 S, N, I, B = {"type": "string"}, {"type": "number"}, {"type": "integer"}, {"type": "boolean"}
+SRC = {"type": "string", "enum": ["A", "B"]}     # 원본 영상이 둘일 때 어느 영상인지(하나면 늘 A)
+LABEL = ["A", "B"]
+
+
+def src_index(v) -> int:
+    """모델 답의 'A'/'B'(또는 0/1)를 영상 번호로."""
+    return 1 if v in ("B", 1, "1") else 0
+
+
+def as_list(x) -> list:
+    return x if isinstance(x, list) else [x]
 
 
 def comments_text(comments: list, limit: int = 100) -> str:
@@ -154,12 +165,14 @@ ANALYSIS_SCHEMA = _obj({
     "celebrity": S,
     "paid_ad": B,
     "paid_ad_note": S,
+    "channel_b": S,
     "burned_in": _obj({"caption_top_y": I, "left_label_right_x": I, "right_label_left_x": I, "note": S}),
-    "products": _arr(_obj({"brand": S, "name": S, "start": N, "end": N, "closeups": _arr(N), "demos": _arr(N),
+    "burned_in_b": _obj({"caption_top_y": I, "left_label_right_x": I, "right_label_left_x": I, "note": S}),
+    "products": _arr(_obj({"src": SRC, "brand": S, "name": S, "start": N, "end": N, "closeups": _arr(N), "demos": _arr(N),
                            "quote": S, "sellable": S})),
-    "hooks": _arr(_obj({"t": N, "product": S, "why": S})),
-    "pick": _obj({"brand": S, "name": S, "start": N, "end": N, "reason": S,
-                  "ranges": _arr(_obj({"start": N, "end": N, "what": S}))}),
+    "hooks": _arr(_obj({"src": SRC, "t": N, "product": S, "why": S})),
+    "pick": _obj({"brand": S, "name": S, "src": SRC, "start": N, "end": N, "reason": S,
+                  "ranges": _arr(_obj({"src": SRC, "start": N, "end": N, "what": S}))}),
     "alternates": _arr(_obj({"brand": S, "name": S, "reason": S})),
 })
 
@@ -190,55 +203,75 @@ def feedback_block(feedback: str, prev_plan: dict | None = None, prev_copy: dict
     return out
 
 
-def product_ranges(analysis: dict) -> list[list[float]]:
-    """고른 제품이 나오는 구간들 [[시작, 끝], …]. 겹치면 합친다."""
+def product_ranges(analysis: dict) -> list[list]:
+    """고른 제품이 나오는 구간들 [[시작, 끝, 영상 번호], …]. 같은 영상 안에서 겹치면 합친다."""
     pick = (analysis or {}).get("pick") or {}
-    rs = [[float(r["start"]), float(r["end"])] for r in pick.get("ranges") or [] if float(r["end"]) > float(r["start"])]
-    if pick.get("start") is not None and pick.get("end") is not None and float(pick["end"]) > float(pick["start"]):
-        if not rs:
-            rs.append([float(pick["start"]), float(pick["end"])])
-    rs.sort()
+    rs = [[float(r["start"]), float(r["end"]), src_index(r.get("src"))] for r in pick.get("ranges") or []
+          if float(r["end"]) > float(r["start"])]
+    if not rs and pick.get("start") is not None and pick.get("end") is not None \
+            and float(pick["end"]) > float(pick["start"]):
+        rs.append([float(pick["start"]), float(pick["end"]), src_index(pick.get("src"))])
+    rs.sort(key=lambda r: (r[2], r[0]))
     out = []
-    for a, b in rs:
-        if out and a <= out[-1][1] + 0.5:
+    for a, b, k in rs:
+        if out and out[-1][2] == k and a <= out[-1][1] + 0.5:
             out[-1][1] = max(out[-1][1], b)
         else:
-            out.append([a, b])
+            out.append([a, b, k])
     return out
 
 
-def analyze(meta: dict, asr: dict, sheets: list, info: dict, yt: dict, vidiq: str = "", feedback: str = "") -> dict:
-    ask = f"""원본 영상을 분석해 쇼츠 소재가 될 제품을 고릅니다.
+def analyze(meta, asr, sheets, info: dict, yt, vidiq: str = "", feedback: str = "") -> dict:
+    """원본 영상(하나 또는 둘)을 분석해 제품을 고른다. meta·asr·yt 는 영상별 목록, sheets 는 영상별 시트 목록."""
+    metas, asrs, yts = as_list(meta), as_list(asr), as_list(yt)
+    sheets = sheets if sheets and isinstance(sheets[0], (list, tuple)) else [sheets]
+    two = len(metas) > 1
+    content, parts = [], []
+    for i, m in enumerate(metas):
+        tag = f"영상 {LABEL[i]}" if two else "영상"
+        content += _sheets(sheets[i], f"{tag} 개요 프레임 시트")
+        y = yts[i] if i < len(yts) else {}
+        ch = (info.get("channel") if i == 0 else "") or y.get("channel") or "(모름)"
+        parts.append(f"""[{tag}] 길이 {m['duration']:.0f}초, {m['width']}×{m['height']} / 유튜브 제목: {y.get('title') or '(모름)'} / 채널: {ch}
 
-영상 정보: 길이 {meta['duration']:.0f}초, {meta['width']}×{meta['height']}
-유튜브 제목: {yt.get('title') or '(모름)'} / 채널: {info.get('channel') or yt.get('channel') or '(모름)'}
+[{tag} 전체 대사 — 음성 인식, 시각 포함]
+{asr_words.as_text(asrs[i])}
+
+[{tag} 설명란]
+{y.get('description') or '(없음)'}
+
+[{tag} 인기 댓글]
+{comments_text(y.get('comments') or [], 60 if not two else 40)}""")
+    intro = ("원본 영상 두 개(영상 A, 영상 B)를 분석합니다. 사용자가 같은 제품을 다루는 영상 둘을 골라 넣었고, "
+             "두 영상의 장면을 섞어 쇼츠 한 편을 만듭니다. 두 영상 모두에 나오는 제품을 고릅니다.\n"
+             "시각은 각 영상 기준이므로, 제품·후킹 순간·구간마다 어느 영상인지 src 에 A 또는 B 로 적습니다."
+             if two else "원본 영상을 분석해 쇼츠 소재가 될 제품을 고릅니다.")
+    ask = f"""{intro}
+
 사용자가 정한 제품: {info.get('product') or '(없음 — 규칙 1에 따라 고릅니다)'}
 
 위 이미지는 일정 간격으로 뽑은 프레임 시트이고 각 프레임 위에 원본 시각이 적혀 있습니다.
 {vidiq_block(vidiq)}{feedback_block(feedback)}
-[전체 대사 — 음성 인식, 시각 포함]
-{asr_words.as_text(asr)}
-
-[영상 설명란]
-{yt.get('description') or '(없음)'}
-
-[인기 댓글]
-{comments_text(yt.get('comments') or [], 60)}
+{chr(10).join(parts) if two else parts[0]}
 
 채워야 할 것
-- channel: 출처 표기에 쓸 유튜브 채널명. celebrity: 화자(연예인) 이름. 모르면 빈 문자열.
+- src 가 있는 항목은 어느 영상인지 A 또는 B 로 적습니다(영상이 하나면 모두 A).
+- channel: 출처 표기에 쓸 유튜브 채널명(영상 A). channel_b: 영상 B의 채널명(영상이 하나면 빈 문자열).
+  celebrity: 화자(연예인) 이름. 모르면 빈 문자열.
 - paid_ad / paid_ad_note: 원본이 특정 브랜드의 유료 광고 영상인지(화면의 고지 문구, 설명란, 대사 근거).
 - burned_in: 원본 화면에 박힌 글자의 위치(원본 픽셀). caption_top_y는 아래쪽 자막 영역의 위쪽 경계 y(없으면 영상 높이),
   left_label_right_x는 왼쪽 위 라벨이 끝나는 x(없으면 0), right_label_left_x는 오른쪽 위 고지 문구가 시작하는 x(없으면 영상 너비).
+  burned_in 은 영상 A, burned_in_b 는 영상 B의 것(영상이 하나면 burned_in_b 는 0과 빈 문자열로 채웁니다).
 - products: 영상에 나오는 모든 제품. start/end는 소개 구간, closeups는 제품 클로즈업 시각, demos는 바르거나 시연하는 시각,
   quote는 화자의 가장 강한 한마디(대사 그대로), sellable은 쿠팡 판매·제품 태그 가능성에 대한 한 줄 판단.
 - hooks: 20~40대 여성이 쇼츠 첫 3초에 멈출 후킹 순간 TOP 10 (표정·리액션·반전 발언·비포애프터·제형 클로즈업 우선).
-- pick: 고른 제품, 그 제품을 본격적으로 소개하는 구간(start/end), 고른 이유.
+- pick: 고른 제품, 그 제품을 본격적으로 소개하는 구간(src, start/end), 고른 이유.
   ranges 에는 그 제품이 화면에 나오거나 화자가 그 제품을 이야기하는 모든 구간을 적습니다(본 구간 + 영상 앞뒤에 다시 나오는 곳).
   각 구간은 다른 제품·다른 주제의 이야기가 시작되기 전에서 정확히 끊고, what 에 그 구간에서 무엇을 보여 주는지 한 줄로 적습니다.
   컷은 이 구간들 안에서만 뽑으므로, 넉넉히 잡지 말고 정확히 잡습니다.
+  영상이 둘이면 두 영상 각각에서 그 제품이 나오는 구간을 모두 적습니다(한쪽에 전혀 안 나오면 그 영상의 구간은 없어도 됩니다).
 - alternates: 차순위 후보 정확히 2개와 이유."""
-    data, _ = ask_json(_sheets(sheets, "개요 프레임 시트") + [{"type": "text", "text": ask}], ANALYSIS_SCHEMA)
+    data, _ = ask_json(content + [{"type": "text", "text": ask}], ANALYSIS_SCHEMA)
     return data
 
 
@@ -247,9 +280,12 @@ RECT = _obj({"x": I, "y": I, "w": I, "h": I})
 DESIGN_SCHEMA = _obj({
     "combos": _arr(_obj({"top1": S, "top2": S, "title": S})),
     "crop": _obj({"size": I, "x_min": I, "x_max": I}),
+    "crop_b": _obj({"size": I, "x_min": I, "x_max": I}),
     "erase": _arr(RECT),
+    "erase_b": _arr(RECT),
     "timeline": _arr(_obj({
         "type": {"type": "string", "enum": ["cut", "tts"]},
+        "src": SRC,
         "a": N, "b": N, "x0": I, "shows": S,
         "unmirror": B, "erase": _arr(RECT),
         "subs": _arr(_obj({"t": N, "text": S, "em": B, "sfx": {"type": "string", "enum": SFX}})),
@@ -258,7 +294,7 @@ DESIGN_SCHEMA = _obj({
     })),
     "cards": _arr(_obj({"comment": I, "seg": I, "offset": N, "dur": N, "heart": B,
                         "pos": {"type": "string", "enum": ["top", "mid", "bottom"]}})),
-    "thumbnail": _obj({"t": N, "x0": I}),
+    "thumbnail": _obj({"src": SRC, "t": N, "x0": I}),
     "description": _obj({"hook_line": S, "body_lines": _arr(S), "closing_line": S, "hashtags": _arr(S)}),
     "pin_question": S,
     "notes": S,
@@ -266,38 +302,57 @@ DESIGN_SCHEMA = _obj({
 })
 
 
-def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, info: dict, yt: dict,
-                   images: list[str], crop_default: int, vidiq: str = "", feedback: str = "",
+def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
+                   images: list[str], crop_default, vidiq: str = "", feedback: str = "",
                    prev_plan: dict | None = None, prev_copy: dict | None = None) -> list:
+    """컷 설계 요청. meta·asr_zoom·crop_default 는 영상별 목록(또는 하나), sheets 는 영상별 시트 목록, yt 는 댓글을 합친 것."""
+    metas, zooms, crops = as_list(meta), as_list(asr_zoom), as_list(crop_default)
+    sheets = sheets if sheets and isinstance(sheets[0], (list, tuple)) else [sheets]
+    two = len(metas) > 1
     pick = analysis["pick"]
-    bi = analysis.get("burned_in") or {}
     cand_text, cand_short = card_candidates(yt.get("comments") or [])
     ranges = product_ranges(analysis)
-    whats = {(float(r["start"]), float(r["end"])): r.get("what", "") for r in pick.get("ranges") or []}
-    ranges_text = "\n".join(f"- {a:.1f}~{b:.1f}초" + (f": {whats[(a, b)]}" if whats.get((a, b)) else "") for a, b in ranges)
-    hooks = [h for h in analysis.get("hooks", []) if any(a - 2 <= float(h.get("t", -99)) <= b + 2 for a, b in ranges)]
+    whats = {(src_index(r.get("src")), float(r["start"]), float(r["end"])): r.get("what", "") for r in pick.get("ranges") or []}
+    hooks = [h for h in analysis.get("hooks", [])
+             if any(k == src_index(h.get("src")) and a - 2 <= float(h.get("t", -99)) <= b + 2 for a, b, k in ranges)]
+    content, parts = [], []
+    for i, m in enumerate(metas):
+        tag = f"영상 {LABEL[i]}" if two else "원본"
+        content += _sheets(sheets[i], f"{tag} 제품 구간 프레임 시트")
+        bi = analysis.get("burned_in" if i == 0 else "burned_in_b") or {}
+        mine = [(a, b) for a, b, k in ranges if k == i]
+        rtext = "\n".join(f"- {a:.1f}~{b:.1f}초" + (f": {whats[(i, a, b)]}" if whats.get((i, a, b)) else "") for a, b in mine)
+        parts.append(f"""[{tag}] {m['width']}×{m['height']}, 길이 {m['duration']:.0f}초, 기본 1:1 크롭 {crops[i]}px
+화면 글자 위치(분석 단계): {json.dumps(bi, ensure_ascii=False)}
+이 제품이 나오는 구간 — 컷과 정지 화면(still_t), 썸네일은 이 구간 안에서만 고릅니다:
+{rtext or '- (이 영상에는 이 제품이 나오는 구간이 없습니다. 이 영상의 장면은 쓰지 않습니다)'}
+
+[{tag} 구간의 음성 인식 — 어절@시작시각, 괄호는 말소리 구간]
+{asr_words.as_text(zooms[i], words=True) if i < len(zooms) else ''}""")
+    channels = analysis.get("channel", "") + (f" / {analysis.get('channel_b', '')}" if two else "")
+    mix = ("""
+[두 영상 섞기]
+- 두 영상의 장면을 섞어 한 편으로 만듭니다. 각 영상에서 컷을 하나 이상 쓰고, 한 영상의 컷만 길게 이어 붙이지 말고 번갈아 놓습니다.
+- timeline 각 항목과 thumbnail 의 src 에 그 장면이 어느 영상인지 A 또는 B 로 적습니다. a/b/still_t/x0/erase 는 그 영상 기준입니다.
+- 두 영상이 같은 말을 되풀이하지 않게, 서로 다른 내용(한쪽은 써 보는 장면, 다른 쪽은 결과·한마디 등)을 고릅니다.
+- 화자가 다르면 말이 자연스럽게 이어지는 순서로 놓고, 한 문장을 두 영상으로 쪼개지 않습니다.
+""" if two else "")
     ask = f"""'{pick.get('brand', '')} {pick['name']}' 로 쇼츠 한 편을 설계합니다.
 
-원본: {meta['width']}×{meta['height']}, 길이 {meta['duration']:.0f}초. 완성본은 1.1배속입니다.
-위 이미지는 제품 구간을 촘촘히 뽑은 프레임 시트입니다. 각 프레임 위에 원본 시각이 있고,
-청록색 세로선과 노란 숫자는 원본 x좌표, 왼쪽 가장자리의 y240·y480… 은 원본 y좌표, 빨간 가로선은 기본 1:1 크롭({crop_default}px)의 아래 경계입니다.
-분석 단계에서 본 화면 글자 위치: {json.dumps(bi, ensure_ascii=False)}
+완성본은 1.1배속입니다. 위 이미지는 제품 구간을 촘촘히 뽑은 프레임 시트입니다. 각 프레임 위에 원본 시각이 있고,
+청록색 세로선과 노란 숫자는 원본 x좌표, 왼쪽 가장자리의 y240·y480… 은 원본 y좌표, 빨간 가로선은 기본 1:1 크롭의 아래 경계입니다.
 
-[이 구간의 음성 인식 — 어절@시작시각, 괄호는 말소리 구간]
-{asr_words.as_text(asr_zoom, words=True)}
+{chr(10).join(parts)}
 
 [분석 요약]
-화자: {analysis.get('celebrity', '')} / 채널: {analysis.get('channel', '')}
+화자: {analysis.get('celebrity', '')} / 채널: {channels}
 이 제품 구간 안의 후킹 순간: {json.dumps(hooks[:10], ensure_ascii=False)}
-
-[이 제품이 나오는 구간 — 컷과 정지 화면(still_t), 썸네일은 이 구간 안에서만 고릅니다]
-{ranges_text}
-위 프레임 시트와 음성 인식도 이 구간만 담았습니다. 구간 안이라도 다른 제품·다른 주제가 화면에 나오는 순간은 쓰지 않습니다.
-이 영상의 다른 장면이 아무리 눈길을 끌어도 이 제품과 무관하면 넣지 않습니다. 쓸 장면이 모자라면 길이를 줄입니다.
-제품 정보: {json.dumps(next((p for p in analysis.get('products', []) if p.get('name') == pick['name']), {}), ensure_ascii=False)}
-
+위 프레임 시트와 음성 인식은 제품 구간만 담았습니다. 구간 안이라도 다른 제품·다른 주제가 화면에 나오는 순간은 쓰지 않습니다.
+영상의 다른 장면이 아무리 눈길을 끌어도 이 제품과 무관하면 넣지 않습니다. 쓸 장면이 모자라면 길이를 줄입니다.
+제품 정보: {json.dumps([p for p in analysis.get('products', []) if p.get('name') == pick['name']][:2], ensure_ascii=False)}
+{mix}
 {vidiq_block(vidiq, 8000)}{feedback_block(feedback, prev_plan, prev_copy)}
-[댓글 카드 후보 — {'20자 미만인 댓글만 추려 ' if cand_short else ''}좋아요 많은 순으로 놓았습니다. 번호(#)로 고릅니다. 원문과 좋아요 수는 프로그램이 그대로 넣습니다]
+[댓글 카드 후보 — {'두 영상의 댓글을 합쳐 ' if two else ''}{'20자 미만인 댓글만 추려 ' if cand_short else ''}좋아요 많은 순으로 놓았습니다. 번호(#)로 고릅니다. 원문과 좋아요 수는 프로그램이 그대로 넣습니다]
 {cand_text}
 
 [사용자가 준 TTS용 이미지]
@@ -307,7 +362,9 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
 - combos: 썸네일 문구(top1 윗줄, top2 아랫줄)와 업로드 제목(title) 조합 3개, 좋은 순서대로. 첫 번째가 화면 상단 제목이 됩니다.
   업로드 제목은 피드에서 손을 멈추게 하는 후킹 문장으로 씁니다(궁금증·반전·구체적인 상황이나 숫자, 40자 이내).
   세 개는 서로 다른 각도로 씁니다.
-- crop: size는 1:1 크롭 한 변(보통 {crop_default}), x_min/x_max는 크롭이 들어가도 되는 원본 x 범위(모서리 라벨·고지 문구를 피한 범위).
+- crop: size는 1:1 크롭 한 변(보통 {crops[0]}), x_min/x_max는 크롭이 들어가도 되는 원본 x 범위(모서리 라벨·고지 문구를 피한 범위).
+  crop 은 영상 A, crop_b 는 영상 B의 것입니다(영상이 하나면 crop_b 는 crop 과 같게). erase 와 erase_b 도 같습니다.
+- src: 영상이 하나면 모든 src 는 "A" 입니다.
 - 원본 글씨는 규칙의 순서대로 처리합니다: ① 안 보이게 컷과 x0를 고른다 ② 작고 단순한 배경 위라 깔끔히 지워지면 erase
   ③ 그래도 읽히는 글씨가 크롭 안에 남는 컷은 unmirror=true.
   · erase(맨 위): 영상 내내 같은 자리에 있는 글씨(채널 로고, 고지 문구)를 지울 사각형들. 원본 픽셀 x, y, w, h. 없으면 [].
@@ -335,14 +392,19 @@ def design_request(meta: dict, analysis: dict, asr_zoom: dict, sheets: list, inf
 - revision: 사용자의 수정 요청이 있을 때만, 요청마다 어떻게 반영했는지 한 줄씩(반영하지 못한 것은 이유와 함께). 요청이 없으면 "".
 
 완성 길이는 컷 길이 합 ÷ 1.1 + TTS 길이(대략 글자당 0.15초 + 0.3초)로 어림합니다."""
-    return _sheets(sheets, "제품 구간 프레임 시트") + [{"type": "text", "text": ask}]
+    return content + [{"type": "text", "text": ask}]
 
 
-def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
-    """모델 답을 build.py가 읽는 plan과 업로드 문구(copy)로 바꾼다."""
+def to_plan(d: dict, analysis: dict, info: dict, yt: dict, n_src: int = 1, channels: list | None = None) -> tuple[dict, dict]:
+    """모델 답을 build.py가 읽는 plan과 업로드 문구(copy)로 바꾼다. n_src 는 원본 영상 수."""
     pick = analysis["pick"]
     product = info.get("product") or f"{pick.get('brand', '')} {pick['name']}".strip()
-    channel = info.get("channel") or analysis.get("channel") or yt.get("channel") or ""
+    channel = info.get("channel") or analysis.get("channel") or yt.get("channel") or (channels or [""])[0] or ""
+    channel_b = (analysis.get("channel_b") or (channels or ["", ""])[1:2] or [""])
+    channel_b = channel_b if isinstance(channel_b, str) else channel_b[0]
+
+    def which(v) -> int:
+        return src_index(v) if n_src > 1 else 0
     tl, k = [], 0
     for s in d["timeline"]:
         rects = [[r["x"], r["y"], r["w"], r["h"]] for r in s.get("erase") or [] if r["w"] > 1 and r["h"] > 1]
@@ -366,6 +428,8 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
             seg["sfx"] = s["sfx"]
         if s.get("shows"):
             seg["note"] = s["shows"]
+        if which(s.get("src")) and not seg.get("image"):
+            seg["src"] = 1            # 두 번째 원본 영상의 장면
         if not seg.get("image"):      # 사용자 이미지는 반전·지우기 대상이 아니다
             if s.get("unmirror"):
                 seg["mirror"] = False
@@ -380,16 +444,27 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict) -> tuple[dict, dict]:
             cards.append({"seg": c["seg"], "offset": round(c["offset"], 2), "dur": card_seconds(src["text"]),
                           "text": src["text"], "likes": src.get("likes_label", str(src.get("likes", ""))),
                           "heart": bool(c["heart"]), "pos": c["pos"],
-                          **({"when": src["when"]} if src.get("when") else {})})
+                          **({"when": src["when"]} if src.get("when") else {}),
+                          **({"src": 1} if src.get("src") else {})})
     top = d["combos"][0]
+    names = [c for c in ([channel, channel_b] if n_src > 1 else [channel]) if c]
+    names = list(dict.fromkeys(names))      # 두 영상이 같은 채널이면 한 번만
     plan = {
         "product": product, "brand": pick.get("brand", ""), "channel": channel,
-        "source_text": f"출처 : 유튜브 '{channel}'" if channel else "",
+        "source_text": "출처 : 유튜브 " + " · ".join(f"'{c}'" for c in names) if names else "",
         "title": [top["top1"], top["top2"]],
         "crop": {"size": d["crop"]["size"], "y0": 0, "x_min": d["crop"]["x_min"], "x_max": d["crop"]["x_max"]},
         "timeline": tl, "cards": cards,
         "thumbnail": {"t": round(d["thumbnail"]["t"], 2), "x0": d["thumbnail"]["x0"]},
     }
+    if n_src > 1:
+        cb = d.get("crop_b") or d["crop"]
+        plan["crop_b"] = {"size": cb["size"], "y0": 0, "x_min": cb["x_min"], "x_max": cb["x_max"]}
+        if which(d["thumbnail"].get("src")):
+            plan["thumbnail"]["src"] = 1
+        static_b = [[r["x"], r["y"], r["w"], r["h"]] for r in d.get("erase_b") or [] if r["w"] > 1 and r["h"] > 1]
+        if static_b:
+            plan["erase_b"] = static_b
     if product_ranges(analysis):
         plan["ranges"] = product_ranges(analysis)     # 이 제품이 나오는 구간(규칙 검사가 컷이 이 안에 있는지 본다)
     static = [[r["x"], r["y"], r["w"], r["h"]] for r in d.get("erase") or [] if r["w"] > 1 and r["h"] > 1]
@@ -419,7 +494,11 @@ REVIEW_SCHEMA = _obj({
 })
 
 
-def review(resolved: dict, plan: dict, sheets: list, meta: dict, crop_size: int) -> dict:
+def review(resolved: dict, plan: dict, sheets: list, meta, crop_size) -> dict:
+    metas, sizes = as_list(meta), as_list(crop_size)
+    meta, crop_size = metas[0], sizes[0]
+    extra = ("" if len(metas) < 2 else
+             f" 원본 영상이 둘입니다: 구간 정보의 src 0 은 영상 A, src 1 은 영상 B(너비 {metas[1]['width']}, 크롭 한 변 {sizes[1]}).")
     ask = f"""완성본을 1초 간격으로 뽑은 프레임입니다(각 프레임 위 숫자는 완성본 시각). 끝났다고 하기 전의 화면 검수를 합니다.
 - 원본의 글씨(자막·브랜드 라벨·광고 고지·제품의 큰 글씨)가 1:1 영상 안에서 뒤집혀 보이는가
   (구간 정보의 mirror 가 true 인 구간은 거울반전된 상태입니다. 바로 읽히는 글씨는 문제가 아닙니다)
@@ -431,7 +510,7 @@ def review(resolved: dict, plan: dict, sheets: list, meta: dict, crop_size: int)
 
 구간 정보(완성본 시각 → 원본 구간과 x0): {json.dumps(resolved['segments'], ensure_ascii=False)}
 댓글 카드: {json.dumps(resolved['cards'], ensure_ascii=False)}
-원본 너비 {meta['width']}, 크롭 한 변 {crop_size}. 거울반전이므로 완성본에서 왼쪽으로 치우친 것은 원본에서는 오른쪽에 있습니다.
+원본 너비 {meta['width']}, 크롭 한 변 {crop_size}.{extra} 거울반전이므로 완성본에서 왼쪽으로 치우친 것은 원본에서는 오른쪽에 있습니다.
 
 문제가 없으면 ok=true, issues=[]. 문제가 있으면 구간(seg)마다 하나씩:
 fix "x0" 는 그 구간의 새 x0(원본 픽셀)로 글씨를 화면 밖으로 내보낼 수 있을 때, fix "unmirror" 는 x0로 피할 수 없어
@@ -441,14 +520,16 @@ fix "x0" 는 그 구간의 새 x0(원본 픽셀)로 글씨를 화면 밖으로 �
     return data
 
 
-def apply_review(plan: dict, rv: dict, meta: dict, crop_size: int) -> list[str]:
+def apply_review(plan: dict, rv: dict, meta, crop_size) -> list[str]:
     """검수에서 나온 수정 지시를 plan에 반영한다. 한 일 목록을 돌려준다."""
     done = []
-    c = plan.get("crop") or {}
-    lo, hi = int(c.get("x_min", 0) or 0), int(c.get("x_max", 0) or meta["width"]) - crop_size
+    metas, sizes = as_list(meta), as_list(crop_size)
     for it in rv.get("issues", []):
         if it["fix"] == "x0" and 0 <= it["seg"] < len(plan["timeline"]) and it["x0"] >= 0:
             seg = plan["timeline"][it["seg"]]
+            k = min(int(seg.get("src", 0)), len(metas) - 1)
+            c = plan.get("crop_b" if k else "crop") or {}
+            lo, hi = int(c.get("x_min", 0) or 0), int(c.get("x_max", 0) or metas[k]["width"]) - sizes[k]
             if "x0" in seg:
                 new = max(lo, min(hi, it["x0"]))
                 if new != seg["x0"]:

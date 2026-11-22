@@ -210,9 +210,11 @@ def _capture_once(url, texts, out_dir, max_scrolls, log, debug_dir, headless: bo
     return found
 
 
-def capture_for_plan(plan: dict, url: str, inp_dir, log=util.log, debug_dir=None) -> list[str]:
-    """plan 의 댓글 카드마다 실제 캡처를 붙인다(이미 캡처가 있으면 그대로 둔다). 한 일을 글로 돌려준다."""
+def capture_for_plan(plan: dict, url, inp_dir, log=util.log, debug_dir=None) -> list[str]:
+    """plan 의 댓글 카드마다 실제 캡처를 붙인다(이미 캡처가 있으면 그대로 둔다). 한 일을 글로 돌려준다.
+    url 은 유튜브 링크 하나 또는 목록(원본 영상이 둘인 편). 카드의 src 가 그 댓글이 달린 영상 번호다."""
     inp_dir = Path(inp_dir)
+    urls = list(url) if isinstance(url, (list, tuple)) else [url]
     todo = []
     for c in plan.get("cards") or []:
         if not c.get("text") or c.get("on_video") or c.get("no_capture"):
@@ -228,15 +230,20 @@ def capture_for_plan(plan: dict, url: str, inp_dir, log=util.log, debug_dir=None
         return []
     if not available():
         return ["실제 댓글 캡처를 건너뜁니다(pip install playwright 가 필요합니다). 그린 댓글 상자를 씁니다."]
-    if not video_id(url) and not os.environ.get("SHORTS_CAPTURE_URL"):
-        return ["유튜브 링크가 없어 실제 댓글을 캡처하지 못했습니다. 그린 댓글 상자를 씁니다."]
-    log(f"[캡처] 유튜브 댓글창에서 댓글 {len(todo)}개를 찾는 중…")
     where = f" 원인 확인용 화면: {Path(debug_dir) / 'capture_debug.png'}" if debug_dir else ""
-    try:
-        got = capture_comments(url, [c["text"] for c in todo], inp_dir, log=log, debug_dir=debug_dir)
-    except Exception as e:      # 캡처는 꾸밈일 뿐이니 실패해도 영상은 만든다
-        return [f"실제 댓글 캡처에 실패해 그린 댓글 상자를 씁니다: {str(e).splitlines()[0][:160]}"]
-    notes = []
+    got, notes = {}, []
+    for k, u in enumerate(urls):      # 영상마다 그 영상의 댓글창에서
+        mine = [c for c in todo if min(int(c.get("src", 0) or 0), len(urls) - 1) == k]
+        if not mine:
+            continue
+        if not video_id(u) and not os.environ.get("SHORTS_CAPTURE_URL"):
+            notes.append("유튜브 링크가 없어 실제 댓글을 캡처하지 못했습니다. 그린 댓글 상자를 씁니다.")
+            continue
+        log(f"[캡처] 유튜브 댓글창에서 댓글 {len(mine)}개를 찾는 중…")
+        try:
+            got.update(capture_comments(u, [c["text"] for c in mine], inp_dir, log=log, debug_dir=debug_dir))
+        except Exception as e:      # 캡처는 꾸밈일 뿐이니 실패해도 영상은 만든다
+            notes.append(f"실제 댓글 캡처에 실패해 그린 댓글 상자를 씁니다: {str(e).splitlines()[0][:160]}")
     if len(got) < len(todo) and debug_dir and (Path(debug_dir) / "capture_debug.png").exists():
         notes.append("실제 댓글을 다 캡처하지 못했습니다." + where)
     for c in todo:

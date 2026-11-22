@@ -60,10 +60,25 @@ def existing_episodes() -> list[str]:
     return sorted((p.name for p in d.iterdir() if p.is_dir()), key=lambda n: -(d / n).stat().st_mtime)
 
 
-def episode_video(name: str) -> Path | None:
+def episode_videos(name: str) -> list[Path]:
+    """편에 들어 있는 원본 영상(하나, 또는 두 영상을 섞는 편이면 둘). pipeline/util.py 의 Episode.sources 와 같은 규칙."""
     d = ROOT / "input" / name
-    vids = [p for p in d.iterdir() if p.suffix.lower() in VIDEO_EXT] if d.is_dir() else []
-    return max(vids, key=lambda p: p.stat().st_size) if vids else None
+    vids = sorted(p for p in d.iterdir() if p.suffix.lower() in VIDEO_EXT) if d.is_dir() else []
+    if not vids:
+        return []
+    info = read_json(d / "info.json", {}) or {}
+    named = [d / n for n in info.get("videos") or [] if (d / n).is_file()]
+    if len(named) >= 2:
+        return named[:2]
+    if info.get("url2") and len(vids) >= 2:
+        first = named[0] if named else vids[0]
+        return [first, next(p for p in vids if p != first)]
+    return [named[0] if named else max(vids, key=lambda p: p.stat().st_size)]
+
+
+def episode_video(name: str) -> Path | None:
+    vids = episode_videos(name)
+    return vids[0] if vids else None
 
 
 def load_episode(name: str) -> dict:
@@ -73,9 +88,11 @@ def load_episode(name: str) -> dict:
         f = d / fn
         return f.read_text(encoding="utf-8", errors="replace").strip() if f.exists() else ""
 
+    vids = episode_videos(name)
     return {"url": info.get("url", ""), "inpock": str(info.get("inpock", "") or ""),
             "product": info.get("product", ""), "vidiq": text("vidiq.txt"), "feedback": text("feedback.txt"),
-            "video": str(episode_video(name) or "")}
+            "video": str(vids[0]) if vids else "",
+            "video2": str(vids[1]) if len(vids) > 1 else "", "url2": info.get("url2", "") if len(vids) > 1 else ""}
 
 
 def python_exe() -> str:
@@ -87,35 +104,60 @@ def python_exe() -> str:
 
 
 def prepare_episode(name: str, video: str, url: str, inpock: str, product: str, vidiq: str,
-                    images: list[str], redo: str | None, feedback: str = "") -> tuple[list[str], list[str]]:
-    """편 폴더를 채우고 실행할 명령을 돌려준다. 잘못된 입력은 ValueError(사용자에게 보일 말)."""
+                    images: list[str], redo: str | None, feedback: str = "",
+                    video2: str = "", url2: str = "") -> tuple[list[str], list[str]]:
+    """편 폴더를 채우고 실행할 명령을 돌려준다. 잘못된 입력은 ValueError(사용자에게 보일 말).
+    video2(와 url2)를 주면 같은 제품의 두 영상을 섞는 편이 된다."""
     name = safe_episode(name)
     if not name:
         raise ValueError("편 이름을 적어 주세요.")
     d = ROOT / "input" / name
     notes = []
-    have = episode_video(name)
-    if video:
-        src = Path(video)
+    have = episode_videos(name)
+    was_two = len(have) > 1
+    picked = []
+    for i, v in enumerate([video.strip(), video2.strip()]):
+        which = "원본 영상" if i == 0 else "두 번째 영상"
+        if not v:
+            picked.append(None)
+            continue
+        src = Path(v)
         if not src.is_file():
-            raise ValueError(f"원본 영상 파일을 찾을 수 없습니다:\n{src}")
+            raise ValueError(f"{which} 파일을 찾을 수 없습니다:\n{src}")
         if src.suffix.lower() not in VIDEO_EXT:
-            raise ValueError("원본 영상은 mp4, mkv, mov, webm 파일이어야 합니다.")
-        d.mkdir(parents=True, exist_ok=True)
-        if have and have.resolve() != src.resolve():
-            if have.stat().st_size != src.stat().st_size:
-                raise ValueError(f"'{name}' 편에는 이미 다른 영상({have.name})이 들어 있습니다.\n"
-                                 "다른 편 이름을 쓰거나, 그 폴더의 영상을 지운 뒤 다시 하세요.")
-        elif not have:
-            notes.append(f"원본 영상을 input/{name}/ 에 복사합니다: {src.name}")
-            shutil.copy2(src, d / src.name)
-    elif not have:
+            raise ValueError(f"{which}은 mp4, mkv, mov, webm 파일이어야 합니다.")
+        picked.append(src)
+    if not picked[0] and not have:
         raise ValueError("원본 영상을 골라 주세요.")
+    if picked[0] and picked[1] and picked[0].resolve() == picked[1].resolve():
+        raise ValueError("두 번째 영상이 첫 영상과 같은 파일입니다.\n같은 제품을 다룬 다른 영상을 고르거나, 두 번째 칸을 비워 주세요.")
+    d.mkdir(parents=True, exist_ok=True)
+    names = [p.name for p in have]
+    for i, src in enumerate(picked):
+        if not src:
+            continue
+        if i < len(have):
+            if have[i].resolve() != src.resolve() and have[i].stat().st_size != src.stat().st_size:
+                raise ValueError(f"'{name}' 편에는 이미 다른 {'영상' if i == 0 else '두 번째 영상'}({have[i].name})이 들어 있습니다.\n"
+                                 "다른 편 이름을 쓰거나, 그 폴더의 영상을 지운 뒤 다시 하세요.")
+            continue
+        dest = d / src.name
+        if src.parent.resolve() == d.resolve():
+            dest = src
+        else:
+            if dest.exists() or dest.name in names:      # 다른 폴더의 같은 이름 파일이 첫 영상을 덮어쓰지 않게
+                dest = d / f"{src.stem}_2{src.suffix}"
+            notes.append(f"{'원본 영상' if i == 0 else '두 번째 영상'}을 input/{name}/ 에 복사합니다: {dest.name}")
+            shutil.copy2(src, dest)
+        names.append(dest.name)
+    two = len(names) > 1
     d.mkdir(parents=True, exist_ok=True)
 
     old = load_episode(name)
     info = read_json(d / "info.json", {}) or {}
     info.update(url=url.strip(), inpock=inpock.strip(), product=product.strip())
+    if two:
+        info.update(url2=url2.strip(), videos=names[:2])
     info.setdefault("channel", "")
     (d / "info.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
     vidiq = vidiq.strip()
@@ -139,6 +181,11 @@ def prepare_episode(name: str, video: str, url: str, inpock: str, product: str, 
             shutil.copy2(src, d / f"img{i}{src.suffix.lower()}")
 
     analyzed = (ROOT / "work" / name / "analysis.json").exists()
+    if two:
+        notes.append(f"두 영상을 섞어 만듭니다: A={names[0]}, B={names[1]}")
+    if two and not was_two and analyzed and redo != "analyze":
+        redo = "analyze"
+        notes.append("두 번째 영상이 더해져 제품 선정부터 다시 합니다.")
     if redo is None and analyzed and (old["product"] != product.strip() or old["vidiq"] != vidiq):
         redo = "analyze"
         notes.append("제품명이나 vidIQ 분석이 바뀌어 제품 선정부터 다시 합니다.")
@@ -146,7 +193,8 @@ def prepare_episode(name: str, video: str, url: str, inpock: str, product: str, 
     if redo is None and designed and old["feedback"] != feedback:
         redo = "design"
         notes.append("수정 요청이 바뀌어 컷 설계부터 다시 합니다." if feedback else "수정 요청을 지워 컷 설계부터 다시 합니다.")
-    if redo is None and analyzed and old["url"] != url.strip() and url.strip():
+    if redo is None and analyzed and ((old["url"] != url.strip() and url.strip())
+                                      or (two and was_two and old["url2"] != url2.strip() and url2.strip())):
         notes.append("유튜브 링크가 바뀌었습니다. 댓글을 새로 가져오려면 '제품 선정부터 다시'가 아니라 편 이름을 새로 지으세요.")
     cmd = [python_exe(), "-X", "utf8", "-u", str(ROOT / "shorts.py"), "auto", name]
     if redo:
@@ -319,6 +367,7 @@ def run_gui(argv: list[str]):
 
     pad = {"padx": 8, "pady": 3}
     v_video, v_url, v_name = tk.StringVar(), tk.StringVar(), tk.StringVar()
+    v_video2, v_url2 = tk.StringVar(), tk.StringVar()      # 같은 제품의 두 번째 영상(섞어 만들 때만)
     v_inpock, v_product, v_redo = tk.StringVar(), tk.StringVar(), tk.StringVar(value="이어서 하기")
     v_img = [tk.StringVar(), tk.StringVar()]
     v_status = tk.StringVar(value="원본 영상을 고르고 유튜브 링크를 붙여 넣은 뒤 [만들기]를 누르세요.")
@@ -338,7 +387,7 @@ def run_gui(argv: list[str]):
         if button:
             button.grid(row=r, column=2, sticky="ew", **pad)
         if fold:
-            optional.extend([lb, widget])
+            optional.extend([lb, widget] + ([button] if button else []))
 
     def fold(hide: bool):
         for w in optional:
@@ -351,6 +400,12 @@ def run_gui(argv: list[str]):
                                        filetypes=[("영상", "*.mp4 *.mkv *.mov *.webm *.m4v"), ("모든 파일", "*.*")])
         if p:
             set_video(p)
+
+    def pick_video2():
+        p = filedialog.askopenfilename(title="두 번째 영상 고르기 (같은 제품의 다른 영상)",
+                                       filetypes=[("영상", "*.mp4 *.mkv *.mov *.webm *.m4v"), ("모든 파일", "*.*")])
+        if p:
+            v_video2.set(p)
 
     def set_video(p: str):
         v_video.set(p)
@@ -369,6 +424,8 @@ def run_gui(argv: list[str]):
         v_inpock.set(ep["inpock"])
         v_product.set(ep["product"])
         v_video.set(ep["video"])
+        v_video2.set(ep["video2"])
+        v_url2.set(ep["url2"])
         set_text(t_vidiq, ep["vidiq"])
         set_text(t_feedback, ep["feedback"])
         state["name"] = name
@@ -434,16 +491,23 @@ def run_gui(argv: list[str]):
     row(0, "원본 영상", ttk.Entry(frm, textvariable=v_video), ttk.Button(frm, text="파일 고르기", command=pick_video))
     row(1, "유튜브 링크", ttk.Entry(frm, textvariable=v_url),
         ttk.Button(frm, text="모두 지우기 (새 영상)", command=lambda: new_work()))
+    row(2, "영상 2 (선택)", ttk.Entry(frm, textvariable=v_video2),
+        ttk.Button(frm, text="두 번째 영상 고르기", command=pick_video2), fold=True)
+    link2 = ttk.Frame(frm)
+    link2.columnconfigure(0, weight=1)
+    ttk.Entry(link2, textvariable=v_url2).grid(row=0, column=0, sticky="ew")
+    ttk.Label(link2, text="  같은 제품을 다룬 영상 둘을 섞을 때만 채웁니다", foreground=GRAY).grid(row=0, column=1, sticky="e")
+    row(3, "영상 2 링크", link2, fold=True)
     cb_name = ttk.Combobox(frm, textvariable=v_name, values=existing_episodes())
     cb_name.bind("<<ComboboxSelected>>", on_episode)
     cb_name.bind("<FocusOut>", on_episode)
-    row(2, "편 이름", cb_name, ttk.Button(frm, text="이전 작업 보기", command=pick_previous))
+    row(4, "편 이름", cb_name, ttk.Button(frm, text="이전 작업 보기", command=pick_previous))
     sub = ttk.Frame(frm)
     sub.columnconfigure(3, weight=1)
     ttk.Entry(sub, textvariable=v_inpock, width=12).grid(row=0, column=0, sticky="w")
     ttk.Label(sub, text="    제품명(정했을 때만)").grid(row=0, column=2, sticky="e")
     ttk.Entry(sub, textvariable=v_product).grid(row=0, column=3, sticky="ew", padx=(8, 0))
-    row(3, "인포크 번호", sub, fold=True)
+    row(5, "인포크 번호", sub, fold=True)
 
     imgs = ttk.Frame(frm)
     for i in range(2):
@@ -454,7 +518,7 @@ def run_gui(argv: list[str]):
                 v_img[i].set(p)
         ttk.Button(imgs, text=f"이미지 {i + 1} 고르기", command=pick).grid(row=0, column=i * 2, padx=(0, 6))
         ttk.Label(imgs, textvariable=v_img[i], width=26, foreground=GRAY).grid(row=0, column=i * 2 + 1, padx=(0, 12))
-    row(4, "TTS 이미지(선택)", imgs, fold=True)
+    row(6, "TTS 이미지(선택)", imgs, fold=True)
 
     def copy_question():
         url = v_url.get().strip()
@@ -463,19 +527,19 @@ def run_gui(argv: list[str]):
             return
         from pipeline.prompts import vidiq_question  # 가벼운 모듈만 읽는다
         root.clipboard_clear()
-        root.clipboard_append(vidiq_question(url))
+        root.clipboard_append(vidiq_question(url, v_url2.get().strip() if v_video2.get().strip() else ""))
         v_status.set("vidIQ 질문을 복사했습니다. Claude 앱에 붙여 넣고, 받은 답을 vidIQ 칸에 붙여 넣으세요.")
 
     head = ttk.Frame(frm)
     ttk.Label(head, text="vidIQ 분석 붙여 넣기(선택) — 제품 선정과 후킹 장면 판단에 함께 씁니다").pack(side="left")
     ttk.Button(head, text="vidIQ 질문 복사", command=copy_question).pack(side="right")
-    head.grid(row=5, column=0, columnspan=3, sticky="ew", **pad)
+    head.grid(row=7, column=0, columnspan=3, sticky="ew", **pad)
     t_vidiq = tk.Text(frm, height=3, wrap="word", undo=True, font=(fam, 11), foreground=INK, background="white")
-    t_vidiq.grid(row=6, column=0, columnspan=3, sticky="ew", **pad)
+    t_vidiq.grid(row=8, column=0, columnspan=3, sticky="ew", **pad)
     optional.extend([head, t_vidiq])
 
     bar = ttk.Frame(frm)
-    bar.grid(row=7, column=0, columnspan=3, sticky="ew", **pad)
+    bar.grid(row=9, column=0, columnspan=3, sticky="ew", **pad)
     ttk.Combobox(bar, textvariable=v_redo, values=list(REDO), state="readonly", width=18).pack(side="left")
     b_run = ttk.Button(bar, text="만들기", style="Go.TButton")
     b_run.pack(side="left", padx=8)
@@ -498,11 +562,11 @@ def run_gui(argv: list[str]):
 
     ttk.Button(bar, text="미리보기 · 글자체", command=open_preview).pack(side="right", padx=8)
     ttk.Label(frm, textvariable=v_status, foreground=BLUE, font=(fam, 12, "bold"), wraplength=940,
-              justify="left").grid(row=8, column=0, columnspan=3, sticky="w", **pad)
+              justify="left").grid(row=10, column=0, columnspan=3, sticky="w", **pad)
 
     # ---- 아래쪽: [결과] 와 [진행 기록] 두 장
     ver_bar = ttk.Frame(frm)
-    ver_bar.grid(row=9, column=0, columnspan=3, sticky="ew", **pad)
+    ver_bar.grid(row=11, column=0, columnspan=3, sticky="ew", **pad)
     ttk.Label(ver_bar, text="버전").pack(side="left")
     v_ver = tk.StringVar()
     cb_ver = ttk.Combobox(ver_bar, textvariable=v_ver, state="readonly", width=44)
@@ -511,8 +575,8 @@ def run_gui(argv: list[str]):
     b_ver.pack(side="left")
     ttk.Label(ver_bar, text="   다시 만들 때마다 새 버전으로 남습니다", foreground=GRAY).pack(side="left")
     nb = ttk.Notebook(frm)
-    nb.grid(row=10, column=0, columnspan=3, sticky="nsew", **pad)
-    frm.rowconfigure(10, weight=1)
+    nb.grid(row=12, column=0, columnspan=3, sticky="nsew", **pad)
+    frm.rowconfigure(12, weight=1)
 
     def text_pane(parent, **kw):
         box = ttk.Frame(parent)
@@ -587,7 +651,7 @@ def run_gui(argv: list[str]):
     nb.add(tab_jobs, text="  작업 목록  ")
 
     foot = ttk.Frame(frm)
-    foot.grid(row=11, column=0, columnspan=3, sticky="ew", **pad)
+    foot.grid(row=13, column=0, columnspan=3, sticky="ew", **pad)
 
     def log(msg: str, save: bool = True):
         log_to(state["name"], msg, save)
@@ -894,7 +958,8 @@ def run_gui(argv: list[str]):
         try:
             cmd, notes = prepare_episode(name, v_video.get().strip(), v_url.get(), v_inpock.get(), v_product.get(),
                                          t_vidiq.get("1.0", "end"), [v.get() for v in v_img],
-                                         force_redo or REDO[v_redo.get()], t_feedback.get("1.0", "end"))
+                                         force_redo or REDO[v_redo.get()], t_feedback.get("1.0", "end"),
+                                         v_video2.get(), v_url2.get())
         except ValueError as e:
             messagebox.showwarning("확인해 주세요", str(e))
             return
@@ -904,8 +969,11 @@ def run_gui(argv: list[str]):
         state["name"] = name
         save_state(last=name)
         cb_name.configure(values=existing_episodes())
-        if not v_url.get().strip():
+        two = bool(v_video2.get().strip())
+        if not v_url.get().strip() and not (two and v_url2.get().strip()):
             notes.append("유튜브 링크가 없어 댓글 카드 없이 만듭니다.")
+        elif two and not (v_url.get().strip() and v_url2.get().strip()):
+            notes.append(f"{'첫' if not v_url.get().strip() else '두 번째'} 영상의 링크가 없어 그 영상의 댓글은 쓰지 않습니다.")
         t_log.configure(state="normal")       # 이 편의 기록 화면으로 바꾼다
         t_log.delete("1.0", "end")
         t_log.configure(state="disabled")
@@ -1021,6 +1089,7 @@ def run_gui(argv: list[str]):
     def remember():
         name = state["name"]
         draft = {} if name else {"video": v_video.get(), "url": v_url.get(), "name": v_name.get(),
+                                 "video2": v_video2.get(), "url2": v_url2.get(),
                                  "inpock": v_inpock.get(), "product": v_product.get(),
                                  "vidiq": t_vidiq.get("1.0", "end").strip()}
         try:
@@ -1048,6 +1117,8 @@ def run_gui(argv: list[str]):
     vids = [a for a in argv if Path(a).suffix.lower() in VIDEO_EXT and Path(a).is_file()]
     if vids:  # 아이콘 위에 영상을 끌어다 놓은 경우: 새 작업으로 시작
         set_video(vids[0])
+        if len(vids) > 1:   # 영상 둘을 함께 끌어다 놓으면 두 영상을 섞는 편으로
+            v_video2.set(vids[1])
     elif saved.get("last") in existing_episodes():  # 마지막에 하던 작업을 그대로 다시 연다
         open_episode(saved["last"])
     elif existing_episodes() and not saved.get("draft"):
@@ -1056,6 +1127,8 @@ def run_gui(argv: list[str]):
         d = saved["draft"]
         v_video.set(d.get("video", ""))
         v_url.set(d.get("url", ""))
+        v_video2.set(d.get("video2", ""))
+        v_url2.set(d.get("url2", ""))
         v_name.set(d.get("name", ""))
         v_inpock.set(d.get("inpock", ""))
         v_product.set(d.get("product", ""))
@@ -1068,7 +1141,7 @@ def run_gui(argv: list[str]):
         만든 파일은 지우지 않는다(이전 작업은 [이전 작업 보기]에 남는다)."""
         state["name"] = ""
         state["shown"] = None
-        for v in (v_video, v_url, v_name, v_inpock, v_product, v_img[0], v_img[1]):
+        for v in (v_video, v_url, v_video2, v_url2, v_name, v_inpock, v_product, v_img[0], v_img[1]):
             v.set("")
         v_redo.set("이어서 하기")
         set_text(t_vidiq, "")

@@ -279,16 +279,35 @@ class Episode:
         return d
 
     @property
-    def source(self) -> Path:
+    def sources(self) -> list[Path]:
+        """원본 영상들. 보통 하나이고, 같은 제품의 영상 둘을 섞는 편은 둘이다.
+        둘로 치는 경우: info.json 의 videos 에 파일 이름이 둘 적혀 있거나, url2 가 있고 영상 파일이 둘 이상일 때."""
         vids = sorted(p for p in self.inp.iterdir() if p.suffix.lower() in VIDEO_EXT)
         if not vids:
             die(f"{self.inp} 에 원본 영상 파일(mp4 등)이 없습니다.")
-        return max(vids, key=lambda p: p.stat().st_size)
+        d = read_json(self.inp / "info.json", {}) or {}
+        named = [self.inp / n for n in d.get("videos") or [] if (self.inp / n).exists()]
+        if len(named) >= 2:
+            return named[:2]
+        if d.get("url2") and len(vids) >= 2:
+            first = named[0] if named else vids[0]
+            return [first, next(p for p in vids if p != first)]
+        return [named[0] if named else max(vids, key=lambda p: p.stat().st_size)]
+
+    @property
+    def source(self) -> Path:
+        return self.sources[0]
+
+    @staticmethod
+    def sfx(i: int) -> str:
+        """작업 파일 이름 뒤에 붙는 꼬리: 첫 영상은 없음, 둘째 영상은 _2 (meta.json / meta_2.json)."""
+        return "" if i == 0 else f"_{i + 1}"
 
     @property
     def info(self) -> dict:
         d = read_json(self.inp / "info.json", {}) or {}
-        return {"url": d.get("url", ""), "inpock": str(d.get("inpock", "") or ""),
+        return {"url": d.get("url", ""), "url2": d.get("url2", ""), "urls": [d.get("url", ""), d.get("url2", "")],
+                "inpock": str(d.get("inpock", "") or ""),
                 "product": d.get("product", ""), "channel": d.get("channel", "")}
 
     @property

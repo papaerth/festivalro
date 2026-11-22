@@ -1,6 +1,6 @@
 # 쇼핑 쇼츠 자동 제작 — 작업 지침서
 
-연예인 추천템 유튜브 쇼핑 쇼츠(타겟 20~40대 여성)를 원본 영상 하나로부터 끝까지 만든다.
+연예인 추천템 유튜브 쇼핑 쇼츠(타겟 20~40대 여성)를 원본 영상 하나(또는 같은 제품의 영상 둘)로부터 끝까지 만든다.
 제작 규칙은 `RULES.md`에 있다(자동 실행도 같은 파일을 읽는다). 사용자와의 대화는 한국어로 한다.
 
 @RULES.md
@@ -8,8 +8,9 @@
 ## 입력과 출력
 
 `input/<편이름>/`에 사용자가 넣는 것
-- 원본 영상 파일 (필수)
-- `info.json` — `{"url": 유튜브 링크, "inpock": 인포크 번호, "product": 제품명, "channel": 채널명}` (모두 선택. `python shorts.py new <편> --url …` 로 만든다)
+- 원본 영상 파일 (필수). 같은 제품을 다룬 영상 둘을 섞으려면 둘을 넣는다(아래 "두 영상 섞기")
+- `info.json` — `{"url": 유튜브 링크, "inpock": 인포크 번호, "product": 제품명, "channel": 채널명}` (모두 선택. `python shorts.py new <편> --url …` 로 만든다).
+  두 영상이면 `"url2"`(둘째 링크)와 `"videos": [첫 영상 파일, 둘째 영상 파일]`
 - `img1.jpg`, `img2.jpg` — TTS 구간에 쓸 이미지 (선택. 없으면 원본 영상의 정지 화면)
 - `tts1.mp3`, `tts2.mp3` — 일레븐랩스 키가 없을 때 직접 넣는 TTS 음성 (선택)
 - `comments.json` — 댓글을 직접 줄 때 (선택. 형식은 아래)
@@ -56,6 +57,15 @@ python shorts.py auto <편>        # 또는 --all
 7. `output/<편>/_검수_*.jpg`를 직접 본다: 내장 자막·광고 문구가 들어왔는지, 자막·댓글 카드가 얼굴을 가리는지.
    문제가 있으면 plan의 x0나 카드 `pos`를 고쳐 다시 렌더링한다.
 8. `python shorts.py copy <편>` — 업로드 문구와 보고 파일. 보고 내용을 사용자에게 짧게 전한다.
+
+## 두 영상 섞기
+`input/<편>/`에 영상이 둘이고 `info.json`에 `videos`(파일 이름 둘) 또는 `url2`가 있으면 두 영상을 섞는 편이다(`Episode.sources`). 첫 영상이 A, 둘째가 B.
+- 둘째 영상의 작업 파일은 이름 뒤에 `_2`: `meta_2.json`, `words_2.json`, `transcript_2.txt`, `comments_2.json`, `words_zoom_2.txt`.
+  프레임 시트는 `overviewB_*.jpg`, `zoomB_<n>_*.jpg`. 댓글을 직접 줄 때는 `input/<편>/comments_2.json`.
+- `analysis.json`: 제품·후킹·`pick`·`pick.ranges` 항목마다 `"src": "A"|"B"`, 그리고 `channel_b`, `burned_in_b`.
+- `plan.json`: 둘째 영상의 장면(컷·정지 화면)과 `thumbnail`, 그 영상의 댓글 카드에 `"src": 1`. 둘째 영상의 크롭은 `crop_b`,
+  영상 내내 지울 글씨는 `erase_b`. `ranges`는 `[[시작, 끝, 영상 번호(0|1)], …]`. 시각·x0는 모두 그 영상 기준이다.
+- 규칙 검사는 영상별로 본다(구간 겹침, 자막 시각, 제품 구간). 제품 구간이 있는 영상을 하나도 안 쓰면 오류다.
 
 ## plan.json 요점
 - `timeline`: 재생 순서. 컷은 `{"type":"cut","a","b","x0","subs":[{"t","text","em","sfx"}],"sfx"}`,

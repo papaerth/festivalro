@@ -9,7 +9,10 @@ VIDIQ_PROMPT = (
 )
 
 
-def vidiq_question(url: str) -> str:
-    """Claude 앱에 붙여 넣을 질문 전체."""
+def vidiq_question(url: str, url2: str = "") -> str:
+    """Claude 앱에 붙여 넣을 질문 전체. url2 가 있으면 같은 제품의 두 영상을 함께 묻는다."""
+    if url2:
+        return (f"영상 A: {url}\n영상 B: {url2}\n\n같은 제품을 다룬 이 두 유튜브 영상을 각각 vidIQ의 영상 시청 분석(vidiq_video_watch)으로 "
+                f"분석해 주세요. 아래 질문을 영상마다 그대로 넣고, 받은 답을 줄이지 말고 '영상 A', '영상 B'로 나눠 전부 보여 주세요.\n\n{VIDIQ_PROMPT}")
     return (f"{url}\n\n이 유튜브 영상을 vidIQ의 영상 시청 분석(vidiq_video_watch)으로 분석해 주세요. "
             f"아래 질문을 그대로 넣고, 받은 답을 줄이지 말고 전부 보여 주세요.\n\n{VIDIQ_PROMPT}")

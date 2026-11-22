@@ -104,24 +104,31 @@ def center_x(src, times: list[float], meta: dict, size: int, y0: int) -> float |
 
 
 def center_plan(plan: dict, src) -> list[str]:
-    """plan 의 컷·정지 화면·썸네일 x0 를 인물 가운데로 고친다(plan 을 직접 바꾼다). 한 일을 글로 돌려준다."""
-    from pipeline.build import apply_defaults, crop_of
+    """plan 의 컷·정지 화면·썸네일 x0 를 인물 가운데로 고친다(plan 을 직접 바꾼다). 한 일을 글로 돌려준다.
+    src 는 원본 영상 하나 또는 목록(둘을 섞는 편)."""
+    from pipeline.build import apply_defaults, crop_of, src_list, seg_src
     import copy
     if plan.get("center") is False:
         return []
-    meta = util.probe(src)
-    size, y0 = crop_of(apply_defaults(copy.deepcopy(plan), {}), meta)
-    c = plan.get("crop") or {}
-    lo = max(0, int(c.get("x_min", 0) or 0))
-    hi = min(meta["width"], int(c.get("x_max", 0) or meta["width"])) - size
-    if hi < lo:
-        return []
+    srcs = src_list(src)
+    metas = [util.probe(p) for p in srcs]
+    full = apply_defaults(copy.deepcopy(plan), {})
+    crops = [crop_of(full, m, k) for k, m in enumerate(metas)]
+    lims = []
+    for k, m in enumerate(metas):
+        c = plan.get("crop_b" if k else "crop") or {}
+        lims.append((max(0, int(c.get("x_min", 0) or 0)),
+                     min(m["width"], int(c.get("x_max", 0) or m["width"])) - crops[k][0]))
     notes = []
 
     def fix(obj: dict, times: list[float], label: str):
         if obj.get("center") is False:
             return
-        cx = center_x(src, times, meta, size, y0)
+        k = seg_src(obj, len(srcs))
+        (size, y0), (lo, hi) = crops[k], lims[k]
+        if hi < lo:
+            return
+        cx = center_x(srcs[k], times, metas[k], size, y0)
         if cx is None:
             return
         new = int(round(max(lo, min(hi, cx - size / 2))))
@@ -146,7 +153,7 @@ def center_plan(plan: dict, src) -> list[str]:
 def main():
     ap = argparse.ArgumentParser(description="인물이 화면 가운데 오도록 x0 맞추기")
     ap.add_argument("--plan", required=True)
-    ap.add_argument("--src", required=True)
+    ap.add_argument("--src", required=True, nargs="+", help="원본 영상(둘을 섞는 편은 두 개를 순서대로)")
     ap.add_argument("--write", action="store_true", help="고친 plan 을 같은 파일에 쓴다")
     a = ap.parse_args()
     plan = json.loads(Path(a.plan).read_text(encoding="utf-8"))

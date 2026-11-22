@@ -76,12 +76,12 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
             raw = None
     src = None
     if raw and inp.is_dir():
-        vids = [p for p in inp.iterdir() if p.suffix.lower() in util.VIDEO_EXT]
-        src = max(vids, key=lambda p: p.stat().st_size) if vids else None
+        if any(p.suffix.lower() in util.VIDEO_EXT for p in inp.iterdir()):
+            src = util.Episode(episode).sources      # 하나, 또는 두 영상을 섞는 편이면 둘
     has_episode = bool(raw and src)
     if not has_episode:
         raw, src = copy.deepcopy(SAMPLE_PLAN), None
-    meta = util.probe(src) if src else None
+    meta = [util.probe(p) for p in src] if src else None
     cache: dict = {}
     scenes = scenes_of(raw)
     st0 = read_settings()

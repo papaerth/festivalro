@@ -51,51 +51,85 @@ def est_duration(plan: dict, assets: Path | None) -> tuple[float, list[float]]:
     return total, tts
 
 
-def validate(plan: dict, meta: dict, assets: Path | None = None, asr: dict | None = None) -> dict:
-    """규칙 위반은 errors, 권고는 warnings."""
+def per_source(meta, asr) -> tuple[list, list]:
+    """원본 영상별 (영상 정보 목록, 음성 인식 목록). 하나만 받아도 목록으로 만든다."""
+    metas = meta if isinstance(meta, list) else [meta]
+    asrs = asr if isinstance(asr, list) else [asr]
+    return metas, asrs + [None] * (len(metas) - len(asrs))
+
+
+def norm_ranges(plan: dict) -> list[tuple[float, float, int]]:
+    """plan 의 제품 구간을 (시작, 끝, 영상 번호)로. 예전 형식 [시작, 끝] 은 첫 영상."""
+    return [(float(r[0]), float(r[1]), int(r[2]) if len(r) > 2 else 0) for r in plan.get("ranges") or []]
+
+
+def validate(plan: dict, meta, assets: Path | None = None, asr=None) -> dict:
+    """규칙 위반은 errors, 권고는 warnings. meta·asr 는 원본 영상별 목록(영상이 하나면 그냥 하나를 줘도 된다)."""
     E, W = [], []
+    metas, asrs = per_source(meta, asr)
+    n = len(metas)
     tl = plan.get("timeline") or []
     cuts = [(i, s) for i, s in enumerate(tl) if s.get("type") == "cut"]
     ttss = [(i, s) for i, s in enumerate(tl) if s.get("type") == "tts"]
     if not cuts:
         return {"errors": ["timeline에 컷이 없습니다."], "warnings": [], "est_duration": 0.0}
-    size, _ = crop_of(plan, meta)
-    c = plan.get("crop") or {}
-    x_min = int(c.get("x_min", 0) or 0)
-    x_max = int(c.get("x_max", 0) or meta["width"])
+
+    def K(s) -> int:          # 그 장면의 원본 영상 번호
+        return min(max(int(s.get("src", 0) or 0), 0), n - 1)
+
+    def lab(k: int) -> str:   # 영상이 둘일 때만 붙이는 이름
+        return f"영상 {'AB'[k]}의 " if n > 1 else ""
+
+    sizes = [crop_of(plan, m, k)[0] for k, m in enumerate(metas)]
+    lims = []
+    for k, m in enumerate(metas):
+        c = plan.get("crop_b" if k else "crop") or {}
+        lims.append((max(0, int(c.get("x_min", 0) or 0)), min(m["width"], int(c.get("x_max", 0) or m["width"]))))
 
     # 컷 기본
     for i, s in cuts:
-        a, b = float(s["a"]), float(s["b"])
-        if not (0 <= a < b <= meta["duration"] + 0.05):
-            E.append(f"timeline[{i}]: 구간 {a}~{b}초가 잘못됐습니다(원본 길이 {meta['duration']:.1f}초).")
+        a, b, m = float(s["a"]), float(s["b"]), metas[K(s)]
+        if not (0 <= a < b <= m["duration"] + 0.05):
+            E.append(f"timeline[{i}]: {lab(K(s))}구간 {a}~{b}초가 잘못됐습니다(원본 길이 {m['duration']:.1f}초).")
         if b - a < 0.3:
             W.append(f"timeline[{i}]: 컷이 {b - a:.2f}초로 너무 짧습니다.")
     for i, s in cuts + [(i, s) for i, s in ttss if not s.get("image")]:
-        x0 = int(s.get("x0", 0))
-        if x0 < max(0, x_min) or x0 + size > min(meta["width"], x_max):
-            E.append(f"timeline[{i}]: x0={x0} 이면 크롭({size}px)이 허용 범위 x {max(0, x_min)}~"
-                     f"{min(meta['width'], x_max)} 를 벗어납니다(라벨·광고 문구가 들어옴). "
-                     f"x0는 {max(0, x_min)}~{min(meta['width'], x_max) - size} 사이여야 합니다.")
+        x0, k = int(s.get("x0", 0)), K(s)
+        lo, hi = lims[k]
+        if x0 < lo or x0 + sizes[k] > hi:
+            E.append(f"timeline[{i}]: {lab(k)}x0={x0} 이면 크롭({sizes[k]}px)이 허용 범위 x {lo}~{hi} 를 벗어납니다"
+                     f"(라벨·광고 문구가 들어옴). x0는 {lo}~{hi - sizes[k]} 사이여야 합니다.")
 
     # 고른 제품이 나오는 구간 밖의 장면은 쓰지 않는다
-    ranges = [(float(a), float(b)) for a, b in plan.get("ranges") or []]
+    ranges = norm_ranges(plan)
     if ranges:
-        where = ", ".join(f"{a:.1f}~{b:.1f}초" for a, b in ranges)
+        def where(k):
+            return ", ".join(f"{a:.1f}~{b:.1f}초" for a, b, rk in ranges if rk == k) or "없음"
 
-        def inside(a, b):
-            return any(ra - 1.0 <= a and b <= rb + 1.0 for ra, rb in ranges)
+        def inside(a, b, k):
+            return any(rk == k and ra - 1.0 <= a and b <= rb + 1.0 for ra, rb, rk in ranges)
 
         for i, s in cuts:
-            if not inside(float(s["a"]), float(s["b"])):
-                E.append(f"timeline[{i}]: {s['a']}~{s['b']}초는 이 제품이 나오는 구간({where}) 밖입니다. "
+            if not inside(float(s["a"]), float(s["b"]), K(s)):
+                E.append(f"timeline[{i}]: {lab(K(s))}{s['a']}~{s['b']}초는 이 제품이 나오는 구간({where(K(s))}) 밖입니다. "
                          f"제품과 무관한 장면은 쓰지 않습니다. 구간 안의 장면으로 바꾸거나 빼세요.")
         for i, s in ttss:
-            if not s.get("image") and s.get("still_t") is not None and not inside(float(s["still_t"]), float(s["still_t"])):
-                E.append(f"timeline[{i}]: 정지 화면 {s['still_t']}초는 이 제품이 나오는 구간({where}) 밖입니다.")
-        th = (plan.get("thumbnail") or {}).get("t")
-        if th is not None and not inside(float(th), float(th)):
-            E.append(f"thumbnail: {th}초는 이 제품이 나오는 구간({where}) 밖입니다.")
+            if not s.get("image") and s.get("still_t") is not None \
+                    and not inside(float(s["still_t"]), float(s["still_t"]), K(s)):
+                E.append(f"timeline[{i}]: {lab(K(s))}정지 화면 {s['still_t']}초는 이 제품이 나오는 구간({where(K(s))}) 밖입니다.")
+        thumb = plan.get("thumbnail") or {}
+        if thumb.get("t") is not None and not inside(float(thumb["t"]), float(thumb["t"]), K(thumb)):
+            E.append(f"thumbnail: {lab(K(thumb))}{thumb['t']}초는 이 제품이 나오는 구간({where(K(thumb))}) 밖입니다.")
+
+    # 원본 영상이 둘이면 둘 다 써야 한다(제품이 나오는 구간이 있는 영상이라면)
+    if n > 1:
+        used = {K(s) for _, s in cuts}
+        for k in range(n):
+            if k not in used:
+                if not ranges or any(rk == k for _, _, rk in ranges):
+                    E.append(f"영상 {'AB'[k]}의 컷이 하나도 없습니다. 두 영상을 섞어 만드는 편이니 "
+                             f"영상 {'AB'[k]}에서도 컷을 하나 이상 쓰세요.")
+                # 그 영상에 제품 구간이 아예 없으면 안 써도 된다(보고의 '사람이 확인할 것'에 적힌다)
 
     # 길이
     total, tts_d = est_duration(plan, assets)
@@ -107,18 +141,18 @@ def validate(plan: dict, meta: dict, assets: Path | None = None, asr: dict | Non
     # 순서
     if tl[0].get("type") != "cut":
         E.append("맨 앞은 가장 후킹되는 컷이어야 합니다(TTS로 시작하지 않는다).")
-    starts = [float(s["a"]) for _, s in cuts]
-    jumps = sum(1 for x, y in zip(starts, starts[1:]) if y < x)
+    order = [(K(s), float(s["a"])) for _, s in cuts]     # 시간을 거슬러 가거나 다른 영상으로 넘어가면 섞은 것으로 센다
+    jumps = sum(1 for (k1, x), (k2, y) in zip(order, order[1:]) if k1 != k2 or y < x)
     need = 2 if len(cuts) >= 4 else 1 if len(cuts) >= 2 else 0
     if jumps < need:
         E.append(f"장면 순서를 2~3번 섞어야 합니다(지금은 시간을 거슬러 가는 전환이 {jumps}번, 최소 {need}번). "
                  f"시간순으로 놓지 않는다.")
 
-    # 같은 소스 구간 두 번 쓰지 않기
-    spans = sorted((float(s["a"]), float(s["b"]), i) for i, s in cuts)
-    for (a1, b1, i1), (a2, b2, i2) in zip(spans, spans[1:]):
-        if a2 < b1 - 0.02:
-            E.append(f"timeline[{i1}]과 timeline[{i2}]의 소스 구간이 겹칩니다({a2:.2f}~{min(b1, b2):.2f}초).")
+    # 같은 소스 구간 두 번 쓰지 않기(같은 영상 안에서)
+    spans = sorted((K(s), float(s["a"]), float(s["b"]), i) for i, s in cuts)
+    for (k1, a1, b1, i1), (k2, a2, b2, i2) in zip(spans, spans[1:]):
+        if k1 == k2 and a2 < b1 - 0.02:
+            E.append(f"timeline[{i1}]과 timeline[{i2}]의 소스 구간이 겹칩니다({lab(k1)}{a2:.2f}~{min(b1, b2):.2f}초).")
     stills = []
     for i, s in ttss:
         if s.get("image"):
@@ -128,15 +162,15 @@ def validate(plan: dict, meta: dict, assets: Path | None = None, asr: dict | Non
         if s.get("still_t") is None:
             E.append(f"timeline[{i}]: TTS 구간에는 image 또는 still_t(정지 화면 시각)가 필요합니다.")
             continue
-        t = float(s["still_t"])
-        if not 0 <= t <= meta["duration"]:
+        t, ks = float(s["still_t"]), K(s)
+        if not 0 <= t <= metas[ks]["duration"]:
             E.append(f"timeline[{i}]: still_t={t} 가 원본 길이를 벗어났습니다.")
-        for a, b, j in spans:
-            if a - 0.05 <= t <= b + 0.05:
+        for k2, a, b, j in spans:
+            if k2 == ks and a - 0.05 <= t <= b + 0.05:
                 E.append(f"timeline[{i}]: 정지 화면 {t:.2f}초가 timeline[{j}] 컷과 겹칩니다. 다른 시각을 고르세요.")
-        if any(abs(t - u) < 0.5 for u in stills):
+        if any(ku == ks and abs(t - u) < 0.5 for ku, u in stills):
             E.append(f"timeline[{i}]: 정지 화면 두 장이 같은 장면입니다.")
-        stills.append(t)
+        stills.append((ks, t))
 
     # TTS
     if len(ttss) != 2:
@@ -166,10 +200,10 @@ def validate(plan: dict, meta: dict, assets: Path | None = None, asr: dict | Non
                 W.append(f"title 한 줄이 {nchars(ln)}자입니다('{ln}'). 줄당 6자 안팎이 좋습니다.")
 
     # 자막
-    words = (asr or {}).get("words") or []
-    speech = (asr or {}).get("speech") or []
     for i, s in cuts:
         a, b = float(s["a"]), float(s["b"])
+        words = (asrs[K(s)] or {}).get("words") or []
+        speech = (asrs[K(s)] or {}).get("speech") or []
         subs = s.get("subs") or []
         prev = -1.0
         for k, sb in enumerate(subs):
@@ -220,7 +254,8 @@ def validate(plan: dict, meta: dict, assets: Path | None = None, asr: dict | Non
     pname = [w for w in str(plan.get("product", "")).split() if len(_norm(w)) >= 2]
     if last.get("type") != "cut":
         W.append("마지막은 제품명이 나오는 컷으로 끝내면 처음으로 자연스럽게 이어집니다.")
-    elif pname and words:
+    elif pname and (asrs[K(last)] or {}).get("words"):
+        words = asrs[K(last)]["words"]
         said = _norm("".join(w["w"] for w in words if float(last["a"]) - 0.2 <= w["t"] < float(last["b"])))
         if not any(_norm(w) in said for w in pname):
             W.append("마지막 컷에서 제품명이 들리지 않습니다(루프 마무리 권고).")
@@ -257,15 +292,18 @@ def _gaps(a, b, speech, words, min_gap=0.3):
     return [(edges[i], edges[i + 1]) for i in range(0, len(edges), 2) if edges[i + 1] - edges[i] >= min_gap]
 
 
-def tighten(plan: dict, asr: dict) -> tuple[dict, list[str]]:
-    """컷 안의 쉼과 앞뒤 무음을 잘라낸다. 쉼이 있으면 컷을 둘로 나눈다. (바뀐 plan, 한 일 목록)"""
-    speech, words = asr.get("speech") or [], asr.get("words") or []
+def tighten(plan: dict, asr) -> tuple[dict, list[str]]:
+    """컷 안의 쉼과 앞뒤 무음을 잘라낸다. 쉼이 있으면 컷을 둘로 나눈다. (바뀐 plan, 한 일 목록)
+    asr 는 원본 영상별 음성 인식 목록(영상이 하나면 그냥 하나)."""
+    asrs = asr if isinstance(asr, list) else [asr]
     new_tl, remap, notes = [], {}, []
     for i, s in enumerate(plan["timeline"]):
         remap[i] = len(new_tl)
         if s.get("type") != "cut":
             new_tl.append(s)
             continue
+        one = asrs[min(int(s.get("src", 0) or 0), len(asrs) - 1)] or {}
+        speech, words = one.get("speech") or [], one.get("words") or []
         a, b = float(s["a"]), float(s["b"])
         sp = _speech_spans(a, b, speech, words)
         sp = [p for p in sp if p[1] - p[0] >= 0.2]
@@ -293,7 +331,7 @@ def tighten(plan: dict, asr: dict) -> tuple[dict, list[str]]:
     return out, notes
 
 
-def validate_tight(plan: dict, meta: dict, assets, asr: dict | None) -> dict:
+def validate_tight(plan: dict, meta, assets, asr) -> dict:
     """쉼을 잘라낸 뒤의 길이로 20초 규칙을 본다. 나머지 규칙은 원래 plan 기준(구간 번호가 바뀌지 않게)."""
     res = validate(plan, meta, assets, asr)
     if asr:
@@ -316,14 +354,14 @@ def report(res: dict) -> str:
 def main():
     ap = argparse.ArgumentParser(description="plan 규칙 검사")
     ap.add_argument("--plan", required=True)
-    ap.add_argument("--src", required=True)
-    ap.add_argument("--words", help="asr_words.py 로 만든 JSON(자막·쉼 검사에 쓴다)")
+    ap.add_argument("--src", required=True, nargs="+", help="원본 영상(둘을 섞을 때는 두 개를 순서대로)")
+    ap.add_argument("--words", nargs="*", help="asr_words.py 로 만든 JSON(자막·쉼 검사에 쓴다). 영상 순서대로")
     ap.add_argument("--assets", help="tts·이미지 폴더(기본: 원본 영상 폴더)")
     ap.add_argument("--fix", action="store_true", help="쉼·무음을 잘라 plan을 고쳐 쓴다")
     a = ap.parse_args()
     plan = load_plan(a.plan)
-    asr = util.read_json(a.words) if a.words else None
-    meta = util.probe(a.src)
+    asr = [util.read_json(w) for w in a.words] if a.words else None
+    meta = [util.probe(x) for x in a.src]
     if a.fix and asr:
         raw = util.read_json(a.plan)
         fixed, notes = tighten({**raw, "timeline": raw["timeline"], "cards": raw.get("cards", [])}, asr)
@@ -331,7 +369,7 @@ def main():
             util.write_json(a.plan, fixed)
             print("\n".join("[다듬음] " + n for n in notes))
             plan = load_plan(a.plan)
-    res = validate(plan, meta, Path(a.assets) if a.assets else Path(a.src).parent, asr)
+    res = validate(plan, meta, Path(a.assets) if a.assets else Path(a.src[0]).parent, asr)
     print(report(res))
     raise SystemExit(1 if res["errors"] else 0)
 
