@@ -64,7 +64,8 @@ python shorts.py auto <편>        # 또는 --all
   프레임 시트는 `overviewB_*.jpg`, `zoomB_<n>_*.jpg`. 댓글을 직접 줄 때는 `input/<편>/comments_2.json`.
 - `analysis.json`: 제품·후킹·`pick`·`pick.ranges` 항목마다 `"src": "A"|"B"`, 그리고 `channel_b`, `burned_in_b`.
 - `plan.json`: 둘째 영상의 장면(컷·정지 화면)과 `thumbnail`, 그 영상의 댓글 카드에 `"src": 1`. 둘째 영상의 크롭은 `crop_b`,
-  영상 내내 지울 글씨는 `erase_b`. `ranges`는 `[[시작, 끝, 영상 번호(0|1)], …]`. 시각·x0는 모두 그 영상 기준이다.
+  영상 내내 지울 글씨는 `erase_b`.
+  출처 문구는 `source_text`(A)와 `source_text_b`(B)이고, 렌더링이 그 장면의 영상 것만 띄운다(`build.source_text_at`). `ranges`는 `[[시작, 끝, 영상 번호(0|1)], …]`. 시각·x0는 모두 그 영상 기준이다.
 - 규칙 검사는 영상별로 본다(구간 겹침, 자막 시각, 제품 구간). 제품 구간이 있는 영상을 하나도 안 쓰면 오류다.
 
 ## plan.json 요점

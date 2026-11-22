@@ -447,17 +447,19 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict, n_src: int = 1, chann
                           **({"when": src["when"]} if src.get("when") else {}),
                           **({"src": 1} if src.get("src") else {})})
     top = d["combos"][0]
-    names = [c for c in ([channel, channel_b] if n_src > 1 else [channel]) if c]
-    names = list(dict.fromkeys(names))      # 두 영상이 같은 채널이면 한 번만
+    def credit(c: str) -> str:
+        return f"출처 : 유튜브 '{c}'" if c else ""
     plan = {
         "product": product, "brand": pick.get("brand", ""), "channel": channel,
-        "source_text": "출처 : 유튜브 " + " · ".join(f"'{c}'" for c in names) if names else "",
+        "source_text": credit(channel),
         "title": [top["top1"], top["top2"]],
         "crop": {"size": d["crop"]["size"], "y0": 0, "x_min": d["crop"]["x_min"], "x_max": d["crop"]["x_max"]},
         "timeline": tl, "cards": cards,
         "thumbnail": {"t": round(d["thumbnail"]["t"], 2), "x0": d["thumbnail"]["x0"]},
     }
     if n_src > 1:
+        if channel_b and channel_b != channel:      # 영상 B의 장면이 나올 때는 B의 출처만 적는다
+            plan["source_text_b"] = credit(channel_b)
         cb = d.get("crop_b") or d["crop"]
         plan["crop_b"] = {"size": cb["size"], "y0": 0, "x_min": cb["x_min"], "x_max": cb["x_max"]}
         if which(d["thumbnail"].get("src")):

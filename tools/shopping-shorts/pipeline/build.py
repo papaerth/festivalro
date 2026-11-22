@@ -79,6 +79,24 @@ def load_plan(path) -> dict:
     return apply_defaults(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
+def source_text_at(plan: dict, i: int | None = None) -> str:
+    """timeline i번째 구간에 띄울 출처 문구(i 가 None 이면 썸네일 장면).
+    두 영상을 섞는 편은 그때 화면에 나오는 영상의 출처만 적는다(둘을 나란히 적지 않는다)."""
+    tl = plan.get("timeline") or []
+    seg = tl[i] if i is not None and 0 <= i < len(tl) else None
+    if seg and seg.get("type") == "tts" and seg.get("image") and plan.get("image_source_text"):
+        return plan["image_source_text"]       # 사용자가 준 이미지는 받은 곳을 따로 표기
+    k = 0
+    if seg is None:
+        k = int((plan.get("thumbnail") or {}).get("src", 0) or 0)
+    else:
+        for s in reversed(tl[:i + 1]):          # 이미지 구간은 바로 앞 장면의 영상을 따른다
+            if not s.get("image"):
+                k = int(s.get("src", 0) or 0)
+                break
+    return (plan.get("source_text_b") if k else "") or plan.get("source_text", "")
+
+
 def title_base(plan: dict):
     """검은 9:16 바탕에 상단 제목 두 줄(윗줄 흰색, 아랫줄 노란색)을 그린 이미지."""
     from PIL import Image
@@ -716,9 +734,7 @@ def preview_frame(plan: dict, src, base_dir, scene: dict | None = None, show_car
     if seg is not None and sub and str(sub.get("text", "")).strip():
         im = sub_image(sub["text"], bool(sub.get("em")), plan)
         out.alpha_composite(im, (int(CW / 2 - im.width / 2), int(L["sub_y"] - im.height / 2)))
-    txt = plan.get("source_text", "")
-    if seg and seg.get("type") == "tts" and seg.get("image") and plan.get("image_source_text"):
-        txt = plan["image_source_text"]
+    txt = source_text_at(plan, scene["seg"] if seg is not None else None)
     if txt:
         im = text_image(txt, util.font(L["source_size"], False, plan.get("font_regular")), (235, 235, 235), alpha=215)
         out.alpha_composite(im, (int(CW / 2 - im.width / 2), int(L["source_y"] - im.height / 2)))
@@ -866,10 +882,8 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
             subs_out.append({"seg": r["i"], "start": round(f0 / FPS, 3), "end": round(f1 / FPS, 3),
                              "text": sb["text"], "kind": r["type"]})
             add_sfx(sb.get("sfx"), f0 / FPS)
-        # 출처 문구(사용자가 준 이미지를 쓰는 구간은 받은 곳을 따로 표기)
-        txt = plan.get("source_text", "")
-        if r["type"] == "tts" and s.get("image") and plan.get("image_source_text"):
-            txt = plan["image_source_text"]
+        # 출처 문구: 그 구간에 나오는 영상의 출처만(사용자가 준 이미지를 쓰는 구간은 받은 곳을 따로 표기)
+        txt = source_text_at(plan, r["i"])
         if txt:
             im = text_image(txt, src_font, (235, 235, 235), stroke_w=0, alpha=215)
             overlays.append(Overlay(im, CW / 2, L["source_y"], r["f0"], r["f1"], fade_in=0))
