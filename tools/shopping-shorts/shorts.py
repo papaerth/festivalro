@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -316,7 +317,14 @@ def stage_copy(ep: Episode) -> Path:
     name = util.safe_name(product)
     num = ep.info["inpock"] or "(번호)"
     link = str(util.settings().get("inpock_url") or "").strip()      # 내 인포크 링크 주소(창의 추가 설정에서 한 번 적는다)
-    head = [f"📌 {product}", f"🔗 프로필 인포크 링크에서 '{num}' 검색"] + ([f"➡️ {link}"] if link else [])
+    bare = re.sub(r"^https?://", "", link).rstrip("/")                # 설명에는 주소만, 핀 댓글에는 눌리게 https:// 를 붙여
+    head = [f"📌 {product}", f"🔗 프로필 인포크 링크에서 '{num}' 검색"] + ([f"➡️ {bare}"] if link else [])
+    if link:      # 사용자가 준 예시 그대로: 번호 줄 아래에 화살표 줄과 주소
+        pin = [f"제품명 : {product}", "📌 제품 태그 하시거나",
+               f"📌 아래 프로필 인포크 링크 → '{num}' 검색하면 바로 나와요. 🔗", "↓" * 33, f"https://{bare}"]
+    else:
+        pin = [f"제품명 : {product}", "📌 제품 태그 하시거나", f"📌 프로필 인포크 링크 → '{num}' 검색하면 바로 나와요. 🔗"]
+    pin += ["", copy.get("pin_question", "")]
     combos = copy.get("combos") or [{"top": plan.get("title", ["", ""]), "title": ""}]
     desc = copy.get("description") or {}
     L = ["[제목]"]
@@ -324,17 +332,14 @@ def stage_copy(ep: Episode) -> Path:
         L.append(f"{'1순위' if i == 0 else f'대안 {i}'}: {c.get('title', '')}   (썸네일 문구: {' / '.join(c.get('top', []))})")
     L += ["", "[설명]"] + head + [""]
     L += [x for x in [desc.get("hook_line", "")] + list(desc.get("body_lines", [])) + [desc.get("closing_line", "")] if x]
-    L += ["", " ".join(desc.get("hashtags", [])), "", "[핀 댓글]", f"제품명 : {product}", "📌 제품 태그 하시거나",
-          f"📌 프로필 인포크 링크 → '{num}' 검색하면 바로 나와요. 🔗", "", copy.get("pin_question", "")]
+    L += ["", " ".join(desc.get("hashtags", [])), "", "[핀 댓글]"] + pin
     ep.out.mkdir(parents=True, exist_ok=True)
     (ep.out / f"{name}_업로드문구.txt").write_text("\n".join(L).rstrip() + "\n", encoding="utf-8")
     desc_text = "\n".join(
         head + [""]
         + [x for x in [desc.get("hook_line", "")] + list(desc.get("body_lines", [])) + [desc.get("closing_line", "")] if x]
         + ["", " ".join(desc.get("hashtags", []))]).strip()
-    pin_text = "\n".join([f"제품명 : {product}", "📌 제품 태그 하시거나",
-                          f"📌 프로필 인포크 링크 → '{num}' 검색하면 바로 나와요. 🔗", "",
-                          copy.get("pin_question", "")]).strip()
+    pin_text = "\n".join(pin).strip()
 
     checks_ = ["유튜브 업로드 화면에서 제품 태그 검색이 되는지 (안 되면 아래 차순위 후보로)",
                "배경음X 버전에서 목소리가 뭉개지지 않았는지 직접 들어 보기"]
