@@ -96,7 +96,7 @@ python shorts.py auto <편>        # 또는 --all
 - `preview_gui.py` 미리보기 창(글자체·크기 고르기, 앱별 화면 요소 덧그리기). 고른 값은 `settings.json`(깃 제외)에 저장되고
   `build.apply_defaults`가 읽는다(`font_title`, `font_sub`, `title_size`, `sub_size`, `title_bold`, `sub_bold`,
   `music_file`, `music_volume`, 자막 변화 `font_em`·`em_scale`·`sub_vary`·`sub_colors`(cycle|yellow)·`sub_anim`(pop|rise|none).
-  plan에 직접 적은 값이 우선). `music_file`이 있으면 `<제품명>_음악.mp4`도 만든다.
+  plan에 직접 적은 값이 우선). `inpock_url`(내 인포크 링크 주소. 본 창의 추가 설정에서 적고, 설명의 번호 줄 아래에 들어간다)도 여기에 있다. `music_file`이 있으면 `<제품명>_음악.mp4`도 만든다.
   `pipeline/fonts.py` 한글 글자체 목록(윈도우 글자체 + `fonts/` 폴더, 깃 제외)과 추천 무료 글자체 내려받기(`RECOMMENDED`) · `pipeline/platforms.py` 쇼츠·틱톡·릴스 화면 요소
 - `pipeline/asr_words.py` 음성 인식(어절별 시각) · `pipeline/sheets.py` 프레임 시트 · `pipeline/build.py` 렌더링
 - `pipeline/checks.py` 규칙 검사·쉼 제거 · `pipeline/qa.py` 완성본 검수

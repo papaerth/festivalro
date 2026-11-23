@@ -124,6 +124,22 @@ def unique_episode(name: str) -> str:
     return f"{name}_{k}"
 
 
+def save_setting(key: str, value) -> None:
+    """settings.json(미리보기 창의 글자체 설정과 같은 파일)의 값 하나를 바꾼다. 빈 값이면 지운다."""
+    p = ROOT / "settings.json"
+    st = read_json(p, {}) or {}
+    if (st.get(key) or "") == (value or ""):
+        return
+    if value:
+        st[key] = value
+    else:
+        st.pop(key, None)
+    try:
+        p.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
 def load_episode(name: str) -> dict:
     d = ROOT / "input" / name
     info = read_json(d / "info.json", {}) or {}
@@ -417,6 +433,8 @@ def run_gui(argv: list[str]):
     v_video2, v_url2 = tk.StringVar(), tk.StringVar()      # 같은 제품의 두 번째 영상(섞어 만들 때만)
     v_inpock, v_product, v_redo = tk.StringVar(), tk.StringVar(), tk.StringVar(value="이어서 하기")
     v_img = [tk.StringVar(), tk.StringVar()]
+    # 내 인포크 링크 주소(link.inpock.co.kr/…). 편마다가 아니라 한 번 적어 두면 계속 쓴다(settings.json)
+    v_inpock_url = tk.StringVar(value=str((read_json(ROOT / "settings.json", {}) or {}).get("inpock_url") or ""))
     v_status = tk.StringVar(value="원본 영상을 고르고 유튜브 링크를 붙여 넣은 뒤 [만들기]를 누르세요.")
     v_summary = tk.StringVar()
     state = {"name": ""}
@@ -642,7 +660,10 @@ def run_gui(argv: list[str]):
     cb_name.bind("<FocusOut>", on_episode)
     cb_name.grid(row=0, column=1, sticky="ew", pady=4)
     ttk.Label(opt, text="비워 두면 영상 파일 이름으로 정해요", style="Faint.TLabel").grid(row=0, column=2, padx=(10, 0))
-    ttk.Label(opt, text="TTS 이미지", style="Field.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 16), pady=4)
+    ttk.Label(opt, text="인포크 링크", style="Field.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 16), pady=4)
+    ttk.Entry(opt, textvariable=v_inpock_url).grid(row=1, column=1, sticky="ew", pady=4)
+    ttk.Label(opt, text="한 번 적어 두면 모든 영상의 설명에 들어가요", style="Faint.TLabel").grid(row=1, column=2, padx=(10, 0))
+    ttk.Label(opt, text="TTS 이미지", style="Field.TLabel").grid(row=2, column=0, sticky="w", padx=(0, 16), pady=4)
     imgs = ttk.Frame(opt)
     for i in range(2):
         def pick(i=i):
@@ -652,7 +673,7 @@ def run_gui(argv: list[str]):
                 v_img[i].set(p)
         ttk.Button(imgs, text=f"이미지 {i + 1} 고르기", command=pick).grid(row=0, column=i * 2, padx=(0, 8))
         ttk.Label(imgs, textvariable=v_img[i], width=24, style="Sub.TLabel").grid(row=0, column=i * 2 + 1, padx=(0, 12))
-    imgs.grid(row=1, column=1, columnspan=2, sticky="w", pady=4)
+    imgs.grid(row=2, column=1, columnspan=2, sticky="w", pady=4)
 
     def copy_question():
         url = v_url.get().strip()
@@ -664,12 +685,12 @@ def run_gui(argv: list[str]):
         root.clipboard_append(vidiq_question(url, v_url2.get().strip() if v_video2.get().strip() else ""))
         v_status.set("vidIQ 질문을 복사했습니다. Claude 앱에 붙여 넣고, 받은 답을 vidIQ 칸에 붙여 넣으세요.")
 
-    ttk.Label(opt, text="vidIQ 분석", style="Field.TLabel").grid(row=2, column=0, sticky="nw", padx=(0, 16), pady=(8, 4))
+    ttk.Label(opt, text="vidIQ 분석", style="Field.TLabel").grid(row=3, column=0, sticky="nw", padx=(0, 16), pady=(8, 4))
     t_vidiq = tk.Text(opt, height=3, wrap="word", undo=True, font=(fam, 11), padx=8, pady=6)
     ui_theme.style_text(t_vidiq, T)
-    t_vidiq.grid(row=2, column=1, sticky="ew", pady=4)
+    t_vidiq.grid(row=3, column=1, sticky="ew", pady=4)
     vq = ttk.Frame(opt)
-    vq.grid(row=2, column=2, sticky="n", padx=(8, 0), pady=4)
+    vq.grid(row=3, column=2, sticky="n", padx=(8, 0), pady=4)
     ttk.Button(vq, text="vidIQ 질문 복사", command=copy_question).pack(anchor="e")
     ttk.Label(vq, text="받은 답을 붙여 넣으면\n제품 선정에 함께 써요", style="Faint.TLabel", justify="right").pack(anchor="e", pady=(4, 0))
     show_mix(False)
@@ -1181,6 +1202,7 @@ def run_gui(argv: list[str]):
         except OSError as e:
             messagebox.showerror("파일을 준비하지 못했습니다", str(e))
             return
+        save_setting("inpock_url", v_inpock_url.get().strip())
         state["name"] = name
         state["cleared"] = False
         notes[:0] = fresh_notes
