@@ -344,6 +344,50 @@ def title_problems(copy: dict, limit: int = TITLE_MAX) -> list[str]:
     return out
 
 
+# ---------------------------------------------------------------- 유튜브 정책에 걸리기 쉬운 표현
+# 실제로 "5일 먹고 5키로 빠졌다고?" 라는 제목·썸네일로 올린 영상이 자해 정책(섭식 장애를 조장·미화하는 콘텐츠)으로 삭제됐다.
+_WEIGHT = r"\d+(?:[.,]\d+)?\s*(?:kg|㎏|킬로그램|키로그램|킬로|키로|키로수|kilo)"
+_LOSS = r"(?:빠[지졌짐질져진]|빠[^가-힣]|빠$|뺐|뺀|빼[^앗]|빼$|감량|줄[었인])"
+POLICY_PATTERNS = [
+    (re.compile(_WEIGHT + r".{0,12}" + _LOSS, re.I), "몸무게가 몇 kg 빠졌다는 수치"),
+    (re.compile(_LOSS + r".{0,8}" + _WEIGHT, re.I), "몸무게가 몇 kg 빠졌다는 수치"),
+    (re.compile(r"\d+\s*(?:일|주|주일|달|개월)\s*(?:만에|동안|먹고|만 먹고)?.{0,10}(?:살|체중|몸무게).{0,6}(?:빠|뺐|빼|감량)"), "며칠 만에 살이 빠졌다는 말"),
+    (re.compile(r"(?:굶|단식|금식|먹토|거식|폭식|프로아나|뼈말라|개말라|식욕\s*억제|급찐급빠|초절식|원푸드|물만\s*마시)"), "굶기·단식·극단적인 식이 조절"),
+    (re.compile(r"(?:자살|자해|죽고\s*싶|극단적\s*선택)"), "자살·자해"),
+]
+
+
+def policy_hits(text: str) -> list[str]:
+    """글 한 덩이에서 유튜브 정책(자해·섭식 장애)에 걸리기 쉬운 표현의 종류를 찾는다."""
+    t = " ".join(str(text or "").split())
+    return list(dict.fromkeys(why for rx, why in POLICY_PATTERNS if rx.search(t)))
+
+
+def policy_problems(plan: dict, copy: dict | None = None) -> tuple[list[str], list[str]]:
+    """(고쳐야 할 것, 알릴 것). 우리가 쓰는 글(썸네일 문구·제목·TTS·설명·핀 댓글)에 있으면 고쳐야 하고,
+    원본에서 화자가 한 말(자막)에 있으면 그 컷을 빼라고 권한다."""
+    must, warn = [], []
+    ours = [("화면 상단 제목(썸네일 문구)", " ".join(plan.get("title") or []))]
+    for i, c in enumerate((copy or {}).get("combos") or []):
+        ours.append((f"combos[{i}] 썸네일 문구", " ".join(c.get("top") or [])))
+        ours.append((f"combos[{i}] 업로드 제목", c.get("title", "")))
+    desc = (copy or {}).get("description") or {}
+    ours.append(("설명", " ".join([desc.get("hook_line", "")] + list(desc.get("body_lines") or []) + [desc.get("closing_line", "")])))
+    ours.append(("핀 댓글 질문", (copy or {}).get("pin_question", "")))
+    for i, seg in enumerate(plan.get("timeline") or []):
+        if seg.get("type") == "tts":
+            ours.append((f"timeline[{i}] TTS 문구", seg.get("text", "")))
+        else:
+            said = " ".join(sb.get("text", "") for sb in seg.get("subs") or [])
+            for why in policy_hits(said):
+                warn.append(f"timeline[{i}] 컷의 대사에 {why}이(가) 나옵니다('{said[:30]}'). 유튜브에서 삭제될 수 있으니 이 컷은 빼는 것이 안전합니다.")
+    for where, text in ours:
+        for why in policy_hits(text):
+            must.append(f"{where} '{str(text)[:40]}': {why}은(는) 유튜브 자해·섭식 장애 정책으로 영상이 삭제될 수 있습니다. "
+                        "수치나 기간으로 살이 빠졌다고 하지 말고, 쓰는 상황·맛·편리함 같은 다른 각도로 다시 쓰세요.")
+    return must, warn
+
+
 def validate_tight(plan: dict, meta, assets, asr) -> dict:
     """쉼을 잘라낸 뒤의 길이로 20초 규칙을 본다. 나머지 규칙은 원래 plan 기준(구간 번호가 바뀌지 않게)."""
     res = validate(plan, meta, assets, asr)

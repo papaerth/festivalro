@@ -196,13 +196,19 @@ def stage_design(ep: Episode, max_rounds: int = 3):
                 f"업로드 제목이 {checks.TITLE_MAX}자를 넘습니다. 올리기 전에 직접 줄여 주세요."
             break                                     # 제목 길이만 남았으면 멈추지 않고 알린다
         res["errors"] += titles
+        policy, policy_warn = checks.policy_problems(plan, copy)     # 유튜브 정책에 걸리기 쉬운 표현
+        res["errors"] += policy
+        res["warnings"] += policy_warn
         if not res["errors"]:
             break
         log(checks.report(res))
+        if rnd > max_rounds and policy and len(policy) == len(res["errors"]):
+            util.die("유튜브 정책(자해·섭식 장애)에 걸리기 쉬운 표현을 피해서 쓰지 못했습니다. 이 제품은 체중 감량이 핵심이라 "
+                     "삭제 위험이 큽니다. 결과 화면의 차순위 후보나 다른 제품명을 적어 다시 만들어 주세요.")
         if rnd > max_rounds:
             util.die(f"{max_rounds}번 고쳐도 규칙 검사를 통과하지 못했습니다. work/{ep.name}/plan.json 을 직접 고친 뒤 "
                      f"`python shorts.py auto {ep.name}` 을 다시 실행하세요.")
-        extra = [w for w in res["warnings"] if "음성 인식" in w or "잘릴" in w]
+        extra = [w for w in res["warnings"] if "음성 인식" in w or "잘릴" in w or "삭제될 수" in w]
         content = brain.repair_request(res["errors"] + extra)
     plan, notes = checks.tighten(plan, asrs)
     for n in notes:
@@ -366,6 +372,8 @@ def stage_copy(ep: Episode) -> Path:
             if k not in used:
                 checks_.append(f"영상 {'AB'[k]}({ep.sources[k].name})에서는 이 제품이 나오는 쓸 만한 장면을 찾지 못해 "
                                f"영상 {'AB'[1 - k]}의 장면만 썼습니다")
+    pol_must, pol_warn = checks.policy_problems(plan, copy)        # 유튜브 정책(자해·섭식 장애)에 걸리기 쉬운 표현
+    checks_ += [f"[검수] 유튜브 정책 주의 — {m}" for m in pol_must + pol_warn]
     checks_ += [f"[검수] {i}" for i in q.get("issues", [])] + list(q.get("notes", []))
     checks_ += [f"[댓글 캡처] {n}" for n in (util.read_json(ep.w("capture.json"), {}) or {}).get("notes", [])]
     rv = util.read_json(ep.w("review.json"), {}) or {}
