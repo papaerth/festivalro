@@ -14,7 +14,7 @@ export default function Dashboard() {
   const run = async () => {
     try {
       const r = await api.runSourcing()
-      toast(`소싱 실행 완료 — 후보 ${r.summary.total_candidates}개, 최종 추천 ${r.summary.total_final}개 (목표 27/9)`)
+      const rf = r.summary.stats_refresh; toast(`소싱 실행 완료 — ${rf?.skipped ? `조회수 갱신 건너뜀(${rf.reason})` : `조회수 ${rf?.updated ?? 0}개 갱신`} · 후보 ${r.summary.total_candidates}개, 최종 추천 ${r.summary.total_final}개 (목표 27/9)`)
       stats.reload(); cands.reload()
     } catch (e: any) { toast(e.message, 'err') }
   }

@@ -48,6 +48,9 @@ export const api = {
   deleteChannel: (id: number) => req<void>('DELETE', `/api/channels/${id}`),
   resolveChannel: (id: number) => req<{ candidates: any[]; quota_used: number }>('POST', `/api/channels/${id}/resolve`),
   collectChannel: (id: number, b: { max_videos?: number; years?: number }) => req<T.Job>('POST', `/api/channels/${id}/collect`, b),
+  bulkStatus: () => req<T.BulkState>('GET', '/api/channels/bulk/status'),
+  bulkResolve: (limit: number) => req<T.BulkState>('POST', '/api/channels/bulk/resolve', { limit }),
+  bulkCollect: (b: { max_videos?: number; years?: number; stale_days?: number }) => req<T.BulkState>('POST', '/api/channels/bulk/collect', b),
 
   videos: (p: Record<string, any> = {}) => req<{ total: number; items: T.VideoSummary[]; sort_label: string; note: string }>('GET', `/api/videos${qs(p)}`),
   video: (id: number) => req<T.VideoDetail>('GET', `/api/videos/${id}`),

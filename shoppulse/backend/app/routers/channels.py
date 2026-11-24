@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from .. import schemas, serializers
+from ..config import get_settings
 from ..database import get_db
 from ..models import YoutubeChannel
-from ..services import collection
+from ..services import bulk, collection
 from ..services.audit import log
 from ..services.dedupe import normalize_channel_ref
 from ..services.youtube_connector import YouTubeAPIError, YouTubeNotConfigured
@@ -58,6 +59,33 @@ def create_channel(body: schemas.ChannelIn, db: Session = Depends(get_db)):
     log(db, "channel", ch.id, "create", {"name": ch.channel_name})
     db.commit()
     return serializers.channel(ch)
+
+
+@router.get("/bulk/status")
+def bulk_status():
+    return bulk.status()
+
+
+@router.post("/bulk/resolve")
+def bulk_resolve(body: schemas.BulkResolveIn, db: Session = Depends(get_db)):
+    """채널 ID 가 없는 채널을 일괄 검색해 가장 유력한 채널을 저장한다(검증 상태는 '검증 전' 유지). 채널당 할당량 100."""
+    if not get_settings().youtube_api_key:
+        raise HTTPException(503, "YOUTUBE_API_KEY 가 설정되지 않았습니다.")
+    try:
+        return bulk.start("resolve", limit=body.limit)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+
+
+@router.post("/bulk/collect")
+def bulk_collect(body: schemas.BulkCollectIn, db: Session = Depends(get_db)):
+    """채널 ID 가 있는 활성 채널의 영상을 일괄 수집한다(백그라운드)."""
+    if not get_settings().youtube_api_key:
+        raise HTTPException(503, "YOUTUBE_API_KEY 가 설정되지 않았습니다.")
+    try:
+        return bulk.start("collect", max_videos=body.max_videos, years=body.years, stale_days=body.stale_days)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
 
 
 @router.get("/{chid}")

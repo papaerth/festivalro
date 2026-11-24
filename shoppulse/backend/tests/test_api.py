@@ -225,3 +225,23 @@ def test_persistence_across_sessions(client):
     from app.models import Video
     with SessionLocal() as db:
         assert db.query(Video).count() == client.get("/api/videos").json()["total"]
+
+
+def test_bulk_endpoints_without_api_key(client):
+    assert client.get("/api/channels/bulk/status").json()["running"] is False
+    assert client.post("/api/channels/bulk/resolve", json={"limit": 5}).status_code == 503
+    assert client.post("/api/channels/bulk/collect", json={}).status_code == 503
+
+
+def test_pick_best_prefers_exact_name_and_flags_ambiguous():
+    from app.services.bulk import pick_best
+    from app.models import YoutubeChannel, Celebrity
+    ch = YoutubeChannel(channel_name="성시경 SUNG SI KYUNG", celebrity=Celebrity(name="성시경"))
+    best, verdict = pick_best(ch, [
+        {"channel_id": "UC1", "title": "성시경 팬채널", "handle": "@fan", "subscriber_count": 1000, "url": ""},
+        {"channel_id": "UC2", "title": "성시경 SUNG SI KYUNG", "handle": "@sungsikyung", "subscriber_count": 2360000, "url": ""},
+    ])
+    assert best["channel_id"] == "UC2" and verdict == "유력"
+    best, verdict = pick_best(YoutubeChannel(channel_name="XYZ"), [{"channel_id": "UC9", "title": "전혀 다른 채널", "subscriber_count": 0, "url": ""}])
+    assert verdict != "유력"
+    assert pick_best(ch, [])[0] is None

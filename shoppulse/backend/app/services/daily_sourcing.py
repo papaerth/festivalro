@@ -33,8 +33,30 @@ def production_ready(candidate: SourcingCandidate) -> tuple[bool, list[str]]:
     return (not unresolved), sorted(unresolved)
 
 
-def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date | None = None) -> DailyReport:
+def refresh_stats_step(db: Session, limit: int) -> dict:
+    """YouTube API 키가 있으면 오래된 영상부터 조회수를 갱신해 스냅샷을 쌓는다. 없으면 건너뛴 사실을 기록."""
+    from ..config import get_settings
+    from .collection import refresh_video_stats
+
+    if not get_settings().youtube_api_key:
+        return {"skipped": True, "reason": "YOUTUBE_API_KEY 미설정"}
+    videos = (db.query(Video).filter(Video.is_demo.is_(False))
+              .order_by(Video.stats_updated_at.asc().nullsfirst()).limit(limit).all())
+    if not videos:
+        return {"skipped": True, "reason": "영상 없음"}
+    job = refresh_video_stats(db, videos, triggered_by="daily_sourcing")
+    return {"skipped": False, "job_id": job.id, "status": job.status, "updated": job.result.get("updated"),
+            "quota_used": job.quota_used, "error": job.error}
+
+
+def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date | None = None,
+                       refresh_limit: int | None = None) -> DailyReport:
     report_date = report_date or date.today()
+    if refresh_limit is None:
+        from ..models import UserSetting
+        s = db.get(UserSetting, "daily_refresh_limit")
+        refresh_limit = int(s.value.get("value", 300)) if s else 300
+    refresh = refresh_stats_step(db, refresh_limit) if refresh_limit > 0 else {"skipped": True, "reason": "갱신 개수 0"}
     yesterday = report_date - timedelta(days=1)
     prev = (
         db.query(DailyReport).filter(DailyReport.report_date == yesterday)
@@ -47,7 +69,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
 
     cfg = get_active_version(db).config
     out_categories = []
-    summary = {"graph_types": {}, "total_candidates": 0, "total_final": 0,
+    summary = {"graph_types": {}, "total_candidates": 0, "total_final": 0, "stats_refresh": refresh,
                "targets": {"candidates_per_category": TARGET_CANDIDATES, "final_per_category": TARGET_FINAL}}
 
     for cat in CATEGORIES:

@@ -259,3 +259,13 @@ class ChannelCollectIn(BaseModel):
 class RefreshStatsIn(BaseModel):
     video_ids: list[int] | None = None  # None = 전체(최대 limit)
     limit: int = Field(200, ge=1, le=1000)
+
+
+class BulkResolveIn(BaseModel):
+    limit: int = Field(30, ge=1, le=200)  # 채널당 할당량 100 → 기본 30개(3,000)
+
+
+class BulkCollectIn(BaseModel):
+    max_videos: int = Field(200, ge=1, le=1000)
+    years: int = Field(3, ge=0, le=20)
+    stale_days: int = Field(0, ge=0, le=365)  # 0 = 전체, N = 최근 N일 내 수집한 채널은 건너뜀

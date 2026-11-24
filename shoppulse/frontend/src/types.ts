@@ -79,3 +79,5 @@ export interface Settings {
   env: { port: number; youtube_api_configured: boolean; ai_provider: string; anthropic_configured: boolean; timezone: string; data_dir: string };
   user: Record<string, any>; scoring: ScoringConfig; graph_rules: Record<string, any>; metric_bands: Record<string, any>; upload_slots: Record<string, any>
 }
+
+export interface BulkState { running: boolean; task: 'resolve' | 'collect' | null; total: number; done: number; current: string | null; started_at: string | null; finished_at: string | null; summary: Record<string, any>; error: string | null }

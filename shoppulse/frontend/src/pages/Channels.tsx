@@ -3,6 +3,7 @@ import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
 import { Badge, Confirm, ErrorBox, Field, Modal, Select, Spinner, toneFor, useToast } from '../components/ui'
 import type { Channel } from '../types'
+import BulkPanel from '../components/BulkPanel'
 
 export default function Channels() {
   const [f, setF] = useState<Record<string, string>>({})
@@ -39,6 +40,7 @@ export default function Channels() {
         <Field label="연예인"><Select value={f.celebrity_id || ''} onChange={(v) => setF({ ...f, celebrity_id: v })} placeholder="전체" options={(celebs.data || []).map((c) => [String(c.id), c.name])} /></Field>
         <div className="flex items-end"><button className="btn-ghost w-full" onClick={() => setF({})}>초기화</button></div>
       </div>
+      <BulkPanel onDone={() => { q.reload(); toast('일괄 작업 완료') }} unresolvedCount={(q.data || []).filter((c) => !c.channel_id && c.is_active).length} collectableCount={(q.data || []).filter((c) => !!c.channel_id && c.is_active).length} />
       <ErrorBox error={q.error} onRetry={q.reload} />
       {!q.data ? <Spinner /> : (
         <div className="card overflow-x-auto">
@@ -49,7 +51,7 @@ export default function Channels() {
                 <td className="td">{c.channel_url ? <a href={c.channel_url} target="_blank" rel="noreferrer" className="hover:underline">{c.channel_name} ↗</a> : c.channel_name}{c.handle && <div className="text-[11px] muted">{c.handle}</div>}{!c.is_active && <Badge tone="gray">비활성</Badge>}{c.is_demo && <Badge tone="red">DEMO</Badge>}</td>
                 <td className="td font-mono text-xs">{c.channel_id || <span className="muted">미확인</span>}</td>
                 <td className="td text-xs">{LABELS.channelType[c.channel_type]}</td>
-                <td className="td"><Badge tone={toneFor.verification(c.verification_status)}>{LABELS.verification[c.verification_status]}</Badge></td>
+                <td className="td"><Badge tone={toneFor.verification(c.verification_status)}>{LABELS.verification[c.verification_status]}</Badge>{c.verification_status !== 'verified' && c.channel_id && <div><button className="mt-1 text-[11px] underline" title="공식 채널임을 직접 확인했을 때만 누르세요" onClick={() => act(() => api.patchChannel(c.id, { verification_status: 'verified' }), '검증 완료로 표시')}>검증 완료로</button></div>}</td>
                 <td className="td text-xs tabular-nums">{c.relevance_beauty}/{c.relevance_living}/{c.relevance_food}</td>
                 <td className="td text-xs tabular-nums">{fmt.compact(c.subscriber_count)}</td>
                 <td className="td text-xs">{c.collected_video_count}개<div className="muted">{c.last_collected_at ? fmt.date(c.last_collected_at) : '미수집'}</div></td>

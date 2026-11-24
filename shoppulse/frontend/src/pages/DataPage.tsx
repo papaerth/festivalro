@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
 import { Badge, ErrorBox, Field, Select, toneFor, useToast } from '../components/ui'
+import BulkPanel from '../components/BulkPanel'
 
 export default function DataPage() {
   const jobs = useAsync(() => api.jobs())
@@ -35,7 +36,7 @@ export default function DataPage() {
             <button className="btn-primary" disabled={!ch} onClick={() => act(() => api.collectChannel(Number(ch), { max_videos: maxVideos, years: 3 }), (j) => j.status === 'failed' ? `수집 실패: ${j.error}` : `수집 ${LABELS.jobStatus[j.status]}: 신규 ${j.result.created} · 갱신 ${j.result.updated} (할당량 ${j.quota_used})`)}>선택 채널 영상 수집</button>
             <div className="flex items-center gap-2"><input type="number" className="input w-24" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /><button className="btn-ghost" onClick={() => act(() => api.refreshStats({ limit }), (j) => j.status === 'failed' ? `갱신 실패: ${j.error}` : `조회수 갱신 ${LABELS.jobStatus[j.status]}: ${j.result.updated}개 (할당량 ${j.quota_used})`)}>오래된 영상부터 조회수 갱신</button></div>
           </div>
-          <p className="mt-2 text-[11px] muted">조회수 갱신을 매일 실행하면 실제 시계열이 쌓여 그래프 유형(급등 후 평탄화·재상승 등)을 판별할 수 있습니다. 과거 기록은 복원되지 않습니다.</p>
+          <p className="mt-2 text-[11px] muted">「오늘 소싱 실행」을 누르면 조회수 갱신(기본 300개)이 먼저 자동 실행됩니다. 조회수 갱신을 매일 실행하면 실제 시계열이 쌓여 그래프 유형(급등 후 평탄화·재상승 등)을 판별할 수 있습니다. 과거 기록은 복원되지 않습니다.</p>
         </div>
 
         <div className="card p-4">
@@ -51,6 +52,8 @@ export default function DataPage() {
           <p className="mt-2 text-[11px] muted">CSV 열: video_id(또는 url), outlier, vph, vph_basis(overall/recent/last_hour/unspecified), views, measured_at(ISO). 수동 1건 입력은 영상 상세 화면에서.</p>
         </div>
       </div>
+
+      <BulkPanel onDone={() => { jobs.reload(); channels.reload() }} unresolvedCount={(channels.data || []).filter((c) => !c.channel_id).length} collectableCount={(channels.data || []).filter((c) => !!c.channel_id).length} />
 
       <div className="card p-4">
         <h2 className="section-title mb-2">데이터 소스 상태</h2>
