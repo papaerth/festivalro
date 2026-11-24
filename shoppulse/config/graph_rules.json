@@ -1,0 +1,23 @@
+{
+  "note": "실제 관측된 조회수 스냅샷(view_snapshots)만 사용합니다. 조건 미달 시 '판별 불가'를 반환합니다.",
+  "min_points": 4,
+  "min_span_hours": 72,
+  "spike_plateau": {
+    "peak_position_max": 0.4,
+    "peak_to_current_ratio_min": 5.0,
+    "current_rate_zero_tolerance": 0.0
+  },
+  "resurgence": {
+    "trough_ratio_max": 0.3,
+    "rebound_over_trough_min": 3.0,
+    "rebound_over_peak_min": 0.2
+  },
+  "steady_rise": {
+    "cv_max": 0.5
+  },
+  "late_surge": {
+    "early_window": 0.4,
+    "early_to_peak_ratio_max": 0.3,
+    "peak_position_min": 0.6
+  }
+}

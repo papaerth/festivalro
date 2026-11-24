@@ -1,0 +1,227 @@
+import io
+import json
+from datetime import datetime, timedelta
+
+VIDEO_META = {"videos": [{"id": "dQw4w9WgXcQ", "title": "Rick Astley - Never Gonna Give You Up",
+                          "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw", "channelTitle": "Rick Astley",
+                          "publishedAt": "2009-10-25T06:57:33Z", "duration": "PT3M34S", "viewCount": 1840384614,
+                          "likeCount": 19516779, "commentCount": 2462529, "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+                          "vph": 13933.75, "outlierScore": None, "engagementRate": 0.01194}]}
+VIDEO_STATS = {"videoId": "dQw4w9WgXcQ", "data": [
+    {"timestamp": f"2026-11-{d:02d}T00:01:12Z", "views": 1837979766 + (d - 17) * 320000, "likes": None, "comments": None, "vph": 15000 + d}
+    for d in range(17, 24)]}
+
+
+def test_health_and_seed(client):
+    r = client.get("/api/health")
+    assert r.status_code == 200 and r.json()["status"] == "ok"
+    chans = client.get("/api/channels").json()
+    assert len(chans) >= 50
+    assert all(c["verification_status"] == "unverified" for c in chans if c["source"] == "seed")
+    assert all(c["channel_id"] is None for c in chans if c["source"] == "seed")
+
+
+def test_celebrity_and_channel_flow(client):
+    r = client.post("/api/celebrities", json={"name": "테스트연예인", "primary_field": "배우"})
+    assert r.status_code == 201
+    cid = r.json()["id"]
+    r = client.post("/api/channels", json={"celebrity_id": cid, "channel_name": "테스트 채널",
+                                          "channel_id": "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+                                          "relevance_food": 3})
+    assert r.status_code == 201
+    assert r.json()["channel_id"] == "UCuAXFkgsw1L7xaCfnd5JJOw"
+    dup = client.post("/api/channels", json={"channel_name": "중복", "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw"})
+    assert dup.status_code == 409
+    chid = r.json()["id"]
+    r = client.patch(f"/api/channels/{chid}", json={"verification_status": "verified"})
+    assert r.json()["verification_status"] == "verified"
+    # YouTube API 미설정 → 명확한 503
+    r = client.post(f"/api/channels/{chid}/resolve")
+    assert r.status_code == 503 and "YOUTUBE_API_KEY" in r.json()["detail"]
+    job = client.post(f"/api/channels/{chid}/collect", json={}).json()
+    assert job["status"] == "failed" and "YOUTUBE_API_KEY" in job["error"]
+
+
+def test_video_dedupe_and_graph(client):
+    chid = [c for c in client.get("/api/channels").json() if c["channel_name"] == "테스트 채널"][0]["id"]
+    r = client.post("/api/videos", json={"url_or_id": "https://youtu.be/aaaaaaaaaaa", "channel_id": chid, "title": "테스트 영상",
+                                        "duration_seconds": 1380, "view_count": 1000, "fetch": False})
+    assert r.status_code == 201
+    v = r.json()
+    assert v["video_format"] == "long" and v["snapshot_count"] == 1
+    assert v["graph"]["graph_type"] == "insufficient"
+    dup = client.post("/api/videos", json={"url_or_id": "aaaaaaaaaaa", "fetch": False})
+    assert dup.status_code == 409
+    vid = v["id"]
+    base = datetime(2026, 1, 1)
+    deltas = [50000, 30000, 2000, 500, 300, 200, 150]
+    total = 1000
+    for i, d in enumerate(deltas):
+        total += d
+        r = client.post(f"/api/videos/{vid}/snapshots", json={"observed_at": (base + timedelta(days=i + 1)).isoformat(),
+                                                             "view_count": total, "source": "manual"})
+        assert r.status_code == 201
+    g = client.get(f"/api/videos/{vid}/graph").json()
+    assert g["analysis"]["graph_type"] == "spike_plateau"
+    assert len(g["points"]) == 8
+    # 같은 시각 중복 스냅샷 거부
+    r = client.post(f"/api/videos/{vid}/snapshots", json={"observed_at": (base + timedelta(days=1)).isoformat(), "view_count": 1})
+    assert r.status_code == 409
+    # 미확인 지표는 NULL
+    r = client.post(f"/api/videos/{vid}/metrics", json={"metric_type": "outlier", "value": None, "source": "vidiq_manual"})
+    assert r.status_code == 201
+    assert r.json()["outlier"] is None and r.json()["outlier_band"] is None
+    r = client.post(f"/api/videos/{vid}/metrics", json={"metric_type": "vph", "value": 1200, "basis": "recent", "source": "vidiq_manual"})
+    assert r.json()["vph"] == 1200 and r.json()["vph_band"] == "우선 조사"
+    lst = client.get("/api/videos", params={"graph_type": "spike_plateau"}).json()
+    assert lst["total"] >= 1
+    lst = client.get("/api/videos", params={"sort": "vph"}).json()
+    assert lst["items"][0]["id"] == vid
+
+
+def test_vidiq_json_import_real_shape(client):
+    f = io.BytesIO(json.dumps(VIDEO_META).encode())
+    r = client.post("/api/import/vidiq-json", files={"file": ("meta.json", f, "application/json")})
+    assert r.status_code == 200, r.text
+    res = r.json()["result"]
+    assert res["videos_created"] == 1 and res["null_outliers"] == 1
+    f = io.BytesIO(json.dumps(VIDEO_STATS).encode())
+    r = client.post("/api/import/vidiq-json", files={"file": ("stats.json", f, "application/json")})
+    assert r.json()["result"]["snapshots_added"] == 7
+    v = client.get("/api/videos", params={"q": "dQw4w9WgXcQ"}).json()["items"][0]
+    assert v["outlier"] is None  # vidIQ 가 null 을 준 경우 0 이 아니라 미확인
+    assert v["vph"] is not None and v["vph_basis"] == "unspecified"
+    assert v["duration_seconds"] == 214 and v["snapshot_count"] == 8
+    assert v["graph"]["graph_type"] != "insufficient"
+
+
+def test_csv_import(client):
+    csv = "video_id,outlier,vph,views,measured_at\nbbbbbbbbbbb,12.5,800,,2026-11-20T00:00:00Z\n,1,1,1,\n"
+    r = client.post("/api/import/metrics-csv", files={"file": ("m.csv", io.BytesIO(csv.encode()), "text/csv")})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["status"] == "partial" and j["result"]["metrics_added"] == 2 and len(j["result"]["skipped"]) == 1
+
+
+def test_product_candidate_score_verification_plan(client):
+    vid = client.get("/api/videos", params={"q": "테스트 영상"}).json()["items"][0]["id"]
+    seg = client.post(f"/api/videos/{vid}/segments", json={"start_seconds": 495, "end_seconds": 522,
+                                                           "quote": "미국 콜라는 더 달아요", "content_type": "comparison",
+                                                           "is_recommendation": False}).json()
+    assert seg["timestamp_url"].endswith("&t=495s")
+    bad = client.post(f"/api/videos/{vid}/segments", json={"start_seconds": 10, "end_seconds": 5})
+    assert bad.status_code == 400
+    p = client.post("/api/products", json={"name": "콜라(제품 미확정)", "category": "food", "identification_status": "brand_only"}).json()
+    client.post(f"/api/products/{p['id']}/offers", json={"seller": "쿠팡", "price": 1200, "stock_status": "in_stock"})
+    r = client.post("/api/products/mentions", json={"video_id": vid, "product_id": p["id"], "segment_id": seg["id"]})
+    assert r.status_code == 201
+    assert client.post("/api/products/mentions", json={"video_id": vid, "product_id": p["id"], "segment_id": seg["id"]}).status_code == 409
+
+    r = client.post("/api/candidates", json={"video_id": vid, "product_id": p["id"], "segment_id": seg["id"],
+                                             "channel_category": "food", "content_type": "comparison"})
+    assert r.status_code == 201
+    c = r.json()
+    cid = c["id"]
+    assert c["score"] is None and c["production_ready"] is False and len(c["verification"]) == 7
+    # AI 제안: 성과 항목만(지표 있음), 나머지 NULL → 총점 NULL
+    r = client.post(f"/api/candidates/{cid}/scores/suggest").json()
+    assert r["scores"]["ai"]["total"] is None
+    assert r["scores"]["ai"]["item_scores"]["performance"] is not None
+    assert r["scores"]["ai"]["item_scores"]["hook"] is None
+    # 사람 점수 — 일부만 → 총점 NULL
+    r = client.post(f"/api/candidates/{cid}/scores", json={"scorer": "human", "item_scores": {"hook": 20}}).json()
+    assert r["score"] is None
+    full = {"hook": 22, "performance": 15, "originality": 18, "purchasability": 10, "target_fit": 8, "timing": 9}
+    r = client.post(f"/api/candidates/{cid}/scores", json={"scorer": "human", "item_scores": full, "rationale": {"hook": "발언이 강함"}}).json()
+    assert r["score"] == 82 and r["grade_key"] == "top" and r["grade_label"] == "최우선 검토"
+    assert r["score_scorer"] == "human"
+    assert client.post(f"/api/candidates/{cid}/scores", json={"item_scores": {**full, "hook": 26}}).status_code == 400
+    # 검증: 중대 항목 미해결이면 점수 높아도 준비 완료 아님
+    for item in ["official_source", "celebrity_appearance", "statement_context", "product_identity"]:
+        client.put(f"/api/candidates/{cid}/verification", json={"item": item, "status": "passed"})
+    r = client.get(f"/api/candidates/{cid}").json()
+    assert r["production_ready"] is False and r["unresolved_critical"] == ["footage_rights"]
+    client.put(f"/api/candidates/{cid}/verification", json={"item": "footage_rights", "status": "passed"})
+    assert client.get(f"/api/candidates/{cid}").json()["production_ready"] is True
+    # 기획안(템플릿): 저장된 발언만 사용, 단순 언급이면 '추천' 경고
+    r = client.post(f"/api/candidates/{cid}/plans", json={"target_seconds": 25, "provider": "template"})
+    assert r.status_code == 201
+    plan = r.json()["plan"]
+    assert plan["celebrity_statement"] == "미국 콜라는 더 달아요"
+    assert any("추천템" in t for t in plan["research_todo"])
+    assert r.json()["generated_by"] == "template"
+    # 필터·정렬
+    lst = client.get("/api/candidates", params={"category": "food", "sort": "score", "min_score": 80}).json()
+    assert lst["total"] == 1 and lst["items"][0]["id"] == cid
+    assert client.get("/api/candidates", params={"grade": "low"}).json()["total"] == 0
+    assert client.get("/api/candidates", params={"graph_type": "spike_plateau"}).json()["total"] == 1
+
+
+def test_schedule(client):
+    cid = client.get("/api/candidates").json()["items"][0]["id"]
+    r = client.put("/api/schedule", json={"schedule_date": "2026-11-24", "channel_category": "beauty", "slot": "morning", "candidate_id": cid})
+    assert r.status_code == 400  # 카테고리 불일치
+    r = client.put("/api/schedule", json={"schedule_date": "2026-11-24", "channel_category": "food", "slot": "night", "candidate_id": cid, "status": "scripting"})
+    assert r.status_code == 200 and r.json()["status"] == "scripting"
+    grid = client.get("/api/schedule", params={"schedule_date": "2026-11-24"}).json()
+    assert len(grid["grid"]) == 9
+    filled = [g for g in grid["grid"] if g["candidate_id"]]
+    assert len(filled) == 1 and filled[0]["slot"] == "night"
+    assert client.get(f"/api/candidates/{cid}").json()["status"] == "scripting"
+
+
+def test_daily_sourcing_reports_actual_counts(client):
+    r = client.post("/api/sourcing/run", json={"report_date": "2026-11-24"})
+    assert r.status_code == 200
+    rep = r.json()
+    assert rep["summary"]["total_final"] == 1  # 점수 있는 후보 1개만 — 가짜로 채우지 않음
+    food = [c for c in rep["categories"] if c["category"] == "food"][0]
+    assert food["final_shortfall"] == 2 and food["shortfall"] == 8
+    beauty = [c for c in rep["categories"] if c["category"] == "beauty"][0]
+    assert beauty["found"] == 0 and beauty["note"]
+    # 다음 날 다시 돌리면 중복 사유 기록
+    r2 = client.post("/api/sourcing/run", json={"report_date": "2026-11-25"}).json()
+    food2 = [c for c in r2["categories"] if c["category"] == "food"][0]
+    assert len(food2["duplicates_from_previous_day"]) == 1
+    stats = client.get("/api/dashboard/stats").json()
+    assert stats["spike_plateau"] >= 1 and stats["scheduler"]["auto_enabled"] is False
+    assert client.get("/api/sourcing/scheduler").json()["running"] is True
+
+
+def test_settings_scoring_version(client):
+    bad = client.post("/api/settings/scoring", json={"name": "x", "items": [{"key": "a", "label": "A", "max": 50}], "grades": []})
+    assert bad.status_code == 400
+    s = client.get("/api/settings").json()
+    assert s["scoring"]["items"][0]["max"] == 25
+    assert s["user"]["auto_sourcing_enabled"] is False
+    r = client.put("/api/settings/user/default_region", json={"value": "부산"})
+    assert r.json()["value"] == "부산"
+
+
+def test_backup_restore_roundtrip(client):
+    before = client.get("/api/videos").json()["total"]
+    exp = client.get("/api/backup/export.json")
+    assert exp.status_code == 200
+    data = exp.json()
+    assert data["format"] == "shoppulse-backup" and len(data["tables"]["videos"]) == before
+    r = client.post("/api/backup", )
+    assert r.status_code == 201
+    assert client.get("/api/backup").json()["files"]
+    # 영상 하나 삭제 후 복원 → 복구
+    vid = client.get("/api/videos").json()["items"][0]["id"]
+    client.delete(f"/api/videos/{vid}")
+    assert client.get("/api/videos").json()["total"] == before - 1
+    r = client.post("/api/backup/restore", files={"file": ("b.json", io.BytesIO(json.dumps(data).encode()), "application/json")})
+    assert r.status_code == 200, r.text
+    assert client.get("/api/videos").json()["total"] == before
+    assert client.get(f"/api/videos/{vid}").status_code == 200
+    zipr = client.get("/api/backup/export.zip")
+    assert zipr.status_code == 200 and zipr.headers["content-type"] == "application/zip"
+
+
+def test_persistence_across_sessions(client):
+    """새 세션/엔진으로 다시 읽어도 데이터가 남아 있는지."""
+    from app.database import SessionLocal
+    from app.models import Video
+    with SessionLocal() as db:
+        assert db.query(Video).count() == client.get("/api/videos").json()["total"]

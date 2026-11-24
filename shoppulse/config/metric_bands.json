@@ -1,0 +1,17 @@
+{
+  "note": "SHOPPULSE 운영 참고 기준입니다. vidIQ 공식 등급이 아닙니다.",
+  "outlier": [
+    {"min": 50, "label": "매우 이례적인 성과", "key": "extreme"},
+    {"min": 30, "label": "강한 소싱 후보", "key": "strong"},
+    {"min": 10, "label": "적극 검토", "key": "active"},
+    {"min": 3, "label": "관심 후보", "key": "interest"},
+    {"min": 0, "label": "일반적 또는 다소 높은 성과", "key": "normal"}
+  ],
+  "vph": [
+    {"min": 5000, "label": "강한 성장세 후보", "key": "strong"},
+    {"min": 1000, "label": "우선 조사", "key": "priority"},
+    {"min": 500, "label": "적극 검토", "key": "active"},
+    {"min": 100, "label": "관심 후보", "key": "interest"},
+    {"min": 0, "label": "낮은 관심 또는 장기 관찰", "key": "low"}
+  ]
+}

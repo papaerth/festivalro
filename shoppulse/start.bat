@@ -1,0 +1,29 @@
+@echo off
+chcp 65001 >nul
+setlocal
+cd /d "%~dp0"
+if not exist backend\.venv\Scripts\python.exe (
+  echo [안내] 먼저 setup.bat 을 실행해 주세요.
+  pause & exit /b 1
+)
+if not exist frontend\dist\index.html (
+  echo [안내] 화면이 빌드되지 않았습니다. setup.bat 을 다시 실행해 주세요.
+  pause & exit /b 1
+)
+set PORT=8787
+for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /i "SHOPPULSE_PORT=" .env 2^>nul`) do if not "%%b"=="" set PORT=%%b
+
+echo ============================================
+echo  SHOPPULSE 3.0 실행 중 — http://localhost:%PORT%
+echo  이 창을 닫으면 서버가 종료됩니다.
+echo  (자동 소싱은 이 창이 켜져 있어야 동작합니다)
+echo ============================================
+start "" /b cmd /c "timeout /t 3 >nul & start http://localhost:%PORT%"
+cd backend
+.venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port %PORT%
+if errorlevel 1 (
+  echo.
+  echo [오류] 서버가 비정상 종료되었습니다. 위 메시지를 확인하세요.
+  echo        포트 %PORT% 가 이미 사용 중이면 .env 의 SHOPPULSE_PORT 를 바꾸세요.
+  pause
+)

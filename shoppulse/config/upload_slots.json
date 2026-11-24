@@ -1,0 +1,14 @@
+{
+  "timezone": "Asia/Seoul",
+  "note": "운영 가설입니다. 검증된 시간대별 조회수 순위가 아니며 실제 채널 성과를 기반으로 수정합니다.",
+  "slots": [
+    {"key": "morning", "label": "오전 11시", "time": "11:00"},
+    {"key": "afternoon", "label": "오후 5시", "time": "17:00"},
+    {"key": "night", "label": "밤 9시", "time": "21:00"}
+  ],
+  "hypothesis": {
+    "beauty": {"morning": "데일리 뷰티·헤어", "afternoon": "연예인 화제템·향수·패션", "night": "스킨케어·자기관리"},
+    "living": {"morning": "주방·청소·살림", "afternoon": "수납·편의용품·가성비", "night": "침실·휴식·생활가전"},
+    "food":   {"morning": "간편식·식재료", "afternoon": "간식·저녁 식사·장보기", "night": "디저트·야식·선물용 식품"}
+  }
+}

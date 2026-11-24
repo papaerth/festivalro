@@ -1,0 +1,105 @@
+import { Link } from 'react-router-dom'
+import { api, fmt } from '../api'
+import { useAsync } from '../hooks'
+import { Badge, ErrorBox, Spinner, Stat, toneFor, useToast } from '../components/ui'
+import CandidateCard from '../components/CandidateCard'
+
+export default function Dashboard() {
+  const stats = useAsync(() => api.stats())
+  const sources = useAsync(() => api.dataSources())
+  const cands = useAsync(() => api.candidates({ sort: 'score', limit: 6 }))
+  const { toast, node } = useToast()
+  const s = stats.data
+
+  const run = async () => {
+    try {
+      const r = await api.runSourcing()
+      toast(`소싱 실행 완료 — 후보 ${r.summary.total_candidates}개, 최종 추천 ${r.summary.total_final}개 (목표 27/9)`)
+      stats.reload(); cands.reload()
+    } catch (e: any) { toast(e.message, 'err') }
+  }
+
+  if (stats.error) return <ErrorBox error={stats.error} onRetry={stats.reload} />
+  if (!s) return <Spinner />
+  const rep = s.latest_report
+
+  return (
+    <div className="space-y-6">
+      {node}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">오늘의 소싱</h1>
+          <p className="text-sm muted">{s.season.date} ({s.season.weekday}) · {s.season.season} · {s.season.region} · {s.season.events.length ? s.season.events.join(', ') : '특별 이벤트 없음'} · 날씨: 미연동</p>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn-primary" onClick={run}>▶ 오늘 소싱 실행 (수동)</button>
+          <Link to="/data" className="btn-ghost">데이터 수집</Link>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <Stat label="등록된 연예인 채널" value={s.channels_total} sub={`검증 완료 ${s.channels_verified}개 · 연예인 ${s.celebrities_total}명`} />
+        <Stat label="누적 분석 영상" value={s.videos_total} sub={`오늘 새로 발견 ${s.videos_new_today}개`} />
+        <Stat label="오늘 소싱 후보" value={s.candidates_today} sub={`전체 후보 ${s.candidates_total}개`} />
+        <Stat label="오늘 최종 추천" value={s.final_today} sub="목표 9개 (3채널×3)" tone="green" />
+        <Stat label="검증 대기 후보" value={s.pending_verification} sub="중대 검증 항목 미해결" tone="amber" />
+        <Stat label="급등 후 평탄화" value={s.spike_plateau} sub="실제 관측 기반" tone="violet" />
+        <Stat label="재상승" value={s.resurgence} tone="green" sub={`뒤늦은 급상승 ${s.late_surge}개`} />
+        <Stat label="꾸준히 상승" value={s.steady_rise} tone="blue" />
+        <Stat label="그래프 판별 불가" value={s.insufficient} sub="관측 데이터 부족 영상" />
+        <Stat label="마지막 데이터 수집" value={<span className="text-base">{fmt.datetime(s.last_collection_at)}</span>} sub={`최근 조회수 관측: ${fmt.datetime(s.last_snapshot_at)}`} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="card p-5 lg:col-span-2">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="section-title">최근 소싱 보고서 {rep ? <span className="muted text-sm font-normal">· {rep.report_date} ({rep.trigger === 'manual' ? '수동' : '자동'})</span> : null}</h2>
+            <Link to="/candidates" className="text-sm underline">후보 전체 보기</Link>
+          </div>
+          {!rep ? <p className="text-sm muted">아직 소싱을 실행하지 않았습니다. 「오늘 소싱 실행」을 눌러 저장된 후보를 평가하세요.</p> : (
+            <div className="grid gap-3 md:grid-cols-3">
+              {rep.categories.map((c: any) => (
+                <div key={c.category} className="rounded-xl border border-stone-200 p-3 dark:border-stone-800">
+                  <div className="flex items-center justify-between"><Badge tone={toneFor.category(c.category)}>{c.label}</Badge><span className="text-xs muted">후보 {c.found}/9 · 추천 {c.final_ids.length}/3</span></div>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {c.rows.slice(0, 3).map((r: any) => (
+                      <li key={r.candidate_id} className="truncate"><Link to={`/candidates/${r.candidate_id}`} className="hover:underline">{r.title}</Link> <span className="muted text-xs">{r.score ?? '점수 없음'}</span></li>
+                    ))}
+                    {c.rows.length === 0 && <li className="muted text-xs">후보 없음</li>}
+                  </ul>
+                  {c.note && <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">{c.note}</p>}
+                  {c.duplicates_from_previous_day?.length > 0 && <p className="mt-1 text-[11px] muted">전날 중복 {c.duplicates_from_previous_day.length}건(사유 기록)</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="card p-5">
+          <h2 className="section-title mb-3">데이터 연결 상태</h2>
+          <ul className="space-y-2 text-sm">
+            {(sources.data || []).map((d) => (
+              <li key={d.key} className="flex items-start justify-between gap-2">
+                <div><div className="font-medium">{d.name}</div><div className="text-[11px] muted">{d.note}</div></div>
+                <Badge tone={d.status === 'configured' ? 'green' : d.status === 'unavailable' ? 'gray' : 'amber'}>{d.status === 'configured' ? '사용 가능' : d.status === 'unavailable' ? '미구현' : '미설정'}</Badge>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 rounded-xl bg-stone-50 p-3 text-xs dark:bg-stone-800/60">
+            <div className="font-medium">자동 소싱 스케줄러</div>
+            <div className="muted">{s.scheduler.schedule} · {s.scheduler.auto_enabled ? `활성 (다음 실행 ${fmt.datetime(s.scheduler.next_run)})` : '비활성 (설정에서 켤 수 있음)'}</div>
+            <div className="muted mt-1">{s.scheduler.note}</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-3 flex items-center justify-between"><h2 className="section-title">소싱 점수 상위 후보</h2><span className="text-xs muted">{cands.data?.note}</span></div>
+        {cands.data && cands.data.items.length === 0 && <div className="card p-6 text-sm muted">후보가 없습니다. 영상 상세 화면에서 장면·상품을 기록하고 후보로 등록하세요.</div>}
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {(cands.data?.items || []).map((c) => <CandidateCard key={c.id} c={c} />)}
+        </div>
+      </div>
+      <p className="text-[11px] muted">점수 모델: {s.scoring_name} · Outlier/VPH 등급은 SHOPPULSE 운영 참고 기준이며 vidIQ 공식 등급이 아닙니다. 그래프는 실제 관측 데이터만 사용합니다. 시간대 배치는 운영 가설입니다.</p>
+    </div>
+  )
+}
