@@ -14,6 +14,12 @@ if not exist frontend\dist\index.html (
   echo [안내] 화면이 빌드되지 않았습니다. setup.bat 을 다시 실행해 주세요.
   goto :eof
 )
+rem Windows 앱 제어 정책이 서명 없는 .pyd 를 차단하면 SQLAlchemy 가 죽으므로 컴파일 확장을 제거한다(순수 Python 모듈로 대체됨)
+if exist backend\scripts\strip_sqlalchemy_ext.py (
+  backend\.venv\Scripts\python backend\scripts\strip_sqlalchemy_ext.py >nul 2>nul
+) else (
+  del /s /q "backend\.venv\Lib\site-packages\sqlalchemy\*_cy*.pyd" >nul 2>nul
+)
 set PORT=8787
 for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /i "SHOPPULSE_PORT=" .env 2^>nul`) do if not "%%b"=="" set PORT=%%b
 
