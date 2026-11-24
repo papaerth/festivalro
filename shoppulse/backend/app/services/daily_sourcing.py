@@ -183,9 +183,22 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
         refresh_limit = int(s.value.get("value", 300)) if s else 300
     refresh = refresh_stats_step(db, refresh_limit) if refresh_limit > 0 else {"skipped": True, "reason": "갱신 개수 0"}
     discovery = None
+    legacy_retired = 0
     if auto_discover:
         from .auto_candidates import discover_candidates
+        # 구버전(원본 영상 기준) 자동 발굴 후보 정리: 사람 점수·기획안·상태 변경이 없는 것만 '제외'로
+        legacy = (db.query(SourcingCandidate).join(SourcingCandidate.video)
+                  .filter(SourcingCandidate.status == "candidate", SourcingCandidate.notes.like("[자동 발굴%"),
+                          Video.source_type == "original_celebrity").all())
+        for c in legacy:
+            if any(sc.scorer == "human" for sc in c.scores) or c.plans:
+                continue
+            c.status = "rejected"
+            c.duplicate_reason = "구버전 자동 발굴(원본 영상 기준) — 후보 기준이 재편집 쇼츠로 바뀌어 자동 제외"
+            legacy_retired += 1
+        db.commit()
         discovery = discover_candidates(db, per_category=TARGET_CANDIDATES)
+        discovery["legacy_retired"] = legacy_retired
     ai_products = ai_identify_products_step(db) if ai_score else {"skipped": True, "reason": "비활성", "identified": 0, "linked": 0}
     ai = ai_score_step(db) if ai_score else {"skipped": True, "reason": "비활성", "scored": 0}
     yesterday = report_date - timedelta(days=1)
@@ -222,6 +235,8 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
             ready, unresolved = production_ready(c)
             rows.append({
                 "candidate_id": c.id, "video_id": c.video_id, "title": c.video.title,
+                "is_short": c.video.source_type in ("reedit_shorts", "competitor"),
+                "thumbnail_url": c.video.thumbnail_url, "view_count": c.video.view_count,
                 "score": total, "grade": final.grade_key if final else None, "scorer": final.scorer if final else None,
                 "graph_type": graph["graph_type"], "production_ready": ready, "unresolved": unresolved,
                 "status": c.status,
@@ -247,7 +262,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
             c.recommendation_count = (c.recommendation_count or 0) + 1
         out_categories.append({
             "category": cat, "label": CATEGORY_LABELS[cat],
-            "found": len(rows), "candidate_ids": [r["candidate_id"] for r in top],
+            "found": len(rows), "shorts": sum(r["is_short"] for r in rows), "originals": sum(not r["is_short"] for r in rows), "candidate_ids": [r["candidate_id"] for r in top],
             "final_ids": [r["candidate_id"] for r in final], "rows": top,
             "shortfall": max(0, TARGET_CANDIDATES - len(top)),
             "final_shortfall": max(0, TARGET_FINAL - len(final)),

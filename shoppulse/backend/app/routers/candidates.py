@@ -42,7 +42,7 @@ def list_candidates(
     video_format: str | None = None, sponsorship: str | None = None, production_ready: bool | None = None,
     min_outlier: float | None = None, min_vph: float | None = None, min_views: int | None = None,
     published_from: datetime | None = None, published_to: datetime | None = None,
-    include_demo: bool = False, sort: str = "score", limit: int = Query(60, le=500), offset: int = 0,
+    include_demo: bool = False, include_rejected: bool = False, sort: str = "score", limit: int = Query(60, le=500), offset: int = 0,
     db: Session = Depends(get_db),
 ):
     cfg = get_active_version(db).config
@@ -53,6 +53,8 @@ def list_candidates(
         qs = qs.filter(SourcingCandidate.channel_category == category)
     if status:
         qs = qs.filter(SourcingCandidate.status.in_(status.split(",")))
+    elif not include_rejected:
+        qs = qs.filter(SourcingCandidate.status != "rejected")
     if celebrity_id:
         qs = qs.filter(SourcingCandidate.celebrity_id == celebrity_id)
     if content_type:

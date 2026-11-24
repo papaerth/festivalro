@@ -75,7 +75,7 @@ export default function Dashboard() {
           </div>
           {rep && (rep.summary.auto_discovery || rep.summary.ai_scoring) && (
             <p className="mb-2 text-[11px] muted">
-              {rep.summary.auto_discovery && <>자동 발굴 {Object.entries(rep.summary.auto_discovery.created as Record<string, number>).map(([k, n]) => `${LABELS.category[k]} ${n}`).join(' · ')} (후보 풀 {Object.values(rep.summary.auto_discovery.pool as Record<string, number>).reduce((a, b) => a + b, 0)}개, 쇼핑 아님 {rep.summary.auto_discovery.skipped.not_shopping} · 분류 불가 {rep.summary.auto_discovery.skipped.no_category} 제외) · </>}
+              {rep.summary.auto_discovery && <>자동 발굴 {Object.entries(rep.summary.auto_discovery.created as Record<string, number>).map(([k, n]) => `${LABELS.category[k]} ${n}`).join(' · ')} (쇼핑 재편집 쇼츠 풀 {Object.values(rep.summary.auto_discovery.pool as Record<string, number>).reduce((a, b) => a + b, 0)}개 · 제외: 쇼핑 아님 {rep.summary.auto_discovery.skipped.not_shopping}, 분류 불가 {rep.summary.auto_discovery.skipped.no_category}, 기간 밖 {rep.summary.auto_discovery.skipped.out_of_window ?? 0}{rep.summary.auto_discovery.legacy_retired ? `, 구버전 원본 후보 정리 ${rep.summary.auto_discovery.legacy_retired}` : ''}) · </>}
               {rep.summary.ai_products && (rep.summary.ai_products.skipped ? <>AI 상품 추정 건너뜀 · </> : <>AI 상품 추정 {rep.summary.ai_products.identified}건(자동 연결 {rep.summary.ai_products.linked}) · </>)}
               {rep.summary.ai_plans && (rep.summary.ai_plans.skipped ? <>기획안 건너뜀 · </> : <>AI 기획안 {rep.summary.ai_plans.generated}건 생성{rep.summary.ai_plans.existing_today ? ` (오늘 생성된 ${rep.summary.ai_plans.existing_today}건 유지)` : ''} · </>)}
               {rep.summary.ai_scoring && (rep.summary.ai_scoring.skipped ? <>AI 채점 건너뜀: {rep.summary.ai_scoring.reason}</> : <>AI 1차 채점 {rep.summary.ai_scoring.scored}건{rep.summary.ai_scoring.failed?.length ? ` · 실패 ${rep.summary.ai_scoring.failed.length}` : ''}</>)}
@@ -85,10 +85,10 @@ export default function Dashboard() {
             <div className="grid gap-3 md:grid-cols-3">
               {rep.categories.map((c: any) => (
                 <div key={c.category} className="rounded-xl border border-stone-200 p-3 dark:border-stone-800">
-                  <div className="flex items-center justify-between"><Badge tone={toneFor.category(c.category)}>{c.label}</Badge><span className="text-xs muted">후보 {c.found}/9 · 추천 {c.final_ids.length}/3</span></div>
+                  <div className="flex items-center justify-between"><Badge tone={toneFor.category(c.category)}>{c.label}</Badge><span className="text-xs muted">후보 {c.found}/9{c.shorts !== undefined ? ` (쇼츠 ${c.shorts})` : ''} · 추천 {c.final_ids.length}/3</span></div>
                   <ul className="mt-2 space-y-1 text-sm">
                     {c.rows.slice(0, 3).map((r: any) => (
-                      <li key={r.candidate_id} className="truncate"><Link to={`/candidates/${r.candidate_id}`} className="hover:underline">{r.title}</Link> <span className="muted text-xs">{r.score ?? '점수 없음'}</span></li>
+                      <li key={r.candidate_id} className="flex items-center gap-2"><div className="h-8 w-14 shrink-0 overflow-hidden rounded bg-stone-200 dark:bg-stone-800">{r.thumbnail_url && <img src={r.thumbnail_url} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} />}</div><div className="min-w-0"><Link to={`/candidates/${r.candidate_id}`} className="line-clamp-1 hover:underline">{r.title}</Link><div className="text-[11px] muted">{r.is_short ? '재편집 쇼츠' : '원본 영상'} · 조회 {fmt.compact(r.view_count)} · {r.score ?? '점수 없음'}{r.grade ? ` · ${r.grade}` : ''}</div></div></li>
                     ))}
                     {c.rows.length === 0 && <li className="muted text-xs">후보 없음</li>}
                   </ul>

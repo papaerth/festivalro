@@ -428,3 +428,16 @@ def test_auto_discovery_respects_window(client):
     assert disc["window_days"] == [90, 1095] and disc["skipped"]["out_of_window"] >= 1
     assert not any(c["video_id"] == v["id"] for c in client.get("/api/candidates", params={"category": "living"}).json()["items"])
     assert rep["summary"]["ai_plans"]["skipped"] is True
+
+
+def test_legacy_original_auto_candidates_are_retired(client):
+    orig = client.post("/api/videos", json={"url_or_id": "kkkkkkkkkkk", "title": "구버전 원본 후보 추천템", "duration_seconds": 900, "view_count": 100, "fetch": False}).json()
+    c = client.post("/api/candidates", json={"video_id": orig["id"], "channel_category": "food", "notes": "[자동 발굴 2026-11-25] 신호 5 — 테스트"}).json()
+    rep = client.post("/api/sourcing/run", json={"report_date": "2026-12-01", "background": False}).json()
+    assert rep["summary"]["auto_discovery"]["legacy_retired"] >= 1
+    d = client.get(f"/api/candidates/{c['id']}").json()
+    assert d["status"] == "rejected" and "구버전" in d["duplicate_reason"]
+    assert not any(x["id"] == c["id"] for x in client.get("/api/candidates").json()["items"])
+    assert any(x["id"] == c["id"] for x in client.get("/api/candidates", params={"include_rejected": "true"}).json()["items"])
+    food = [x for x in rep["categories"] if x["category"] == "food"][0]
+    assert "shorts" in food and "originals" in food

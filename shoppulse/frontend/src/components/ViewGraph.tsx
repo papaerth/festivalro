@@ -11,8 +11,9 @@ const ts = (s: string) => new Date(s.endsWith('Z') || s.includes('+') ? s : s + 
 export default function ViewGraph({ points, analysis, height = 180, compact = false, publishedAt = null }: {
   points: { observed_at: string; view_count: number; source: string }[]; analysis: GraphAnalysis; height?: number; compact?: boolean; publishedAt?: string | null
 }) {
-  const [full, setFull] = useState(true)
   const obs = points.map((p) => ({ t: ts(p.observed_at), v: p.view_count, s: p.source })).sort((a, b) => a.t - b.t)
+  const obsSpanDays = obs.length >= 2 ? (obs[obs.length - 1].t - obs[0].t) / 86400000 : 0
+  const [full, setFull] = useState(obsSpanDays >= 3)
   const sources = Array.from(new Set(points.map((p) => LABELS.source[p.source] || p.source)))
   if (obs.length < 2 && compact) {
     return <div className="flex items-center gap-2 text-[11px] muted"><Badge tone="gray">그래프 판별 불가</Badge>실제 관측 {obs.length}개 — 추정 그래프를 그리지 않음</div>
@@ -38,7 +39,7 @@ export default function ViewGraph({ points, analysis, height = 180, compact = fa
         <Badge tone={toneFor.graph(analysis.graph_type)}>{analysis.label}</Badge>
         {!compact && <span className="muted">신뢰도 {analysis.confidence} · 관측 {analysis.points}개 · {analysis.span_hours >= 48 ? `${Math.round(analysis.span_hours / 24)}일` : `${Math.round(analysis.span_hours)}시간`}</span>}
         <span className="muted">출처: {sources.join(', ')} (실제 관측)</span>
-        {!compact && pub !== null && <button className="ml-auto underline" onClick={() => setFull(!full)}>{full ? '최근 관측만 보기' : '전체 기간 보기'}</button>}
+        {!compact && pub !== null && <button className="ml-auto underline" onClick={() => setFull(!full)}>{full ? '최근 관측만 보기' : '전체 기간 보기 (게시일부터)'}</button>}
       </div>
       <div style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
