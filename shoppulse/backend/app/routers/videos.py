@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -171,6 +171,8 @@ def create_video(body: schemas.VideoIn, db: Session = Depends(get_db)):
         url=f"https://www.youtube.com/watch?v={vid}", source_type=body.source_type, access_status=body.access_status,
         data_source="manual", notes=body.notes, is_demo=body.is_demo, collected_at=utcnow(),
     )
+    from ..services.shopping_filter import classify
+    classify(v)
     db.add(v)
     db.flush()
     if body.view_count is not None:
@@ -302,10 +304,13 @@ def copy_original_products(vid: int, db: Session = Depends(get_db)):
 
 
 @router.post("/reclassify-shopping")
-def reclassify_shopping(db: Session = Depends(get_db)):
-    """재편집·경쟁 영상 전체를 쇼핑 규칙으로 다시 점수화한다(사람 판정은 유지)."""
+def reclassify_shopping(scope: str = "all", db: Session = Depends(get_db)):
+    """영상 전체(scope=all) 또는 재편집·경쟁 영상(scope=derived)을 쇼핑 규칙으로 다시 점수화한다(사람 판정은 유지)."""
     from ..services.shopping_filter import classify, threshold
-    rows = db.query(Video).filter(Video.source_type.in_(["reedit_shorts", "competitor"])).all()
+    qs = db.query(Video)
+    if scope == "derived":
+        qs = qs.filter(Video.source_type.in_(["reedit_shorts", "competitor"]))
+    rows = qs.all()
     yes = no = 0
     for v in rows:
         r = classify(v)
@@ -315,6 +320,46 @@ def reclassify_shopping(db: Session = Depends(get_db)):
             no += 1
     db.commit()
     return {"total": len(rows), "shopping": yes, "non_shopping": no, "threshold": threshold()}
+
+
+@router.post("/{vid}/identify-product")
+async def identify_product(vid: int, files: list[UploadFile] = File(default=[]), use_thumbnail: bool = True,
+                           db: Session = Depends(get_db)):
+    """썸네일·사용자 캡처·메타데이터로 상품을 AI 추정한다(추정 결과는 저장만, 상품 등록은 별도 확인)."""
+    from ..services.product_identifier import AINotConfigured, identify
+    v = get_or_404(db, Video, vid, "영상")
+    images = []
+    for f in files[:4]:
+        data = await f.read()
+        if not (f.content_type or "").startswith("image/") or len(data) > 8 * 1024 * 1024:
+            raise HTTPException(400, f"이미지 파일만 8MB 이하로 올려주세요: {f.filename}")
+        images.append((data, f.content_type))
+    try:
+        result = identify(v, extra_images=images, use_thumbnail=use_thumbnail)
+    except AINotConfigured as e:
+        raise HTTPException(503, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"AI 추정 실패: {e}")
+    v.ai_product_suggestions = result
+    log(db, "video", v.id, "ai_identify_product", {"n": len(result.get("suggestions", [])), "images": result.get("image_sources")})
+    db.commit()
+    return result
+
+
+@router.post("/{vid}/adopt-suggestion", status_code=201)
+def adopt_suggestion(vid: int, body: schemas.AdoptSuggestionIn, db: Session = Depends(get_db)):
+    """AI 추정 상품을 '유사 상품 후보' 상태로 등록하고 이 영상에 연결한다."""
+    from ..models import Product, ProductMention
+    v = get_or_404(db, Video, vid, "영상")
+    p = Product(name=body.name, brand=body.brand or None, category=body.category, subcategory=body.subcategory or None,
+                identification_status="similar_candidate",
+                notes=f"[AI 추정] 영상 {v.youtube_video_id} 에서 추정. 근거: {body.evidence or ''} — 사람이 확인 후 상태를 바꾸세요.")
+    db.add(p)
+    db.flush()
+    db.add(ProductMention(video_id=v.id, product_id=p.id, celebrity_id=v.celebrity_id))
+    log(db, "product", p.id, "create_from_ai_suggestion", {"video_id": v.id})
+    db.commit()
+    return serializers.product(p)
 
 
 @router.post("/bulk-delete")

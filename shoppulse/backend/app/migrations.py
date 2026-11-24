@@ -20,6 +20,7 @@ COLUMNS = [
     ("videos", "shopping_score", "INTEGER"),
     ("videos", "shopping_hits", "JSON"),
     ("videos", "is_shopping", "BOOLEAN"),
+    ("videos", "ai_product_suggestions", "JSON"),
 ]
 INDEXES = [
     ("ix_videos_original_video_id", "videos", "original_video_id"),

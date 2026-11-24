@@ -306,7 +306,7 @@ def test_migration_adds_missing_columns(tmp_path):
 def test_shopping_flag_filter_and_bulk_delete(client):
     r = client.post("/api/videos", json={"url_or_id": "ddddddddddd", "title": "임영웅 콘서트 직캠", "source_type": "reedit_shorts", "fetch": False}).json()
     r2 = client.post("/api/videos", json={"url_or_id": "eeeeeeeeeee", "title": "임영웅 추천템 내돈내산 쿠팡 꿀템", "source_type": "reedit_shorts", "fetch": False}).json()
-    assert r["is_shopping"] is None  # 아직 점수 없음
+    assert r["is_shopping"] is False and r2["is_shopping"] is True  # 등록 시 자동 판별
     res = client.post("/api/videos/reclassify-shopping").json()
     assert res["total"] >= 2 and res["shopping"] >= 1 and res["non_shopping"] >= 1
     assert client.get(f"/api/videos/{r['id']}").json()["is_shopping"] is False
@@ -349,3 +349,19 @@ def test_evidence_requires_confirmed_product(client):
     assert links[1]["url"].endswith("/page")
     stats = client.get("/api/dashboard/stats").json()
     assert stats["videos_derived_confirmed"] == 2
+
+
+def test_identify_product_requires_ai_key_and_adopt(client):
+    vid = client.get("/api/videos", params={"q": "링크 테스트"}).json()["items"][0]["id"]
+    r = client.post(f"/api/videos/{vid}/identify-product")
+    assert r.status_code == 503 and "ANTHROPIC_API_KEY" in r.json()["detail"]
+    r = client.post(f"/api/videos/{vid}/adopt-suggestion", json={"name": "테스트 세럼", "brand": "브랜드X", "category": "beauty", "evidence": "썸네일 로고"})
+    assert r.status_code == 201
+    p = r.json()
+    assert p["identification_status"] == "similar_candidate" and "[AI 추정]" in p["notes"]
+    v = client.get(f"/api/videos/{vid}").json()
+    assert v["product_status"] == "candidate"  # 추정 상품은 '확인됨'이 아님
+    # 수동 등록 영상도 쇼핑 점수가 매겨진다
+    assert v["shopping_score"] is not None
+    res = client.post("/api/videos/reclassify-shopping", params={"scope": "all"}).json()
+    assert res["total"] >= 5

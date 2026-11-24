@@ -8,7 +8,7 @@ import ViewGraph from '../components/ViewGraph'
 const SORTS: [string, string][] = [['view_count', '조회수 높은 순'], ['outlier', 'Outlier 높은 순'], ['vph', 'VPH 높은 순'], ['published_desc', '최근 업로드순'], ['published_asc', '오래된 영상순'], ['growth_7d', '최근 7일 증가량순(데이터 있을 때만)'], ['updated', '최근 갱신순']]
 
 export default function Videos() {
-  const [f, setF] = useState<Record<string, string>>({ sort: 'view_count' })
+  const [f, setF] = useState<Record<string, string>>({ sort: 'view_count', shopping: 'yes' })
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }))
   const q = useAsync(() => api.videos({ ...f, limit: 60 }), [JSON.stringify(f)])
   const channels = useAsync(() => api.channels())
@@ -36,9 +36,10 @@ export default function Videos() {
     <div className="space-y-4">
       {node}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="text-2xl font-bold tracking-tight">영상</h1><p className="text-sm muted">저장된 영상의 검색·필터·정렬 (외부 새 검색 아님). 수집은 데이터 메뉴에서.</p></div>
+        <div><h1 className="text-2xl font-bold tracking-tight">영상</h1><p className="text-sm muted">기본은 <b>쇼핑 관련 영상만</b> 표시합니다(제목·설명·태그의 쇼핑 신호 기준, 사람 판정 우선). 판별이 틀린 영상은 상세에서 바꿀 수 있습니다.</p>
+          <label className="mt-1 flex items-center gap-2 text-sm"><input type="checkbox" checked={f.shopping === 'yes'} onChange={(e) => set('shopping', e.target.checked ? 'yes' : '')} /> 쇼핑 관련만 보기 {f.shopping !== 'yes' && <span className="muted text-xs">(전체 표시 중)</span>}</label></div>
         <div className="flex flex-wrap gap-2">
-          <button className="btn-ghost" title="재편집·경쟁 영상 전체를 쇼핑 규칙으로 다시 점수화(사람 판정은 유지)" onClick={async () => { try { const r = await api.reclassifyShopping(); toast(`재판별 완료: ${r.total}개 중 쇼핑 ${r.shopping} · 쇼핑 아님 ${r.non_shopping} (기준 ${r.threshold}점)`); q.reload() } catch (e: any) { toast(e.message, 'err') } }}>쇼핑 판별 다시 실행</button>
+          <button className="btn-ghost" title="재편집·경쟁 영상 전체를 쇼핑 규칙으로 다시 점수화(사람 판정은 유지)" onClick={async () => { try { const r = await api.reclassifyShopping('all'); toast(`재판별 완료: 전체 ${r.total}개 중 쇼핑 ${r.shopping} · 쇼핑 아님 ${r.non_shopping} (기준 ${r.threshold}점)`); q.reload() } catch (e: any) { toast(e.message, 'err') } }}>쇼핑 판별 다시 실행</button>
           <button className="btn-danger" onClick={async () => { try { const list = await api.videos({ shopping: 'no', limit: 500, with_graph: false }); const ids = list.items.filter((v) => v.is_derived).map((v) => v.id); if (ids.length === 0) { toast('삭제할 "쇼핑 아님" 재편집 영상이 없습니다'); return } if (!confirm(`쇼핑 신호가 없는 재편집 영상 ${ids.length}개를 삭제할까요? (후보가 연결된 영상은 건너뜀, 사람 판정으로 '쇼핑'으로 바꾼 영상은 제외)`)) return; const r = await api.bulkDeleteVideos(ids); toast(`삭제 ${r.deleted}개 · 건너뜀 ${r.skipped.length}개`); q.reload() } catch (e: any) { toast(e.message, 'err') } }}>쇼핑 아님 일괄 삭제</button>
           <button className="btn-ghost" onClick={() => setDisc(true)}>재편집 쇼츠 검색(YouTube)</button><button className="btn-primary" onClick={() => setAdd(true)}>+ 영상 등록</button>
         </div>
@@ -61,7 +62,7 @@ export default function Videos() {
         <Field label="재편집 쇼츠 연결"><Select value={f.unlinked_derived || ''} onChange={(v) => set('unlinked_derived', v)} placeholder="전체" options={[['true', '원본 미연결 재편집만']]} /></Field>
         <Field label="쇼핑 쇼츠 판정"><Select value={f.shopping || ''} onChange={(v) => set('shopping', v)} placeholder="전체" options={[['yes', '쇼핑 쇼츠'], ['no', '쇼핑 아님'], ['unknown', '미판별']]} /></Field>
         <Field label="상품 연결"><Select value={f.product_status || ''} onChange={(v) => set('product_status', v)} placeholder="전체" options={[['confirmed', '상품 확인됨'], ['candidate', '상품 후보(미확정)'], ['none', '상품 미연결']]} /></Field>
-        <div className="flex items-end gap-2"><label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={f.include_demo === 'true'} onChange={(e) => set('include_demo', e.target.checked ? 'true' : '')} /> DEMO 포함</label><button className="btn-ghost w-full" onClick={() => setF({ sort: 'view_count' })}>초기화</button></div>
+        <div className="flex items-end gap-2"><label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={f.include_demo === 'true'} onChange={(e) => set('include_demo', e.target.checked ? 'true' : '')} /> DEMO 포함</label><button className="btn-ghost w-full" onClick={() => setF({ sort: 'view_count', shopping: 'yes' })}>초기화</button></div>
       </div>
       <ErrorBox error={q.error} onRetry={q.reload} />
       {q.data && <div className="text-sm muted">{q.data.total}개 · {q.data.sort_label}</div>}

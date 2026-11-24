@@ -309,3 +309,11 @@ class ShoppingFlagIn(BaseModel):
 
 class BulkDeleteIn(BaseModel):
     video_ids: list[int] = Field(min_length=1, max_length=5000)
+
+
+class AdoptSuggestionIn(BaseModel):
+    name: str = Field(min_length=1, max_length=300)
+    brand: str | None = None
+    category: Category
+    subcategory: str | None = None
+    evidence: str | None = None

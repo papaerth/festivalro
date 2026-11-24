@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
 import { Badge, Confirm, ErrorBox, Field, MetricPill, Modal, ProductStatusBadge, Select, Spinner, toneFor, useToast } from '../components/ui'
+import type { AISuggestion } from '../types'
 import ViewGraph from '../components/ViewGraph'
 
 const CT: [string, string][] = [['direct_recommend', '직접 추천형'], ['sponsored', '광고·협찬형'], ['long_term_love', '애정템형'], ['natural_use', '자연 사용형'], ['experience', '경험담형'], ['comparison', '비교형'], ['taste_reveal', '취향 공개형'], ['value_find', '가성비 발견형'], ['premium_taste', '프리미엄 취향형'], ['regret', '실패·후회형'], ['life_tip', '생활 노하우형'], ['curiosity_debate', '호기심·논쟁형'], ['accidental_find', '우연한 발견형'], ['repeat_buy', '반복 구매형'], ['gift', '선물 추천형']]
@@ -18,6 +19,8 @@ export default function VideoDetail() {
   const originals = useAsync(() => api.videos({ source_type: 'original_celebrity', limit: 500, sort: 'view_count', with_graph: false }))
   const { toast, node } = useToast()
   const [modal, setModal] = useState<null | 'snapshot' | 'metric' | 'segment' | 'candidate' | 'product'>(null)
+  const [aiBusy, setAiBusy] = useState(false)
+  const capRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState<Record<string, any>>({})
   const v = q.data
   const act = async (fn: () => Promise<any>, ok: string) => { try { await fn(); toast(ok); setModal(null); setForm({}); q.reload() } catch (e: any) { toast(e.detail?.message || e.message, 'err') } }
@@ -132,6 +135,29 @@ export default function VideoDetail() {
               <ul className="space-y-0.5">{v.description_links.map((l) => <li key={l.url} className="truncate"><a className={`underline ${l.is_shopping_link ? 'font-medium' : 'muted'}`} href={l.url} target="_blank" rel="noreferrer">{l.host}</a> <span className="muted">{l.url.slice(0, 70)}</span></li>)}</ul>
             </div>
           )}
+          <div className="mb-3 rounded-xl border border-stone-200 p-3 text-xs dark:border-stone-800">
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2"><span className="font-semibold">AI 상품 추정 <span className="muted font-normal">(썸네일·설명·태그·구매 링크 + 올린 캡처 이미지)</span></span>
+              <div className="flex gap-1">
+                <button className="btn-ghost px-2 py-1" disabled={aiBusy} onClick={async () => { setAiBusy(true); try { const r = await api.identifyProduct(v.id, [], true); toast(r.suggestions.length ? `AI 추정 ${r.suggestions.length}건` : 'AI: 상품을 특정하지 못함'); q.reload() } catch (e: any) { toast(e.message, 'err') } finally { setAiBusy(false) } }}>{aiBusy ? '추정 중…' : '썸네일로 추정'}</button>
+                <input ref={capRef} type="file" accept="image/*" multiple className="hidden" onChange={async (e) => { const files = Array.from(e.target.files || []); e.target.value = ''; if (!files.length) return; setAiBusy(true); try { const r = await api.identifyProduct(v.id, files, true); toast(r.suggestions.length ? `AI 추정 ${r.suggestions.length}건` : 'AI: 상품을 특정하지 못함'); q.reload() } catch (e2: any) { toast(e2.message, 'err') } finally { setAiBusy(false) } }} />
+                <button className="btn-primary px-2 py-1" disabled={aiBusy} onClick={() => capRef.current?.click()}>캡처 이미지 올려 추정</button>
+              </div></div>
+            <p className="muted">영상을 보다가 제품이 나오는 장면을 <b>캡처(Win+Shift+S)</b>해 올리면 그 화면으로 추정합니다. 결과는 추정일 뿐이며 '유사 상품 후보'로 등록되고, 사람이 확인해 상태를 바꿔야 '확인됨'이 됩니다. Claude API 키가 필요합니다.</p>
+            {v.ai_product_suggestions && (
+              <div className="mt-2 space-y-2">
+                {!v.ai_product_suggestions.video_is_shopping && <p className="text-amber-700 dark:text-amber-300">AI 판단: 상품 판매와 무관한 영상으로 보임. {v.ai_product_suggestions.notes}</p>}
+                {v.ai_product_suggestions.suggestions.map((sg: AISuggestion, i: number) => (
+                  <div key={i} className="flex items-start justify-between gap-2 rounded-lg bg-stone-50 p-2 dark:bg-stone-800/60">
+                    <div><div className="font-medium">{sg.brand ? `${sg.brand} ` : ''}{sg.name} <Badge tone={sg.confidence === 'high' ? 'green' : sg.confidence === 'medium' ? 'amber' : 'gray'}>확신 {sg.confidence}</Badge> <Badge tone="gray">{sg.category === 'unknown' ? '분류 미정' : LABELS.category[sg.category]}{sg.subcategory ? ` · ${sg.subcategory}` : ''}</Badge></div>
+                      <div className="muted">근거: {sg.evidence} · {sg.reasoning}</div></div>
+                    <button className="btn-ghost shrink-0 px-2 py-1" onClick={() => { const cat = sg.category === 'unknown' ? (prompt('분류를 입력하세요: beauty / living / food', 'food') as any) : sg.category; if (!['beauty', 'living', 'food'].includes(cat)) return; act(() => api.adoptSuggestion(v.id, { name: sg.name, brand: sg.brand || null, category: cat, subcategory: sg.subcategory || null, evidence: sg.evidence }), '유사 상품 후보로 등록·연결') }}>후보로 등록·연결</button>
+                  </div>
+                ))}
+                {v.ai_product_suggestions.video_is_shopping && v.ai_product_suggestions.suggestions.length === 0 && <p className="muted">상품을 특정하지 못했습니다. {v.ai_product_suggestions.notes}</p>}
+                <div className="muted">{v.ai_product_suggestions.model} · 이미지: {(v.ai_product_suggestions.image_sources || []).map((x) => x === 'thumbnail' ? '썸네일' : '캡처').join(', ') || '없음'} · {v.ai_product_suggestions.disclaimer}</div>
+              </div>
+            )}
+          </div>
           {v.products.length === 0 ? <p className="text-sm muted">연결된 상품이 없습니다. 상품 메뉴에서 등록한 뒤 연결하세요.</p> : v.products.map((p) => (
             <div key={p.mention_id} className="mb-2 flex items-center justify-between rounded-xl border border-stone-200 p-3 text-sm dark:border-stone-800">
               <div><div className="font-medium">{p.brand} {p.name}</div><div className="flex gap-1 text-xs"><Badge tone={toneFor.category(p.category)}>{LABELS.category[p.category]}</Badge><Badge tone={toneFor.identification(p.identification_status)}>{LABELS.identification[p.identification_status]}</Badge>{p.segment_id && <Badge tone="gray">장면 #{p.segment_id}</Badge>}</div></div>

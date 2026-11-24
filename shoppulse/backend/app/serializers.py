@@ -158,6 +158,7 @@ def video_detail(v: Video) -> dict:
         "original_products": ([product(m.product, with_offers=False) for m in v.original.mentions] if v.original else []),
         "evidence": evidence_summary(v),
         "description_links": description_links(v),
+        "ai_product_suggestions": v.ai_product_suggestions,
     })
     return d
 

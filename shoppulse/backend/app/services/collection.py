@@ -58,6 +58,10 @@ def upsert_video_from_api(db: Session, item: dict, channel: YoutubeChannel | Non
         v.channel_id = channel.id
     if created and source_type:
         v.source_type = source_type
+    from .shopping_filter import score_text
+
+    v.shopping_score, hits = score_text(v.title, v.description, v.tags)
+    v.shopping_hits = hits[:20]
     if item.get("caption") == "true":
         v.access_status = "captions" if v.access_status in ("unknown", "description_only") else v.access_status
     elif v.access_status == "unknown":

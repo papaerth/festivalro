@@ -119,6 +119,7 @@ class Video(TimestampMixin, Base):
     shopping_score: Mapped[int | None] = mapped_column(Integer)
     shopping_hits: Mapped[list | None] = mapped_column(JSON)
     is_shopping: Mapped[bool | None] = mapped_column(Boolean)
+    ai_product_suggestions: Mapped[dict | None] = mapped_column(JSON)  # 마지막 AI 상품 추정 결과(추정일 뿐, 확정 아님)
 
     channel: Mapped["YoutubeChannel | None"] = relationship(back_populates="videos")
     original: Mapped["Video | None"] = relationship(remote_side="Video.id", foreign_keys=[original_video_id],

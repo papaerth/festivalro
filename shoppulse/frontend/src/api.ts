@@ -54,7 +54,9 @@ export const api = {
   bulkDiscover: (b: { limit?: number; max_results?: number; suffix?: string; years?: number; order?: string; shopping_only?: boolean }) => req<T.BulkState>('POST', '/api/channels/bulk/discover', b),
   discoverShorts: (b: { query: string; celebrity_id?: number | null; max_results?: number; years?: number; order?: string; source_type?: string; shopping_only?: boolean }) => req<T.Job>('POST', '/api/videos/discover-shorts', b),
   copyOriginalProducts: (id: number) => req<{ added: number }>('POST', `/api/videos/${id}/copy-original-products`),
-  reclassifyShopping: () => req<{ total: number; shopping: number; non_shopping: number; threshold: number }>('POST', '/api/videos/reclassify-shopping'),
+  reclassifyShopping: (scope: 'all' | 'derived' = 'all') => req<{ total: number; shopping: number; non_shopping: number; threshold: number }>('POST', `/api/videos/reclassify-shopping?scope=${scope}`),
+  identifyProduct: (id: number, files: File[], useThumbnail = true) => { const fd = new FormData(); files.forEach((f) => fd.append('files', f)); return req<T.AISuggestions>('POST', `/api/videos/${id}/identify-product?use_thumbnail=${useThumbnail}`, fd, true) },
+  adoptSuggestion: (id: number, b: { name: string; brand?: string | null; category: 'beauty' | 'living' | 'food'; subcategory?: string | null; evidence?: string | null }) => req<T.Product>('POST', `/api/videos/${id}/adopt-suggestion`, b),
   bulkDeleteVideos: (video_ids: number[]) => req<{ deleted: number; skipped: any[] }>('POST', '/api/videos/bulk-delete', { video_ids }),
 
   videos: (p: Record<string, any> = {}) => req<{ total: number; items: T.VideoSummary[]; sort_label: string; note: string }>('GET', `/api/videos${qs(p)}`),

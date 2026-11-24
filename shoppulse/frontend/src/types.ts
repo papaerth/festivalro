@@ -39,8 +39,11 @@ export interface VideoDetail extends VideoSummary {
   snapshots: { observed_at: string; view_count: number; like_count: number | null; comment_count: number | null; source: string }[];
   metric_history: { id: number; metric_type: string; value: number | null; basis: string; source: string; measured_at: string; note: string | null }[];
   segments: Segment[]; products: Product[]; candidates: CandidateSummary[]; fetch_note?: string | null
-  derived_shorts: VideoSummary[]; original: VideoSummary | null; original_products: Product[]; evidence: Evidence; description_links: { url: string; host: string; is_shopping_link: boolean }[]
+  derived_shorts: VideoSummary[]; original: VideoSummary | null; original_products: Product[]; evidence: Evidence; description_links: { url: string; host: string; is_shopping_link: boolean }[]; ai_product_suggestions: AISuggestions | null
 }
+
+export interface AISuggestion { name: string; brand: string; category: 'beauty' | 'living' | 'food' | 'unknown'; subcategory: string; confidence: 'high' | 'medium' | 'low'; reasoning: string; evidence: string }
+export interface AISuggestions { video_is_shopping: boolean; suggestions: AISuggestion[]; notes: string; model?: string; image_sources?: string[]; disclaimer?: string }
 
 export interface Evidence { count: number; unconfirmed_count?: number; note?: string; total_views?: number; max_views?: number; graph_types?: Record<string, number>; best_outlier?: number | null; best_vph?: number | null; resurgence?: number; spike_plateau?: number; steady_rise?: number }
 
