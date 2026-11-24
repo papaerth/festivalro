@@ -96,3 +96,13 @@ def test_performance_suggestion_requires_metrics():
     val, reason = suggest_performance_score([], None, 20)
     assert val is None
     assert "미확인" in reason
+
+
+def test_shopping_filter_scores():
+    from app.services.shopping_filter import score_text, threshold
+    s, hits = score_text("성시경 추천템 내돈내산 간식 5가지", "구매 링크 https://link.coupang.com/xxx 쿠팡 파트너스 활동으로 수수료를 제공받습니다", ["쇼핑"])
+    assert s >= threshold() and any("추천템" in h for h in hits)
+    s2, _ = score_text("임영웅 콘서트 직캠 레전드 무대", "팬미팅 현장", [])
+    assert s2 < threshold()
+    s3, _ = score_text("임영웅 근황", "", [])
+    assert s3 < threshold()

@@ -95,7 +95,7 @@ def bulk_discover(body: schemas.BulkDiscoverIn, db: Session = Depends(get_db)):
         raise HTTPException(503, "YOUTUBE_API_KEY 가 설정되지 않았습니다.")
     try:
         return bulk.start("discover", limit=body.limit, max_results=body.max_results, suffix=body.suffix,
-                          years=body.years, order=body.order)
+                          years=body.years, order=body.order, shopping_only=body.shopping_only)
     except RuntimeError as e:
         raise HTTPException(409, str(e))
 

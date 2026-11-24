@@ -23,7 +23,7 @@ export interface VideoSummary {
   channel_verification: string | null; celebrity_name: string | null; published_at: string | null; duration_seconds: number | null; video_format: string;
   view_count: number | null; like_count: number | null; comment_count: number | null; stats_updated_at: string | null; source_type: string; access_status: string;
   data_source: string; is_demo: boolean; metrics: Record<string, MetricVal>; outlier: number | null; outlier_band: string | null; vph: number | null;
-  vph_basis: string | null; vph_band: string | null; snapshot_count: number; sparkline: { observed_at: string; view_count: number; source: string }[]; original_video_id: number | null; celebrity_id: number | null; yt_channel_title: string | null; yt_channel_id: string | null; discovery_query: string | null; derived_count: number; is_derived: boolean; segment_count: number; candidate_count: number; graph: GraphAnalysis
+  vph_basis: string | null; vph_band: string | null; snapshot_count: number; sparkline: { observed_at: string; view_count: number; source: string }[]; original_video_id: number | null; celebrity_id: number | null; yt_channel_title: string | null; yt_channel_id: string | null; discovery_query: string | null; derived_count: number; is_derived: boolean; shopping_score: number | null; shopping_hits: string[]; is_shopping_manual: boolean | null; is_shopping: boolean | null; segment_count: number; candidate_count: number; graph: GraphAnalysis
 }
 
 export interface Segment {

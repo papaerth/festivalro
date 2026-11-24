@@ -296,3 +296,26 @@ def test_migration_adds_missing_columns(tmp_path):
     applied = migrations.run(eng)
     assert "videos.original_video_id" in applied and "videos.celebrity_id" in applied
     assert migrations.run(eng) == []  # 두 번째는 변경 없음
+
+
+def test_shopping_flag_filter_and_bulk_delete(client):
+    r = client.post("/api/videos", json={"url_or_id": "ddddddddddd", "title": "임영웅 콘서트 직캠", "source_type": "reedit_shorts", "fetch": False}).json()
+    r2 = client.post("/api/videos", json={"url_or_id": "eeeeeeeeeee", "title": "임영웅 추천템 내돈내산 쿠팡 꿀템", "source_type": "reedit_shorts", "fetch": False}).json()
+    assert r["is_shopping"] is None  # 아직 점수 없음
+    res = client.post("/api/videos/reclassify-shopping").json()
+    assert res["total"] >= 2 and res["shopping"] >= 1 and res["non_shopping"] >= 1
+    assert client.get(f"/api/videos/{r['id']}").json()["is_shopping"] is False
+    assert client.get(f"/api/videos/{r2['id']}").json()["is_shopping"] is True
+    # 사람 판정 우선
+    client.patch(f"/api/videos/{r['id']}", json={"is_shopping": True})
+    d = client.get(f"/api/videos/{r['id']}").json()
+    assert d["is_shopping"] is True and d["is_shopping_manual"] is True
+    client.patch(f"/api/videos/{r['id']}", json={"is_shopping": None})
+    assert client.get(f"/api/videos/{r['id']}").json()["is_shopping"] is False
+    no = client.get("/api/videos", params={"shopping": "no", "source_type": "reedit_shorts"}).json()
+    assert any(i["id"] == r["id"] for i in no["items"]) and not any(i["id"] == r2["id"] for i in no["items"])
+    # 후보 연결된 영상은 일괄 삭제에서 건너뜀
+    cand_vid = client.get("/api/candidates").json()["items"][0]["video_id"]
+    res = client.post("/api/videos/bulk-delete", json={"video_ids": [r["id"], cand_vid]}).json()
+    assert res["deleted"] == 1 and len(res["skipped"]) == 1
+    assert client.get(f"/api/videos/{r['id']}").status_code == 404

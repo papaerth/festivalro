@@ -17,6 +17,9 @@ COLUMNS = [
     ("videos", "yt_channel_id", "VARCHAR(64)"),
     ("videos", "yt_channel_title", "VARCHAR(200)"),
     ("videos", "discovery_query", "VARCHAR(300)"),
+    ("videos", "shopping_score", "INTEGER"),
+    ("videos", "shopping_hits", "JSON"),
+    ("videos", "is_shopping", "BOOLEAN"),
 ]
 INDEXES = [
     ("ix_videos_original_video_id", "videos", "original_video_id"),

@@ -85,6 +85,7 @@ class VideoPatch(BaseModel):
     channel_id: int | None = None
     original_video_id: int | None = None
     celebrity_id: int | None = None
+    is_shopping: bool | None = None
     title: str | None = None
     description: str | None = None
     published_at: datetime | None = None
@@ -280,6 +281,17 @@ class DiscoverShortsIn(BaseModel):
     years: int = Field(3, ge=0, le=20)
     order: Literal["relevance", "viewCount", "date"] = "relevance"
     source_type: Literal["reedit_shorts", "competitor"] = "reedit_shorts"
+    shopping_only: bool = True  # 쇼핑 신호가 없는 쇼츠는 등록하지 않음
+
+
+class ShoppingFlagIn(BaseModel):
+    is_shopping: bool | None  # None = 사람 판정 해제(규칙 점수로 복귀)
+
+
+class BulkDeleteIn(BaseModel):
+    video_ids: list[int] = Field(min_length=1, max_length=5000)
+    source_type: Literal["reedit_shorts", "competitor"] = "reedit_shorts"
+    shopping_only: bool = True  # 쇼핑 신호가 없는 쇼츠는 등록하지 않음
 
 
 class BulkDiscoverIn(BaseModel):
@@ -288,3 +300,12 @@ class BulkDiscoverIn(BaseModel):
     suffix: str = Field("추천템", max_length=100)  # 검색어 = 연예인 이름 + suffix
     years: int = Field(3, ge=0, le=20)
     order: Literal["relevance", "viewCount", "date"] = "relevance"
+    shopping_only: bool = True
+
+
+class ShoppingFlagIn(BaseModel):
+    is_shopping: bool | None  # None = 사람 판정 해제(규칙 점수로 복귀)
+
+
+class BulkDeleteIn(BaseModel):
+    video_ids: list[int] = Field(min_length=1, max_length=5000)

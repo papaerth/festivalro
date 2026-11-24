@@ -127,7 +127,7 @@ def _run_collect(max_videos: int, years: int, stale_days: int):
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 
-def _run_discover(limit: int, max_results: int, suffix: str, years: int, order: str):
+def _run_discover(limit: int, max_results: int, suffix: str, years: int, order: str, shopping_only: bool = True):
     with SessionLocal() as db:
         celebs = (db.query(Celebrity).filter(Celebrity.is_demo.is_(False)).join(Celebrity.channels)
                   .filter(YoutubeChannel.is_active.is_(True)).distinct().order_by(Celebrity.id).limit(limit).all())
@@ -137,15 +137,18 @@ def _run_discover(limit: int, max_results: int, suffix: str, years: int, order: 
             BULK_STATE["current"] = c.name
             query = f"{c.name} {suffix}".strip()
             job = discover_shorts(db, query, celebrity_id=c.id, max_results=max_results, years=years, order=order,
-                                  triggered_by="bulk")
+                                  triggered_by="bulk", shopping_only=shopping_only)
             quota += job.quota_used
             results.append({"celebrity": c.name, "query": query, "status": job.status, "created": job.result.get("created"),
-                            "updated": job.result.get("updated"), "found": job.result.get("found"), "error": job.error})
+                            "updated": job.result.get("updated"), "found": job.result.get("found"),
+                            "skipped_non_shopping": job.result.get("skipped_non_shopping"), "error": job.error})
             BULK_STATE["done"] += 1
             if job.status == "failed" and job.result.get("reason") == "quotaExceeded":
                 break
         summary = {"celebrities": len(results), "success": sum(r["status"] == "success" for r in results),
-                   "created": sum(r["created"] or 0 for r in results), "failed": [r for r in results if r["status"] == "failed"],
+                   "created": sum(r["created"] or 0 for r in results),
+                   "skipped_non_shopping": sum(r["skipped_non_shopping"] or 0 for r in results),
+                   "failed": [r for r in results if r["status"] == "failed"],
                    "quota_used": quota, "results": results}
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 

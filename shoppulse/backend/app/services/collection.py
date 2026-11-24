@@ -183,7 +183,7 @@ def add_video_by_id(db: Session, youtube_video_id: str, channel: YoutubeChannel 
 
 def discover_shorts(db: Session, query: str, celebrity_id: int | None = None, max_results: int = 25,
                     years: int = 3, order: str = "relevance", source_type: str = "reedit_shorts",
-                    triggered_by: str = "manual") -> CollectionJob:
+                    triggered_by: str = "manual", shopping_only: bool = True) -> CollectionJob:
     """연예인 이름·상품 키워드로 YouTube 쇼츠를 검색해 '재편집 쇼츠'로 등록한다.
 
     - 등록된 공식 채널의 영상이 검색되면 원본(original_celebrity)으로 분류한다.
@@ -191,7 +191,7 @@ def discover_shorts(db: Session, query: str, celebrity_id: int | None = None, ma
     - 할당량: 검색 100/페이지 + 영상 50개당 1.
     """
     job = start_job(db, "discover_shorts", {"query": query, "celebrity_id": celebrity_id, "max_results": max_results,
-                                            "years": years, "order": order}, triggered_by)
+                                            "years": years, "order": order, "shopping_only": shopping_only}, triggered_by)
     db.commit()
     try:
         client = YouTubeClient()
@@ -203,11 +203,22 @@ def discover_shorts(db: Session, query: str, celebrity_id: int | None = None, ma
         ids = client.search_videos(query, max_results=max_results, duration="short", published_after=after, order=order)
         now = utcnow().replace(microsecond=0)
         official = {c.channel_id: c for c in db.query(YoutubeChannel).filter(YoutubeChannel.channel_id.isnot(None)).all()}
-        created = updated = originals = 0
+        from .shopping_filter import score_text, threshold
+
+        created = updated = originals = skipped = 0
+        existing_ids = {r[0] for r in db.query(Video.youtube_video_id).filter(Video.youtube_video_id.in_(ids)).all()}
         for item in client.get_videos(ids):
             ch = official.get(item.get("channel_id"))
+            if not ch and shopping_only and item["video_id"] not in existing_ids:
+                sc, _hits = score_text(item.get("title"), item.get("description"), item.get("tags"))
+                if sc < threshold():
+                    skipped += 1
+                    continue
             st = "original_celebrity" if ch else source_type
             v, c = upsert_video_from_api(db, item, ch, now, source_type=st)
+            if not ch:
+                sc, hits = score_text(v.title, v.description, v.tags)
+                v.shopping_score, v.shopping_hits = sc, hits[:20]
             if c:
                 created += 1
                 v.discovery_query = query
@@ -217,7 +228,8 @@ def discover_shorts(db: Session, query: str, celebrity_id: int | None = None, ma
                 updated += 1
             originals += int(bool(ch))
         finish_job(job, "success", {"created": created, "updated": updated, "found": len(ids),
-                                    "official_channel_videos": originals}, items=created + updated, quota=client.quota_used)
+                                    "official_channel_videos": originals, "skipped_non_shopping": skipped},
+                   items=created + updated, quota=client.quota_used)
     except YouTubeAPIError as e:
         finish_job(job, "failed", error=str(e), quota=client.quota_used)
         job.result = {"reason": e.reason}

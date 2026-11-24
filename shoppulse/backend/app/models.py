@@ -115,6 +115,10 @@ class Video(TimestampMixin, Base):
     yt_channel_id: Mapped[str | None] = mapped_column(String(64))
     yt_channel_title: Mapped[str | None] = mapped_column(String(200))
     discovery_query: Mapped[str | None] = mapped_column(String(300))  # 어떤 검색어로 발견했는지
+    # 쇼핑 쇼츠 판별: 규칙 점수·적중 키워드, 사람이 직접 정한 판정(NULL=미지정)
+    shopping_score: Mapped[int | None] = mapped_column(Integer)
+    shopping_hits: Mapped[list | None] = mapped_column(JSON)
+    is_shopping: Mapped[bool | None] = mapped_column(Boolean)
 
     channel: Mapped["YoutubeChannel | None"] = relationship(back_populates="videos")
     original: Mapped["Video | None"] = relationship(remote_side="Video.id", foreign_keys=[original_video_id],

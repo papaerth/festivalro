@@ -47,7 +47,7 @@ def list_videos(
     min_vph: float | None = None, max_vph: float | None = None,
     min_duration: int | None = None, max_duration: int | None = None,
     graph_type: str | None = None, content_type: str | None = None, sponsorship: str | None = None,
-    original_video_id: int | None = None, unlinked_derived: bool = False,
+    original_video_id: int | None = None, unlinked_derived: bool = False, shopping: str | None = None,
     include_demo: bool = False, sort: str = "view_count",
     limit: int = Query(50, le=500), offset: int = 0, with_graph: bool = True,
     db: Session = Depends(get_db),
@@ -65,6 +65,15 @@ def list_videos(
         qs = qs.filter(Video.original_video_id == original_video_id)
     if unlinked_derived:
         qs = qs.filter(Video.source_type.in_(["reedit_shorts", "competitor"]), Video.original_video_id.is_(None))
+    if shopping:
+        from ..services.shopping_filter import threshold
+        th = threshold()
+        if shopping == "yes":
+            qs = qs.filter(or_(Video.is_shopping.is_(True), (Video.is_shopping.is_(None)) & (Video.shopping_score >= th)))
+        elif shopping == "no":
+            qs = qs.filter(or_(Video.is_shopping.is_(False), (Video.is_shopping.is_(None)) & (Video.shopping_score < th)))
+        elif shopping == "unknown":
+            qs = qs.filter(Video.is_shopping.is_(None), Video.shopping_score.is_(None))
     if video_format:
         qs = qs.filter(Video.video_format == video_format)
     if source_type:
@@ -265,8 +274,41 @@ def delete_segment(vid: int, sid: int, db: Session = Depends(get_db)):
 def discover_shorts(body: schemas.DiscoverShortsIn, db: Session = Depends(get_db)):
     """연예인·상품 키워드로 YouTube 쇼츠를 검색해 재편집 쇼츠로 등록(할당량 100/검색)."""
     job = collection.discover_shorts(db, body.query, celebrity_id=body.celebrity_id, max_results=body.max_results,
-                                     years=body.years, order=body.order, source_type=body.source_type)
+                                     years=body.years, order=body.order, source_type=body.source_type,
+                                     shopping_only=body.shopping_only)
     return serializers.job(job)
+
+
+@router.post("/reclassify-shopping")
+def reclassify_shopping(db: Session = Depends(get_db)):
+    """재편집·경쟁 영상 전체를 쇼핑 규칙으로 다시 점수화한다(사람 판정은 유지)."""
+    from ..services.shopping_filter import classify, threshold
+    rows = db.query(Video).filter(Video.source_type.in_(["reedit_shorts", "competitor"])).all()
+    yes = no = 0
+    for v in rows:
+        r = classify(v)
+        if r["is_shopping"]:
+            yes += 1
+        else:
+            no += 1
+    db.commit()
+    return {"total": len(rows), "shopping": yes, "non_shopping": no, "threshold": threshold()}
+
+
+@router.post("/bulk-delete")
+def bulk_delete(body: schemas.BulkDeleteIn, db: Session = Depends(get_db)):
+    """영상 일괄 삭제. 후보가 연결된 영상은 건너뛴다."""
+    rows = db.query(Video).filter(Video.id.in_(body.video_ids)).all()
+    deleted, skipped = 0, []
+    for v in rows:
+        if v.candidates:
+            skipped.append({"id": v.id, "title": v.title, "reason": "후보 연결됨"})
+            continue
+        db.delete(v)
+        deleted += 1
+    log(db, "video", None, "bulk_delete", {"deleted": deleted, "skipped": len(skipped)})
+    db.commit()
+    return {"deleted": deleted, "skipped": skipped}
 
 
 @router.post("/refresh-stats")

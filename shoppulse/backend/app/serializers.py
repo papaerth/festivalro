@@ -61,6 +61,11 @@ def product(p: Product, with_offers: bool = True) -> dict:
     return d
 
 
+def _is_shopping(v: Video):
+    from .services.shopping_filter import is_shopping
+    return is_shopping(v)
+
+
 def _sparkline(v: Video, max_points: int = 60) -> list[dict]:
     snaps = v.snapshots
     if len(snaps) > max_points:
@@ -95,6 +100,8 @@ def video_summary(v: Video, with_graph: bool = True) -> dict:
         "discovery_query": v.discovery_query,
         "derived_count": len(v.derived),
         "is_derived": v.source_type in ("reedit_shorts", "competitor"),
+        "shopping_score": v.shopping_score, "shopping_hits": v.shopping_hits or [],
+        "is_shopping_manual": v.is_shopping, "is_shopping": _is_shopping(v),
         "segment_count": len(v.segments), "candidate_count": len(v.candidates),
     }
     if with_graph:
