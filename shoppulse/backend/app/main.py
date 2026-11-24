@@ -19,6 +19,19 @@ from .services import scheduler
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("shoppulse")
 
+_QUIET_PATHS = ("/api/channels/bulk/status", "/api/health")
+
+
+class _AccessLogFilter(logging.Filter):
+    """화면이 주기적으로 묻는 상태 확인 요청은 서버 창 로그에서 제외한다."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not any(p in msg for p in _QUIET_PATHS)
+
+
+logging.getLogger("uvicorn.access").addFilter(_AccessLogFilter())
+
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)

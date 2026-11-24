@@ -12,18 +12,23 @@ export default function BulkPanel({ onDone, unresolvedCount, collectableCount }:
   const [wasRunning, setWasRunning] = useState(false)
 
   useEffect(() => {
+    // 작업 중일 때만 2초마다, 평소에는 15초마다 상태 확인
     let alive = true
-    const tick = async () => { try { const s = await api.bulkStatus(); if (alive) setSt(s) } catch {} }
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const tick = async () => {
+      let running = false
+      try { const s = await api.bulkStatus(); if (alive) { setSt(s); running = s.running } } catch {}
+      if (alive) timer = setTimeout(tick, running ? 2000 : 15000)
+    }
     tick()
-    const id = setInterval(tick, 2000)
-    return () => { alive = false; clearInterval(id) }
+    return () => { alive = false; if (timer) clearTimeout(timer) }
   }, [])
   useEffect(() => {
     if (st?.running) setWasRunning(true)
     else if (wasRunning && st && !st.running) { setWasRunning(false); onDone() }
   }, [st?.running])
 
-  const run = async (fn: () => Promise<BulkState>) => { try { setSt(await fn()) } catch (e: any) { toast(e.message, 'err') } }
+  const run = async (fn: () => Promise<BulkState>) => { try { setSt(await fn()); setTimeout(async () => { try { setSt(await api.bulkStatus()) } catch {} }, 1500) } catch (e: any) { toast(e.message, 'err') } }
   const sum = st?.summary || {}
   return (
     <div className="card p-4">
