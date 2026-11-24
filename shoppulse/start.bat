@@ -1,8 +1,25 @@
 @echo off
-if not "%~1"=="--run" (
-  start "SHOPPULSE server" cmd /k ""%~f0" --run"
+rem 사용: start.bat        → 서버 창을 열고 브라우저 실행
+rem       start.bat --min  → 서버 창을 최소화해서 실행(바탕화면 바로가기용)
+rem 이미 서버가 켜져 있으면 브라우저만 연다.
+if "%~1"=="--run" goto :run
+setlocal
+cd /d "%~dp0"
+set PORT=8787
+for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /i "SHOPPULSE_PORT=" .env 2^>nul`) do if not "%%b"=="" set PORT=%%b
+netstat -ano | findstr /r /c:":%PORT% .*LISTENING" >nul 2>nul
+if not errorlevel 1 (
+  start http://localhost:%PORT%
   exit /b
 )
+if "%~1"=="--min" (
+  start "SHOPPULSE server" /min cmd /k ""%~f0" --run"
+) else (
+  start "SHOPPULSE server" cmd /k ""%~f0" --run"
+)
+exit /b
+
+:run
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"

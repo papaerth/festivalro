@@ -78,8 +78,11 @@ pushd backend
 .venv\Scripts\python -m app.cli doctor
 popd
 echo.
+echo [진행] 바탕화면 바로가기 생성...
+call make_shortcut.bat --quiet
+echo.
 echo ============================================
-echo  설정 완료! 이제 start.bat 을 실행하세요.
+echo  설정 완료! 바탕화면의 'SHOPPULSE 3.0' 아이콘 또는 start.bat 으로 실행하세요.
 echo  이 창은 닫아도 됩니다.
 echo ============================================
 goto :eof
