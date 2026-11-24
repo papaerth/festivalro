@@ -34,6 +34,7 @@ UPDATE_ZIPS = [
     "https://github.com/papaerth/festivalro/archive/refs/heads/main.zip",
 ]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+PARALLEL_DEFAULT = 3      # 동시에 만드는 편 수의 기본값(작업 목록 탭에서 1~4로 바꾼다)
 # 창의 진행 단계 표시. 진행 기록 줄의 머리말로 지금 어느 단계인지 안다.
 STEPS = ["대사 읽기", "제품 선정", "컷 설계", "음성 · 댓글", "영상 만들기", "검수 · 문구"]
 STEP_MARKS = [("[준비]", 0), ("[분석]", 1), ("[설계]", 2), ("[다듬음]", 2), ("[가운데 맞춤]", 3), ("[TTS]", 3), ("[캡처]", 3),
@@ -817,10 +818,18 @@ def run_gui(argv: list[str]):
     tab_jobs = ttk.Frame(stack)
     jtop = ttk.Frame(tab_jobs, padding=(0, 4, 0, 8))
     jtop.pack(fill="x")
-    v_par = tk.IntVar(value=max(1, min(4, int(load_state().get("parallel") or 2))))
+    # 동시에 만들 개수: 기본 3. 사용자가 직접 바꾼 적이 있으면(parallel_user) 그 값을 쓴다
+    _st = load_state()
+    v_par = tk.IntVar(value=max(1, min(4, int(_st.get("parallel") or PARALLEL_DEFAULT)))
+                      if _st.get("parallel_user") else PARALLEL_DEFAULT)
+    state["par_user"] = bool(_st.get("parallel_user"))
+
+    def par_changed():
+        state["par_user"] = True
+        pump_queue()
     ttk.Label(jtop, text="동시에 만들 개수", style="Field.TLabel").pack(side="left")
     ttk.Spinbox(jtop, from_=1, to=4, textvariable=v_par, width=4, state="readonly",
-                command=lambda: pump_queue()).pack(side="left", padx=8)
+                command=par_changed).pack(side="left", padx=8)
     ttk.Label(jtop, text="[만들기]를 누른 뒤 [모두 지우기]로 다음 영상을 넣고 또 [만들기]를 누르면 함께 진행돼요. "
                          "줄을 두 번 누르면 그 작업이 열립니다.", style="Faint.TLabel").pack(side="left", padx=8)
     tree_jobs = ttk.Treeview(tab_jobs, columns=("name", "status", "stage", "when"), show="headings", selectmode="browse")
@@ -1043,8 +1052,9 @@ def run_gui(argv: list[str]):
         tree_jobs.delete(*tree_jobs.get_children())
         for name, j in rows:
             tree_jobs.insert("", "end", iid=name, values=(name, j["status"], j["stage"], j["when"]))
-        n = sum(1 for j in jobs.values() if j["status"] in ("대기", "진행"))
-        nb.tab(tab_jobs, text=f"작업 목록 · {n}개 진행" if n else "작업 목록")
+        n = sum(1 for j in jobs.values() if j["status"] == "진행")
+        w = sum(1 for j in jobs.values() if j["status"] == "대기")
+        nb.tab(tab_jobs, text="작업 목록" + (f" · {n}개 진행" if n else "") + (f" · {w}개 대기" if w else ""))
 
     def start_job(name: str):
         j = jobs[name]
@@ -1069,7 +1079,7 @@ def run_gui(argv: list[str]):
         try:
             limit = max(1, min(4, int(v_par.get())))
         except (tk.TclError, ValueError):
-            limit = 2
+            limit = PARALLEL_DEFAULT
         while waiting and sum(1 for j in jobs.values() if j["status"] == "진행") < limit:
             start_job(waiting.pop(0))
         sync_buttons()
@@ -1339,8 +1349,8 @@ def run_gui(argv: list[str]):
         try:
             par = int(v_par.get())
         except (tk.TclError, ValueError):
-            par = 2
-        save_state(last=name, draft=draft, geometry=root.geometry(), parallel=par)
+            par = PARALLEL_DEFAULT
+        save_state(last=name, draft=draft, geometry=root.geometry(), parallel=par, parallel_user=bool(state.get("par_user")))
 
     def on_close():
         n = sum(1 for j in jobs.values() if j["status"] in ("대기", "진행"))
