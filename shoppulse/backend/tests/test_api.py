@@ -378,3 +378,21 @@ def test_sourcing_background_without_api_key_completes(client):
         time.sleep(0.1)
     assert st["running"] is False and st["summary"]["report_date"] == "2026-11-26"
     assert st["summary"]["stats_refresh"]["skipped"] is True
+
+
+def test_auto_discovery_creates_candidates_and_ai_skipped_without_key(client):
+    # 쇼핑 판정이 참이고 먹거리 단어가 있는 원본 영상을 하나 더 등록
+    v = client.post("/api/videos", json={"url_or_id": "hhhhhhhhhhh", "title": "성시경 추천템 간식 라면 내돈내산", "duration_seconds": 900,
+                                        "view_count": 2500000, "fetch": False}).json()
+    assert v["is_shopping"] is True
+    rep = client.post("/api/sourcing/run", json={"report_date": "2026-11-27", "background": False}).json()
+    disc = rep["summary"]["auto_discovery"]
+    assert disc["created"]["food"] >= 1
+    assert rep["summary"]["ai_scoring"]["skipped"] is True
+    cands = client.get("/api/candidates", params={"category": "food"}).json()["items"]
+    auto = [c for c in cands if c["video_id"] == v["id"]]
+    assert len(auto) == 1 and "[자동 발굴" in auto[0]["notes"] and auto[0]["status"] == "candidate"
+    # 다시 돌려도 같은 영상·카테고리 후보는 중복 생성하지 않음
+    rep2 = client.post("/api/sourcing/run", json={"report_date": "2026-11-28", "background": False}).json()
+    assert rep2["summary"]["auto_discovery"]["skipped"]["already"] >= 1
+    assert len([c for c in client.get("/api/candidates", params={"category": "food"}).json()["items"] if c["video_id"] == v["id"]]) == 1

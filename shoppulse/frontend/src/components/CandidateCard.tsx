@@ -32,7 +32,7 @@ export default function CandidateCard({ c, draggable, onDragStart }: { c: Candid
           <Badge tone="gray">{c.product_name || '상품 미확인'}</Badge>
           <Badge tone={toneFor.identification(c.product_identification)}>{LABELS.identification[c.product_identification || 'unidentified']}</Badge>
           {c.content_type_label && <Badge tone="blue">{c.content_type_label}</Badge>}
-          <Badge tone={toneFor.status(c.status)}>{LABELS.status[c.status] || c.status}</Badge>
+          <Badge tone={toneFor.status(c.status)}>{LABELS.status[c.status] || c.status}</Badge>{c.notes?.includes('[자동 발굴') && <Badge tone="gray" title={c.notes || ''}>자동 발굴</Badge>}{c.score_scorer === 'ai' && <Badge tone="gray">AI 점수</Badge>}
           {c.recommended_slot && <Badge tone="violet">{LABELS.slot[c.recommended_slot]}</Badge>}
           {c.production_ready ? <Badge tone="green">제작 준비 완료</Badge> : <Badge tone="amber" title={c.unresolved_critical.join(', ')}>검증 {c.unresolved_critical.length}건 미해결</Badge>}
         </div>

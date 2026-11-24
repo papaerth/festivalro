@@ -192,12 +192,17 @@ def _run_sourcing(report_date, refresh_limit: int, trigger: str = "manual"):
                 error = str(e); finish_job(job, "failed", error=error)
             db.commit()
             refresh = {"skipped": False, "job_id": job.id, "status": job.status, "updated": updated, "quota_used": job.quota_used, "error": error}
-        BULK_STATE.update(current="후보 평가")
-        rep = run_daily_sourcing(db, trigger=trigger, report_date=report_date, refresh_limit=0)
+        BULK_STATE.update(current="후보 자동 발굴·AI 채점·평가", done=0, total=0)
+        try:
+            rep = run_daily_sourcing(db, trigger=trigger, report_date=report_date, refresh_limit=0)
+        except Exception as e:  # 배경 스레드 오류를 화면에 남긴다
+            BULK_STATE.update(running=False, current=None, error=f"소싱 실행 오류: {e}", finished_at=utcnow().isoformat())
+            raise
         rep.summary = dict(rep.summary, stats_refresh=refresh)
         db.commit()
         summary = {"report_id": rep.id, "report_date": rep.report_date.isoformat(), "stats_refresh": refresh,
-                   "total_candidates": rep.summary["total_candidates"], "total_final": rep.summary["total_final"]}
+                   "total_candidates": rep.summary["total_candidates"], "total_final": rep.summary["total_final"],
+                   "auto_discovery": rep.summary.get("auto_discovery"), "ai_scoring": rep.summary.get("ai_scoring")}
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 

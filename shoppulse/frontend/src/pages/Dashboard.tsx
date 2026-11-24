@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, fmt } from '../api'
+import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
 import { Badge, ErrorBox, Spinner, Stat, toneFor, useToast } from '../components/ui'
 import type { BulkState } from '../types'
@@ -18,7 +18,7 @@ export default function Dashboard() {
     let alive = true, timer: ReturnType<typeof setTimeout> | undefined
     const tick = async () => {
       let running = false
-      try { const st = await api.bulkStatus(); if (alive) { running = st.running; setJob((prev) => { if (prev?.running && !st.running && st.task === 'sourcing') { const sm = st.summary || {}; const rf = sm.stats_refresh; toast(`소싱 실행 완료 — ${rf?.skipped ? `조회수 갱신 건너뜀(${rf.reason})` : `조회수 ${rf?.updated ?? 0}개 갱신`} · 후보 ${sm.total_candidates}개, 최종 추천 ${sm.total_final}개 (목표 27/9)`); stats.reload(); cands.reload() } return st }) } } catch {}
+      try { const st = await api.bulkStatus(); if (alive) { running = st.running; setJob((prev) => { if (prev?.running && !st.running && st.task === 'sourcing') { const sm = st.summary || {}; const rf = sm.stats_refresh; const ad = sm.auto_discovery; const ai = sm.ai_scoring; toast(`소싱 완료 — ${rf?.skipped ? `갱신 건너뜀(${rf.reason})` : `조회수 ${rf?.updated ?? 0}개 갱신`} · 자동 발굴 ${ad ? Object.values(ad.created as Record<string, number>).reduce((a, b) => a + b, 0) : 0}개 · AI 채점 ${ai?.skipped ? `건너뜀(${ai.reason})` : `${ai?.scored ?? 0}건`} · 후보 ${sm.total_candidates}/27, 추천 ${sm.total_final}/9`); stats.reload(); cands.reload() } return st }) } } catch {}
       if (alive) timer = setTimeout(tick, running ? 2000 : 15000)
     }
     tick()
@@ -73,6 +73,12 @@ export default function Dashboard() {
             <h2 className="section-title">최근 소싱 보고서 {rep ? <span className="muted text-sm font-normal">· {rep.report_date} ({rep.trigger === 'manual' ? '수동' : '자동'})</span> : null}</h2>
             <Link to="/candidates" className="text-sm underline">후보 전체 보기</Link>
           </div>
+          {rep && (rep.summary.auto_discovery || rep.summary.ai_scoring) && (
+            <p className="mb-2 text-[11px] muted">
+              {rep.summary.auto_discovery && <>자동 발굴 {Object.entries(rep.summary.auto_discovery.created as Record<string, number>).map(([k, n]) => `${LABELS.category[k]} ${n}`).join(' · ')} (후보 풀 {Object.values(rep.summary.auto_discovery.pool as Record<string, number>).reduce((a, b) => a + b, 0)}개, 쇼핑 아님 {rep.summary.auto_discovery.skipped.not_shopping} · 분류 불가 {rep.summary.auto_discovery.skipped.no_category} 제외) · </>}
+              {rep.summary.ai_scoring && (rep.summary.ai_scoring.skipped ? <>AI 채점 건너뜀: {rep.summary.ai_scoring.reason}</> : <>AI 1차 채점 {rep.summary.ai_scoring.scored}건{rep.summary.ai_scoring.failed?.length ? ` · 실패 ${rep.summary.ai_scoring.failed.length}` : ''}</>)}
+            </p>
+          )}
           {!rep ? <p className="text-sm muted">아직 소싱을 실행하지 않았습니다. 「오늘 소싱 실행」을 눌러 저장된 후보를 평가하세요.</p> : (
             <div className="grid gap-3 md:grid-cols-3">
               {rep.categories.map((c: any) => (
