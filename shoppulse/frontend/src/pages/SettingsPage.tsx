@@ -13,6 +13,7 @@ export default function SettingsPage() {
   const [bands, setBands] = useState('')
   const [slots, setSlots] = useState('')
   const [region, setRegion] = useState('')
+  const [refreshLimit, setRefreshLimit] = useState(300)
   const [lunar, setLunar] = useState('')
   const restoreRef = useRef<HTMLInputElement>(null)
   const [restoreMode, setRestoreMode] = useState<'replace' | 'merge'>('replace')
@@ -21,7 +22,7 @@ export default function SettingsPage() {
     if (!s.data) return
     setScoring(JSON.parse(JSON.stringify(s.data.scoring)))
     setRules(JSON.stringify(s.data.graph_rules, null, 2)); setBands(JSON.stringify(s.data.metric_bands, null, 2)); setSlots(JSON.stringify(s.data.upload_slots, null, 2))
-    setRegion(s.data.user.default_region || ''); setLunar(JSON.stringify(s.data.user.lunar_holidays || [{ date: '2027-02-06', name: '설날(예시—실제 날짜 확인)' }], null, 1))
+    setRegion(s.data.user.default_region || ''); setRefreshLimit(Number(s.data.user.daily_refresh_limit ?? 300)); setLunar(JSON.stringify(s.data.user.lunar_holidays || [{ date: '2027-02-06', name: '설날(예시—실제 날짜 확인)' }], null, 1))
   }, [s.data])
   const act = async (fn: () => Promise<any>, ok: string) => { try { await fn(); toast(ok); s.reload(); backups.reload() } catch (e: any) { toast(e.message, 'err') } }
   if (s.error) return <ErrorBox error={s.error} onRetry={s.reload} />
@@ -46,6 +47,8 @@ export default function SettingsPage() {
           <h2 className="section-title mb-2 mt-4">기본 지역·명절</h2>
           <Field label="기본 지역(날씨·계절 참고)"><div className="flex gap-2"><input className="input" value={region} onChange={(e) => setRegion(e.target.value)} /><button className="btn-ghost" onClick={() => act(() => api.setUserSetting('default_region', region), '저장')}>저장</button></div></Field>
           <div className="mt-2"><Field label="음력 명절(설·추석) 날짜 JSON" hint="연도별로 달라 자동 계산하지 않습니다. 실제 날짜를 입력하세요."><textarea className="input font-mono text-xs" rows={4} value={lunar} onChange={(e) => setLunar(e.target.value)} /><button className="btn-ghost mt-1" onClick={() => { try { act(() => api.setUserSetting('lunar_holidays', JSON.parse(lunar)), '저장') } catch { toast('JSON 형식 오류', 'err') } }}>저장</button></Field></div>
+          <h2 className="section-title mb-2 mt-4">일일 조회수 갱신 개수</h2>
+          <Field label="「오늘 소싱 실행」 때 갱신할 영상 수 (오래된 것부터)" hint="영상 50개당 YouTube 할당량 1. 전체 영상 수보다 크게 두면 매일 전부 갱신됩니다. 0 = 갱신 안 함."><div className="flex gap-2"><input type="number" className="input" min={0} max={20000} value={refreshLimit} onChange={(e) => setRefreshLimit(Number(e.target.value))} /><button className="btn-ghost" onClick={() => act(() => api.setUserSetting('daily_refresh_limit', refreshLimit), '저장')}>저장</button></div></Field>
           <h2 className="section-title mb-2 mt-4">자동 소싱 (매일 05:00)</h2>
           <label className="flex items-center gap-2"><input type="checkbox" checked={!!s.data.user.auto_sourcing_enabled} onChange={(e) => act(() => api.setScheduler(e.target.checked), e.target.checked ? '자동 소싱 활성' : '자동 소싱 비활성')} /> 활성화 (데이터 연결·안정성 검증 후 켜세요)</label>
           <p className="mt-1 text-[11px] muted">PC와 SHOPPULSE 서버가 켜져 있어야 실행됩니다. 기존 ChatGPT 예약 브리핑과는 별개 시스템입니다.</p>

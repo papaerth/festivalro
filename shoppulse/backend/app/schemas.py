@@ -260,7 +260,7 @@ class ChannelCollectIn(BaseModel):
 
 class RefreshStatsIn(BaseModel):
     video_ids: list[int] | None = None  # None = 전체(최대 limit)
-    limit: int = Field(200, ge=1, le=1000)
+    limit: int = Field(200, ge=1, le=20000)
 
 
 class BulkResolveIn(BaseModel):
