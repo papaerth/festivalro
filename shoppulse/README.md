@@ -30,6 +30,7 @@ vidIQ 지표·실제 조회수 시계열·소싱 점수·검증 상태·편성�
 - **`backup.bat`** : JSON 전체 백업을 `backups/` 에 생성
 - **`restore.bat`** : 백업 JSON 파일을 아이콘 위로 끌어다 놓으면 복원 (복원 전 사전 백업 자동 생성)
 - **`doctor.bat`** : 환경·DB 상태 점검
+- **`update.bat`** : GitHub 최신 코드로 업데이트(데이터·키 보존)
 - 자동 소싱(매일 05:00 Asia/Seoul)은 **PC와 start.bat 창이 켜져 있을 때만** 실행됩니다. 기본은 비활성이며 설정 화면에서 켭니다. 기존 ChatGPT 예약 브리핑과는 별개 시스템입니다.
 
 ### 문제 해결
@@ -38,7 +39,8 @@ vidIQ 지표·실제 조회수 시계열·소싱 점수·검증 상태·편성�
 - 포트 충돌 : `.env` 의 `SHOPPULSE_PORT` 변경.
 
 ### 업데이트 시
-새 코드로 바꾼 뒤 `setup.bat` 을 다시 실행하세요. `data/`, `backups/`, `.env` 는 그대로 유지됩니다. 큰 변경 전에는 `backup.bat` 을 권장합니다.
+`start.bat` 창을 닫고 **`update.bat`** 더블클릭. 자동으로 백업 → GitHub 최신 코드 내려받기 → 덮어쓰기(`data/`, `.env`, `backups/`, 가상환경, `node_modules` 유지) → `setup.bat` 갱신까지 진행합니다. 끝나면 `start.bat` 실행.
+받아올 브랜치는 기본 `claude/practical-darwin-xswmhh` 이며 `.env` 에 `SHOPPULSE_UPDATE_BRANCH=main` 처럼 적어 바꿀 수 있습니다.
 
 ---
 
