@@ -23,7 +23,7 @@ export interface VideoSummary {
   channel_verification: string | null; celebrity_name: string | null; published_at: string | null; duration_seconds: number | null; video_format: string;
   view_count: number | null; like_count: number | null; comment_count: number | null; stats_updated_at: string | null; source_type: string; access_status: string;
   data_source: string; is_demo: boolean; metrics: Record<string, MetricVal>; outlier: number | null; outlier_band: string | null; vph: number | null;
-  vph_basis: string | null; vph_band: string | null; snapshot_count: number; sparkline: { observed_at: string; view_count: number; source: string }[]; segment_count: number; candidate_count: number; graph: GraphAnalysis
+  vph_basis: string | null; vph_band: string | null; snapshot_count: number; sparkline: { observed_at: string; view_count: number; source: string }[]; original_video_id: number | null; celebrity_id: number | null; yt_channel_title: string | null; yt_channel_id: string | null; discovery_query: string | null; derived_count: number; is_derived: boolean; segment_count: number; candidate_count: number; graph: GraphAnalysis
 }
 
 export interface Segment {
@@ -39,7 +39,10 @@ export interface VideoDetail extends VideoSummary {
   snapshots: { observed_at: string; view_count: number; like_count: number | null; comment_count: number | null; source: string }[];
   metric_history: { id: number; metric_type: string; value: number | null; basis: string; source: string; measured_at: string; note: string | null }[];
   segments: Segment[]; products: Product[]; candidates: CandidateSummary[]; fetch_note?: string | null
+  derived_shorts: VideoSummary[]; original: VideoSummary | null; evidence: Evidence
 }
+
+export interface Evidence { count: number; note?: string; total_views?: number; max_views?: number; graph_types?: Record<string, number>; best_outlier?: number | null; best_vph?: number | null; resurgence?: number; spike_plateau?: number; steady_rise?: number }
 
 export interface Score { id: number; scorer: 'ai' | 'human'; item_scores: Record<string, number | null>; rationale: Record<string, string>; total: number | null; grade_key: string | null; grade_label: string | null; created_at: string }
 export interface Verification { item: string; label: string; status: 'pending' | 'passed' | 'failed' | 'na'; note: string | null; checked_by: string | null; checked_at: string | null }
@@ -51,7 +54,7 @@ export interface CandidateSummary {
   research_todo: string | null; notes: string | null; is_demo: boolean; last_recommended_date: string | null; recommendation_count: number; duplicate_reason: string | null;
   score: number | null; grade_key: string | null; grade_label: string | null; score_scorer: string | null; ai_score: number | null; human_score: number | null;
   production_ready: boolean; unresolved_critical: string[]; product_name: string | null; product_identification: string | null; offer_status: string | null;
-  segment: Segment | null; updated_at: string; created_at: string; video?: VideoSummary
+  segment: Segment | null; evidence: Evidence; updated_at: string; created_at: string; video?: VideoSummary
 }
 export interface CandidateDetail extends CandidateSummary {
   video: VideoDetail; product: Product | null; scores: { ai: Score | null; human: Score | null; history: Score[] }; verification: Verification[]; plans: Plan[]
@@ -69,7 +72,7 @@ export interface Report { id: number; report_date: string; generated_at: string;
 export interface DataSource { key: string; name: string; kind: string; status: string; note: string | null; checked_at: string }
 
 export interface Stats {
-  channels_total: number; channels_verified: number; celebrities_total: number; videos_total: number; videos_new_today: number; candidates_today: number; candidates_total: number;
+  channels_total: number; channels_verified: number; celebrities_total: number; videos_total: number; videos_original: number; videos_derived: number; graph_derived: Record<string, number>; graph_original: Record<string, number>; videos_new_today: number; candidates_today: number; candidates_total: number;
   final_today: number; spike_plateau: number; resurgence: number; late_surge: number; steady_rise: number; insufficient: number; pending_verification: number;
   last_collection_at: string | null; last_snapshot_at: string | null; latest_report: Report | null; scheduler: { running: boolean; auto_enabled: boolean; next_run: string | null; schedule: string; note: string };
   season: { date: string; weekday: string; season: string; events: string[]; region: string; weather: { status: string; note: string }; note: string }; scoring_name: string
@@ -80,4 +83,4 @@ export interface Settings {
   user: Record<string, any>; scoring: ScoringConfig; graph_rules: Record<string, any>; metric_bands: Record<string, any>; upload_slots: Record<string, any>
 }
 
-export interface BulkState { running: boolean; task: 'resolve' | 'collect' | null; total: number; done: number; current: string | null; started_at: string | null; finished_at: string | null; summary: Record<string, any>; error: string | null }
+export interface BulkState { running: boolean; task: 'resolve' | 'collect' | 'discover' | null; total: number; done: number; current: string | null; started_at: string | null; finished_at: string | null; summary: Record<string, any>; error: string | null }

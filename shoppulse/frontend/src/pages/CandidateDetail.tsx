@@ -74,6 +74,15 @@ export default function CandidateDetail() {
               <div className="flex flex-wrap gap-1"><Badge tone={c.segment.sponsorship_status === 'sponsored' || c.segment.sponsorship_status === 'suspected' ? 'amber' : 'gray'}>{LABELS.sponsorship[c.segment.sponsorship_status]}</Badge><Badge tone="gray">{c.segment.is_recommendation === null ? '추천/언급 미확인' : c.segment.is_recommendation ? '구매 추천' : '단순 언급'}</Badge><Badge tone="gray">{LABELS.access[v.access_status]}</Badge></div>
             </div>
           ) : <p className="text-sm muted">연결된 장면이 없습니다. 영상 상세에서 타임스탬프와 발언을 기록한 뒤 후보에 연결하세요.</p>}
+          <h2 className="section-title mb-2 mt-4">바이럴 검증 (재편집 쇼츠)</h2>
+          {c.evidence.count > 0 ? (
+            <div className="flex flex-wrap gap-1 text-xs">
+              <Badge tone="gray">{c.evidence.count}개</Badge><Badge tone="gray">합계 조회 {fmt.compact(c.evidence.total_views)}</Badge>
+              <Badge tone="gray">최고 Outlier {c.evidence.best_outlier ?? '미확인'}</Badge>
+              {Object.entries(c.evidence.graph_types || {}).map(([k, n]) => <Badge key={k} tone={toneFor.graph(k)}>{LABELS.graph[k]} {n}</Badge>)}
+              <Link to={`/videos/${v.id}`} className="underline">목록 보기</Link>
+            </div>
+          ) : <p className="text-xs muted">{c.evidence.note}</p>}
           <h2 className="section-title mb-2 mt-4">상품·판매처</h2>
           {c.product ? (
             <div className="text-sm">

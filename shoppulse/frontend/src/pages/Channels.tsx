@@ -40,7 +40,7 @@ export default function Channels() {
         <Field label="연예인"><Select value={f.celebrity_id || ''} onChange={(v) => setF({ ...f, celebrity_id: v })} placeholder="전체" options={(celebs.data || []).map((c) => [String(c.id), c.name])} /></Field>
         <div className="flex items-end"><button className="btn-ghost w-full" onClick={() => setF({})}>초기화</button></div>
       </div>
-      <BulkPanel onDone={() => { q.reload(); toast('일괄 작업 완료') }} unresolvedCount={(q.data || []).filter((c) => !c.channel_id && c.is_active).length} collectableCount={(q.data || []).filter((c) => !!c.channel_id && c.is_active).length} />
+      <BulkPanel onDone={() => { q.reload(); toast('일괄 작업 완료') }} unresolvedCount={(q.data || []).filter((c) => !c.channel_id && c.is_active).length} collectableCount={(q.data || []).filter((c) => !!c.channel_id && c.is_active).length} celebrityCount={new Set((q.data || []).filter((c) => c.is_active && c.celebrity_id).map((c) => c.celebrity_id)).size} />
       <ErrorBox error={q.error} onRetry={q.reload} />
       {!q.data ? <Spinner /> : (
         <div className="card overflow-x-auto">

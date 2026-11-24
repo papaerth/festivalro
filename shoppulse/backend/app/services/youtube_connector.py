@@ -89,6 +89,27 @@ class YouTubeClient:
             })
         return out
 
+    def search_videos(self, query: str, max_results: int = 25, duration: str = "short",
+                      published_after: datetime | None = None, order: str = "relevance") -> list[str]:
+        """영상 검색(할당량 100/페이지). duration: short(<4분)/medium/long/any. 반환: 영상 ID 목록."""
+        ids: list[str] = []
+        token = None
+        while len(ids) < max_results:
+            params = {"part": "id", "type": "video", "q": query, "maxResults": min(50, max_results - len(ids)),
+                      "order": order, "regionCode": "KR", "relevanceLanguage": "ko"}
+            if duration and duration != "any":
+                params["videoDuration"] = duration
+            if published_after:
+                params["publishedAfter"] = published_after.strftime("%Y-%m-%dT%H:%M:%SZ")
+            if token:
+                params["pageToken"] = token
+            data = self._get("search", **params)
+            ids += [i["id"]["videoId"] for i in data.get("items", []) if i.get("id", {}).get("videoId")]
+            token = data.get("nextPageToken")
+            if not token:
+                break
+        return ids[:max_results]
+
     # ---- 영상
     def list_upload_video_ids(self, uploads_playlist: str, published_after: datetime | None = None,
                               max_videos: int = 200) -> list[str]:

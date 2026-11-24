@@ -51,6 +51,8 @@ export const api = {
   bulkStatus: () => req<T.BulkState>('GET', '/api/channels/bulk/status'),
   bulkResolve: (limit: number) => req<T.BulkState>('POST', '/api/channels/bulk/resolve', { limit }),
   bulkCollect: (b: { max_videos?: number; years?: number; stale_days?: number }) => req<T.BulkState>('POST', '/api/channels/bulk/collect', b),
+  bulkDiscover: (b: { limit?: number; max_results?: number; suffix?: string; years?: number; order?: string }) => req<T.BulkState>('POST', '/api/channels/bulk/discover', b),
+  discoverShorts: (b: { query: string; celebrity_id?: number | null; max_results?: number; years?: number; order?: string; source_type?: string }) => req<T.Job>('POST', '/api/videos/discover-shorts', b),
 
   videos: (p: Record<string, any> = {}) => req<{ total: number; items: T.VideoSummary[]; sort_label: string; note: string }>('GET', `/api/videos${qs(p)}`),
   video: (id: number) => req<T.VideoDetail>('GET', `/api/videos/${id}`),

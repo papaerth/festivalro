@@ -14,6 +14,8 @@ export default function Videos() {
   const channels = useAsync(() => api.channels())
   const celebs = useAsync(() => api.celebrities())
   const [add, setAdd] = useState(false)
+  const [disc, setDisc] = useState(false)
+  const [dform, setDform] = useState<Record<string, any>>({ query: '', celebrity_id: '', max_results: 25, order: 'relevance', source_type: 'reedit_shorts' })
   const [form, setForm] = useState<Record<string, any>>({ url_or_id: '', fetch: true, source_type: 'original_celebrity' })
   const { toast, node } = useToast()
 
@@ -35,7 +37,7 @@ export default function Videos() {
       {node}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div><h1 className="text-2xl font-bold tracking-tight">영상</h1><p className="text-sm muted">저장된 영상의 검색·필터·정렬 (외부 새 검색 아님). 수집은 데이터 메뉴에서.</p></div>
-        <div className="flex gap-2"><button className="btn-primary" onClick={() => setAdd(true)}>+ 영상 등록</button></div>
+        <div className="flex gap-2"><button className="btn-ghost" onClick={() => setDisc(true)}>재편집 쇼츠 검색(YouTube)</button><button className="btn-primary" onClick={() => setAdd(true)}>+ 영상 등록</button></div>
       </div>
       <div className="card grid gap-3 p-4 md:grid-cols-4 xl:grid-cols-6">
         <Field label="검색(제목·설명·ID)"><input className="input" value={f.q || ''} onChange={(e) => set('q', e.target.value)} /></Field>
@@ -52,6 +54,7 @@ export default function Videos() {
         <Field label="VPH 범위"><div className="flex gap-1"><input className="input" placeholder="최소" value={f.min_vph || ''} onChange={(e) => set('min_vph', e.target.value)} /><input className="input" placeholder="최대" value={f.max_vph || ''} onChange={(e) => set('max_vph', e.target.value)} /></div></Field>
         <Field label="길이(초) 범위"><div className="flex gap-1"><input className="input" placeholder="최소" value={f.min_duration || ''} onChange={(e) => set('min_duration', e.target.value)} /><input className="input" placeholder="최대" value={f.max_duration || ''} onChange={(e) => set('max_duration', e.target.value)} /></div></Field>
         <Field label="정렬 (저장 데이터)"><Select value={f.sort} onChange={(v) => set('sort', v)} options={SORTS} /></Field>
+        <Field label="재편집 쇼츠 연결"><Select value={f.unlinked_derived || ''} onChange={(v) => set('unlinked_derived', v)} placeholder="전체" options={[['true', '원본 미연결 재편집만']]} /></Field>
         <div className="flex items-end gap-2"><label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={f.include_demo === 'true'} onChange={(e) => set('include_demo', e.target.checked ? 'true' : '')} /> DEMO 포함</label><button className="btn-ghost w-full" onClick={() => setF({ sort: 'view_count' })}>초기화</button></div>
       </div>
       <ErrorBox error={q.error} onRetry={q.reload} />
@@ -66,9 +69,9 @@ export default function Videos() {
               </div>
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="line-clamp-2 text-sm font-semibold leading-snug">{v.title}</div>
-                <div className="text-[11px] muted">{v.celebrity_name ? `${v.celebrity_name} · ` : ''}{v.channel_name || '채널 미확인'} · {fmt.date(v.published_at)}</div>
+                <div className="text-[11px] muted">{v.celebrity_name ? `${v.celebrity_name} · ` : ''}{v.channel_name || v.yt_channel_title || '채널 미확인'} · {fmt.date(v.published_at)}</div>
                 <div className="flex flex-wrap gap-x-3 text-[11px]"><span>조회 {fmt.compact(v.view_count)}</span><span>VPH {v.vph === null ? '미확인' : Math.round(v.vph).toLocaleString()}</span><span>Outlier {v.outlier === null ? '미확인' : v.outlier + '배'}</span></div>
-                <div className="flex flex-wrap gap-1"><Badge tone={toneFor.graph(v.graph.graph_type)}>{v.graph.label}</Badge><Badge tone="gray">{LABELS.format[v.video_format]}</Badge>{v.source_type !== 'original_celebrity' && <Badge tone="amber">{LABELS.sourceType[v.source_type]}</Badge>}{v.candidate_count > 0 && <Badge tone="blue">후보 {v.candidate_count}</Badge>}{v.is_demo && <Badge tone="red">DEMO</Badge>}</div>
+                <div className="flex flex-wrap gap-1"><Badge tone={toneFor.graph(v.graph.graph_type)}>{v.graph.label}</Badge><Badge tone="gray">{LABELS.format[v.video_format]}</Badge>{v.source_type !== 'original_celebrity' && <Badge tone="amber">{LABELS.sourceType[v.source_type]}{v.is_derived && (v.original_video_id ? ' · 원본 연결됨' : ' · 원본 미연결')}</Badge>}{v.derived_count > 0 && <Badge tone="violet">재편집 쇼츠 {v.derived_count}</Badge>}{v.candidate_count > 0 && <Badge tone="blue">후보 {v.candidate_count}</Badge>}{v.is_demo && <Badge tone="red">DEMO</Badge>}</div>
                 <div className="pt-1"><ViewGraph points={v.sparkline} analysis={v.graph} height={48} compact /></div>
               </div>
             </Link>
@@ -76,6 +79,19 @@ export default function Videos() {
         </div>
       )}
 
+      <Modal open={disc} onClose={() => setDisc(false)} title="재편집 쇼츠 검색 (YouTube)">
+        <div className="space-y-3">
+          <p className="text-xs muted">"연예인 이름 + 키워드"로 YouTube 쇼츠를 검색해 <b>재편집 쇼츠(바이럴 검증 자료)</b>로 등록합니다. 검색 1회 = 할당량 100. 등록된 공식 채널 영상이 섞이면 원본으로 자동 분류됩니다.</p>
+          <Field label="연예인(선택)"><Select value={dform.celebrity_id} onChange={(v) => { const c = (celebs.data || []).find((x) => String(x.id) === v); setDform({ ...dform, celebrity_id: v, query: c && !dform.query ? `${c.name} 추천템` : dform.query }) }} placeholder="미지정" options={(celebs.data || []).map((c) => [String(c.id), c.name])} /></Field>
+          <Field label="검색어 *" hint="예: 성시경 추천템 / 이서진 콜라 / 한예슬 스킨케어"><input className="input" value={dform.query} onChange={(e) => setDform({ ...dform, query: e.target.value })} /></Field>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="최대 개수"><input type="number" className="input" value={dform.max_results} min={1} max={100} onChange={(e) => setDform({ ...dform, max_results: Number(e.target.value) })} /></Field>
+            <Field label="정렬"><Select value={dform.order} onChange={(v) => setDform({ ...dform, order: v })} options={[['relevance', '관련성'], ['viewCount', '조회수'], ['date', '최신']]} /></Field>
+            <Field label="분류"><Select value={dform.source_type} onChange={(v) => setDform({ ...dform, source_type: v })} options={[['reedit_shorts', '타인 재편집'], ['competitor', '경쟁·바이럴 참고']]} /></Field>
+          </div>
+          <div className="flex justify-end"><button className="btn-primary" disabled={!dform.query} onClick={async () => { try { const j = await api.discoverShorts({ query: dform.query, celebrity_id: dform.celebrity_id ? Number(dform.celebrity_id) : null, max_results: dform.max_results, years: 3, order: dform.order, source_type: dform.source_type }); if (j.status === 'failed') throw new Error(j.error || '실패'); toast(`검색 ${j.result.found}개 · 새로 등록 ${j.result.created}개 · 갱신 ${j.result.updated}개${j.result.official_channel_videos ? ` · 공식 채널 원본 ${j.result.official_channel_videos}개` : ''} (할당량 ${j.quota_used})`); setDisc(false); setF({ ...f, source_type: dform.source_type, sort: 'updated' }) } catch (e: any) { toast(e.message, 'err') } }}>검색·등록</button></div>
+        </div>
+      </Modal>
       <Modal open={add} onClose={() => setAdd(false)} title="영상 등록">
         <div className="space-y-3">
           <Field label="유튜브 URL 또는 영상 ID *" hint="같은 영상은 중복 등록되지 않습니다."><input className="input" value={form.url_or_id} onChange={(e) => setForm({ ...form, url_or_id: e.target.value })} placeholder="https://www.youtube.com/watch?v=..." /></Field>

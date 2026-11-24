@@ -88,6 +88,18 @@ def bulk_collect(body: schemas.BulkCollectIn, db: Session = Depends(get_db)):
         raise HTTPException(409, str(e))
 
 
+@router.post("/bulk/discover")
+def bulk_discover(body: schemas.BulkDiscoverIn, db: Session = Depends(get_db)):
+    """연예인별로 '이름 + 키워드' 쇼츠를 검색해 재편집 쇼츠로 등록(연예인당 할당량 100)."""
+    if not get_settings().youtube_api_key:
+        raise HTTPException(503, "YOUTUBE_API_KEY 가 설정되지 않았습니다.")
+    try:
+        return bulk.start("discover", limit=body.limit, max_results=body.max_results, suffix=body.suffix,
+                          years=body.years, order=body.order)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+
+
 @router.get("/{chid}")
 def get_channel(chid: int, db: Session = Depends(get_db)):
     return serializers.channel(get_or_404(db, YoutubeChannel, chid, "채널"))

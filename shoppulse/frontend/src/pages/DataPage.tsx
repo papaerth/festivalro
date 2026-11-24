@@ -53,7 +53,7 @@ export default function DataPage() {
         </div>
       </div>
 
-      <BulkPanel onDone={() => { jobs.reload(); channels.reload() }} unresolvedCount={(channels.data || []).filter((c) => !c.channel_id).length} collectableCount={(channels.data || []).filter((c) => !!c.channel_id).length} />
+      <BulkPanel onDone={() => { jobs.reload(); channels.reload() }} unresolvedCount={(channels.data || []).filter((c) => !c.channel_id).length} collectableCount={(channels.data || []).filter((c) => !!c.channel_id).length} celebrityCount={new Set((channels.data || []).filter((c) => c.celebrity_id).map((c) => c.celebrity_id)).size} />
 
       <div className="card p-4">
         <h2 className="section-title mb-2">데이터 소스 상태</h2>

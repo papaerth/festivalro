@@ -14,6 +14,8 @@ export default function VideoDetail() {
   const q = useAsync(() => api.video(vid), [vid])
   const channels = useAsync(() => api.channels())
   const products = useAsync(() => api.products())
+  const celebs = useAsync(() => api.celebrities())
+  const originals = useAsync(() => api.videos({ source_type: 'original_celebrity', limit: 500, sort: 'view_count', with_graph: false }))
   const { toast, node } = useToast()
   const [modal, setModal] = useState<null | 'snapshot' | 'metric' | 'segment' | 'candidate' | 'product'>(null)
   const [form, setForm] = useState<Record<string, any>>({})
@@ -68,10 +70,41 @@ export default function VideoDetail() {
           {v.tags && v.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{v.tags.slice(0, 15).map((t) => <Badge key={t} tone="gray">{t}</Badge>)}</div>}
           <Field label="접근 상태"><Select value={v.access_status} onChange={(s) => act(() => api.patchVideo(v.id, { access_status: s }), '저장')} options={Object.entries(LABELS.access) as [string, string][]} /></Field>
           <div className="mt-2"><Field label="원본/재편집 구분"><Select value={v.source_type} onChange={(s) => act(() => api.patchVideo(v.id, { source_type: s }), '저장')} options={Object.entries(LABELS.sourceType) as [string, string][]} /></Field></div>
-          <div className="mt-2"><Field label="채널 연결"><Select value={v.channel_id ? String(v.channel_id) : ''} onChange={(s) => act(() => api.patchVideo(v.id, { channel_id: s ? Number(s) : null }), '저장')} placeholder="미지정" options={(channels.data || []).map((c) => [String(c.id), c.channel_name])} /></Field></div>
+          <div className="mt-2"><Field label="채널 연결"><Select value={v.channel_id ? String(v.channel_id) : ''} onChange={(s) => act(() => api.patchVideo(v.id, { channel_id: s ? Number(s) : null }), '저장')} placeholder={v.yt_channel_title ? `미등록 채널: ${v.yt_channel_title}` : '미지정'} options={(channels.data || []).map((c) => [String(c.id), c.channel_name])} /></Field></div>
+          {v.is_derived && <>
+            <div className="mt-2"><Field label="연예인(재편집 쇼츠의 소재)"><Select value={v.celebrity_id ? String(v.celebrity_id) : ''} onChange={(s) => act(() => api.patchVideo(v.id, { celebrity_id: s ? Number(s) : null }), '저장')} placeholder="미지정" options={(celebs.data || []).map((c) => [String(c.id), c.name])} /></Field></div>
+            <div className="mt-2"><Field label="원본 영상 연결" hint="이 쇼츠가 어떤 공식 원본 영상을 썼는지. 연결하면 원본 후보의 '바이럴 검증' 근거로 집계됩니다."><Select value={v.original_video_id ? String(v.original_video_id) : ''} onChange={(s) => act(() => api.patchVideo(v.id, { original_video_id: s ? Number(s) : null }), '원본 연결 저장')} placeholder="미연결" options={(originals.data?.items || []).filter((o) => !v.celebrity_id || o.celebrity_name === (celebs.data || []).find((c) => c.id === v.celebrity_id)?.name || o.id === v.original_video_id).map((o) => [String(o.id), `${o.celebrity_name || o.channel_name || ''} · ${o.title.slice(0, 50)}`])} /></Field></div>
+            {v.original && <Link to={`/videos/${v.original.id}`} className="mt-1 block text-xs underline">원본: {v.original.title}</Link>}
+            {v.discovery_query && <div className="mt-1 text-[11px] muted">검색어로 발견: {v.discovery_query}</div>}
+          </>}
           <div className="mt-2"><Field label="메모"><textarea className="input" rows={3} defaultValue={v.notes || ''} onBlur={(e) => e.target.value !== (v.notes || '') && act(() => api.patchVideo(v.id, { notes: e.target.value }), '저장')} /></Field></div>
         </div>
       </div>
+
+      {!v.is_derived && (
+        <div className="card p-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="section-title">이 원본 기반 재편집 쇼츠 — 바이럴 검증 <span className="muted text-sm font-normal">({v.derived_shorts.length}개)</span></h2>
+            <Link to={`/videos?source_type=reedit_shorts`} className="text-xs underline">재편집 쇼츠 목록</Link>
+          </div>
+          {v.evidence.count > 0 ? (
+            <div className="mb-3 flex flex-wrap gap-2 text-xs">
+              <Badge tone="gray">합계 조회 {fmt.compact(v.evidence.total_views)}</Badge><Badge tone="gray">최대 {fmt.compact(v.evidence.max_views)}</Badge>
+              <Badge tone="gray">최고 Outlier {v.evidence.best_outlier ?? '미확인'}</Badge><Badge tone="gray">최고 VPH {v.evidence.best_vph ?? '미확인'}</Badge>
+              {Object.entries(v.evidence.graph_types || {}).map(([k, n]) => <Badge key={k} tone={toneFor.graph(k)}>{LABELS.graph[k]} {n}</Badge>)}
+            </div>
+          ) : <p className="mb-2 text-xs muted">{v.evidence.note} — 「영상」 메뉴의 「재편집 쇼츠 검색」으로 찾은 뒤, 각 쇼츠 상세에서 이 영상을 원본으로 연결하세요.</p>}
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {v.derived_shorts.map((d) => (
+              <Link key={d.id} to={`/videos/${d.id}`} className="rounded-xl border border-stone-200 p-3 text-xs hover:bg-stone-50 dark:border-stone-800 dark:hover:bg-stone-800">
+                <div className="line-clamp-2 font-medium">{d.title}</div>
+                <div className="muted">{d.yt_channel_title || d.channel_name || '채널 미확인'} · {fmt.date(d.published_at)} · 조회 {fmt.compact(d.view_count)} · Outlier {d.outlier ?? '미확인'}</div>
+                <div className="mt-1"><ViewGraph points={d.sparkline} analysis={d.graph} height={56} compact /></div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card p-4">

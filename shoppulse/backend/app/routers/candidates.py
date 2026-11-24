@@ -195,7 +195,8 @@ def suggest_score(cid: int, db: Session = Depends(get_db)):
     item_scores = {i["key"]: None for i in ver.config["items"]}
     rationale = {i["key"]: "사람 평가 필요(AI 제안 없음)" for i in ver.config["items"]}
     if perf_item:
-        val, reason = suggest_performance_score(c.video.metrics, graph["graph_type"], perf_item["max"])
+        val, reason = suggest_performance_score(c.video.metrics, graph["graph_type"], perf_item["max"],
+                                                evidence=serializers.evidence_summary(c.video))
         item_scores["performance"] = val
         rationale["performance"] = reason
     s = SourcingScore(candidate_id=c.id, scoring_version_id=ver.id, scorer="ai", item_scores=item_scores,

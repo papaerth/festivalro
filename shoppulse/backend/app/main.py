@@ -35,6 +35,9 @@ logging.getLogger("uvicorn.access").addFilter(_AccessLogFilter())
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+    from . import migrations
+
+    migrations.run(engine)
     with SessionLocal() as db:
         ensure_scoring_version(db)
         n = seed_channels(db)

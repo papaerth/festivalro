@@ -35,7 +35,8 @@ def finish_job(job: CollectionJob, status: str, result: dict | None = None, erro
     job.finished_at = utcnow()
 
 
-def upsert_video_from_api(db: Session, item: dict, channel: YoutubeChannel | None, observed_at: datetime) -> tuple[Video, bool]:
+def upsert_video_from_api(db: Session, item: dict, channel: YoutubeChannel | None, observed_at: datetime,
+                          source_type: str | None = None) -> tuple[Video, bool]:
     v = db.query(Video).filter(Video.youtube_video_id == item["video_id"]).first()
     created = v is None
     dur = parse_iso8601_duration(item.get("duration"))
@@ -51,8 +52,12 @@ def upsert_video_from_api(db: Session, item: dict, channel: YoutubeChannel | Non
     v.video_format = classify_format(dur)
     v.thumbnail_url = item.get("thumbnail")
     v.tags = item.get("tags")
+    v.yt_channel_id = item.get("channel_id")
+    v.yt_channel_title = item.get("channel_title")
     if channel:
         v.channel_id = channel.id
+    if created and source_type:
+        v.source_type = source_type
     if item.get("caption") == "true":
         v.access_status = "captions" if v.access_status in ("unknown", "description_only") else v.access_status
     elif v.access_status == "unknown":
@@ -174,3 +179,49 @@ def add_video_by_id(db: Session, youtube_video_id: str, channel: YoutubeChannel 
         return None, False, str(e)
     finally:
         client.close()
+
+
+def discover_shorts(db: Session, query: str, celebrity_id: int | None = None, max_results: int = 25,
+                    years: int = 3, order: str = "relevance", source_type: str = "reedit_shorts",
+                    triggered_by: str = "manual") -> CollectionJob:
+    """연예인 이름·상품 키워드로 YouTube 쇼츠를 검색해 '재편집 쇼츠'로 등록한다.
+
+    - 등록된 공식 채널의 영상이 검색되면 원본(original_celebrity)으로 분류한다.
+    - 이미 있는 영상은 메타·조회수만 갱신하고 source_type 은 바꾸지 않는다.
+    - 할당량: 검색 100/페이지 + 영상 50개당 1.
+    """
+    job = start_job(db, "discover_shorts", {"query": query, "celebrity_id": celebrity_id, "max_results": max_results,
+                                            "years": years, "order": order}, triggered_by)
+    db.commit()
+    try:
+        client = YouTubeClient()
+    except YouTubeNotConfigured as e:
+        finish_job(job, "failed", error=str(e)); db.commit()
+        return job
+    try:
+        after = datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year - years) if years else None
+        ids = client.search_videos(query, max_results=max_results, duration="short", published_after=after, order=order)
+        now = utcnow().replace(microsecond=0)
+        official = {c.channel_id: c for c in db.query(YoutubeChannel).filter(YoutubeChannel.channel_id.isnot(None)).all()}
+        created = updated = originals = 0
+        for item in client.get_videos(ids):
+            ch = official.get(item.get("channel_id"))
+            st = "original_celebrity" if ch else source_type
+            v, c = upsert_video_from_api(db, item, ch, now, source_type=st)
+            if c:
+                created += 1
+                v.discovery_query = query
+                if celebrity_id and not ch:
+                    v.celebrity_id = celebrity_id
+            else:
+                updated += 1
+            originals += int(bool(ch))
+        finish_job(job, "success", {"created": created, "updated": updated, "found": len(ids),
+                                    "official_channel_videos": originals}, items=created + updated, quota=client.quota_used)
+    except YouTubeAPIError as e:
+        finish_job(job, "failed", error=str(e), quota=client.quota_used)
+        job.result = {"reason": e.reason}
+    finally:
+        client.close()
+    db.commit()
+    return job

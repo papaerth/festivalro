@@ -245,3 +245,54 @@ def test_pick_best_prefers_exact_name_and_flags_ambiguous():
     best, verdict = pick_best(YoutubeChannel(channel_name="XYZ"), [{"channel_id": "UC9", "title": "전혀 다른 채널", "subscriber_count": 0, "url": ""}])
     assert verdict != "유력"
     assert pick_best(ch, [])[0] is None
+
+
+def test_derived_shorts_link_and_evidence(client):
+    orig = client.get("/api/videos", params={"q": "테스트 영상"}).json()["items"][0]
+    r = client.post("/api/videos", json={"url_or_id": "ccccccccccc", "title": "[재편집] 테스트 쇼츠", "duration_seconds": 40,
+                                        "source_type": "reedit_shorts", "fetch": False})
+    assert r.status_code == 201
+    short = r.json()
+    assert short["is_derived"] is True and short["video_format"] == "short"
+    assert client.patch(f"/api/videos/{short['id']}", json={"original_video_id": short["id"]}).status_code == 400
+    r = client.patch(f"/api/videos/{short['id']}", json={"original_video_id": orig["id"]})
+    assert r.json()["original"]["id"] == orig["id"]
+    base = datetime(2026, 2, 1)
+    total = 500000
+    for i, d in enumerate([0, 300000, 200000, 5000, 1000, 900, 40000, 90000, 70000]):
+        total += d
+        client.post(f"/api/videos/{short['id']}/snapshots", json={"observed_at": (base + timedelta(days=i + 1)).isoformat(), "view_count": total})
+    client.post(f"/api/videos/{short['id']}/metrics", json={"metric_type": "outlier", "value": 35, "source": "vidiq_manual"})
+    d = client.get(f"/api/videos/{orig['id']}").json()
+    assert d["derived_count"] == 1 and d["evidence"]["count"] == 1 and d["evidence"]["best_outlier"] == 35
+    assert d["derived_shorts"][0]["graph"]["graph_type"] == "resurgence"
+    assert d["evidence"]["resurgence"] == 1
+    # 후보 점수 제안에 재편집 쇼츠 근거 반영
+    cid = client.get("/api/candidates").json()["items"][0]["id"]
+    r = client.post(f"/api/candidates/{cid}/scores/suggest").json()
+    assert "재편집 쇼츠" in r["scores"]["ai"]["rationale"]["performance"]
+    assert r["evidence"]["count"] == 1
+    # 필터
+    assert client.get("/api/videos", params={"original_video_id": orig["id"]}).json()["total"] == 1
+    assert client.get("/api/videos", params={"source_type": "reedit_shorts"}).json()["total"] == 1
+    stats = client.get("/api/dashboard/stats").json()
+    assert stats["videos_derived"] == 1 and stats["graph_derived"].get("resurgence") == 1
+    # API 미설정 시 검색 작업은 실패로 기록
+    j = client.post("/api/videos/discover-shorts", json={"query": "테스트 추천템"}).json()
+    assert j["status"] == "failed" and "YOUTUBE_API_KEY" in j["error"]
+    assert client.post("/api/channels/bulk/discover", json={}).status_code == 503
+
+
+def test_migration_adds_missing_columns(tmp_path):
+    import sqlite3
+    from sqlalchemy import create_engine
+    from app import migrations
+    db = tmp_path / "old.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE videos (id INTEGER PRIMARY KEY, title TEXT)")
+    con.execute("CREATE TABLE celebrities (id INTEGER PRIMARY KEY)")
+    con.commit(); con.close()
+    eng = create_engine(f"sqlite:///{db}")
+    applied = migrations.run(eng)
+    assert "videos.original_video_id" in applied and "videos.celebrity_id" in applied
+    assert migrations.run(eng) == []  # 두 번째는 변경 없음

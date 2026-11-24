@@ -108,8 +108,19 @@ class Video(TimestampMixin, Base):
     stats_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
     notes: Mapped[str | None] = mapped_column(Text)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # 재편집 쇼츠(reedit_shorts/competitor)용: 어떤 원본 영상·연예인을 기반으로 했는지
+    original_video_id: Mapped[int | None] = mapped_column(ForeignKey("videos.id", ondelete="SET NULL"), index=True)
+    celebrity_id: Mapped[int | None] = mapped_column(ForeignKey("celebrities.id", ondelete="SET NULL"), index=True)
+    # 등록되지 않은 채널의 영상일 때 YouTube 채널 정보만 보관
+    yt_channel_id: Mapped[str | None] = mapped_column(String(64))
+    yt_channel_title: Mapped[str | None] = mapped_column(String(200))
+    discovery_query: Mapped[str | None] = mapped_column(String(300))  # 어떤 검색어로 발견했는지
 
     channel: Mapped["YoutubeChannel | None"] = relationship(back_populates="videos")
+    original: Mapped["Video | None"] = relationship(remote_side="Video.id", foreign_keys=[original_video_id],
+                                                    back_populates="derived")
+    derived: Mapped[list["Video"]] = relationship(foreign_keys=[original_video_id], back_populates="original")
+    celebrity: Mapped["Celebrity | None"] = relationship()
     metrics: Mapped[list["VideoMetric"]] = relationship(back_populates="video", cascade="all, delete-orphan")
     snapshots: Mapped[list["ViewSnapshot"]] = relationship(
         back_populates="video", cascade="all, delete-orphan", order_by="ViewSnapshot.observed_at"

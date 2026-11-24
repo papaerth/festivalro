@@ -83,6 +83,8 @@ class VideoIn(BaseModel):
 
 class VideoPatch(BaseModel):
     channel_id: int | None = None
+    original_video_id: int | None = None
+    celebrity_id: int | None = None
     title: str | None = None
     description: str | None = None
     published_at: datetime | None = None
@@ -269,3 +271,20 @@ class BulkCollectIn(BaseModel):
     max_videos: int = Field(200, ge=1, le=1000)
     years: int = Field(3, ge=0, le=20)
     stale_days: int = Field(0, ge=0, le=365)  # 0 = 전체, N = 최근 N일 내 수집한 채널은 건너뜀
+
+
+class DiscoverShortsIn(BaseModel):
+    query: str = Field(min_length=1, max_length=200)
+    celebrity_id: int | None = None
+    max_results: int = Field(25, ge=1, le=100)
+    years: int = Field(3, ge=0, le=20)
+    order: Literal["relevance", "viewCount", "date"] = "relevance"
+    source_type: Literal["reedit_shorts", "competitor"] = "reedit_shorts"
+
+
+class BulkDiscoverIn(BaseModel):
+    limit: int = Field(20, ge=1, le=200)  # 연예인 수. 연예인당 검색 1회(할당량 100)
+    max_results: int = Field(25, ge=1, le=50)
+    suffix: str = Field("추천템", max_length=100)  # 검색어 = 연예인 이름 + suffix
+    years: int = Field(3, ge=0, le=20)
+    order: Literal["relevance", "viewCount", "date"] = "relevance"

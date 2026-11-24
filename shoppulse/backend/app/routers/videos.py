@@ -47,6 +47,7 @@ def list_videos(
     min_vph: float | None = None, max_vph: float | None = None,
     min_duration: int | None = None, max_duration: int | None = None,
     graph_type: str | None = None, content_type: str | None = None, sponsorship: str | None = None,
+    original_video_id: int | None = None, unlinked_derived: bool = False,
     include_demo: bool = False, sort: str = "view_count",
     limit: int = Query(50, le=500), offset: int = 0, with_graph: bool = True,
     db: Session = Depends(get_db),
@@ -59,7 +60,11 @@ def list_videos(
     if channel_id:
         qs = qs.filter(Video.channel_id == channel_id)
     if celebrity_id:
-        qs = qs.join(Video.channel).filter(YoutubeChannel.celebrity_id == celebrity_id)
+        qs = qs.outerjoin(Video.channel).filter(or_(YoutubeChannel.celebrity_id == celebrity_id, Video.celebrity_id == celebrity_id))
+    if original_video_id:
+        qs = qs.filter(Video.original_video_id == original_video_id)
+    if unlinked_derived:
+        qs = qs.filter(Video.source_type.in_(["reedit_shorts", "competitor"]), Video.original_video_id.is_(None))
     if video_format:
         qs = qs.filter(Video.video_format == video_format)
     if source_type:
@@ -170,6 +175,10 @@ def get_video(vid: int, db: Session = Depends(get_db)):
 @router.patch("/{vid}")
 def patch_video(vid: int, body: schemas.VideoPatch, db: Session = Depends(get_db)):
     v = get_or_404(db, Video, vid, "영상")
+    if body.original_video_id is not None:
+        if body.original_video_id == vid:
+            raise HTTPException(400, "자기 자신을 원본으로 연결할 수 없습니다")
+        get_or_404(db, Video, body.original_video_id, "원본 영상")
     apply_patch(v, body)
     if body.duration_seconds is not None:
         v.video_format = classify_format(body.duration_seconds)
@@ -250,6 +259,14 @@ def delete_segment(vid: int, sid: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "장면을 찾을 수 없습니다")
     db.delete(s)
     db.commit()
+
+
+@router.post("/discover-shorts")
+def discover_shorts(body: schemas.DiscoverShortsIn, db: Session = Depends(get_db)):
+    """연예인·상품 키워드로 YouTube 쇼츠를 검색해 재편집 쇼츠로 등록(할당량 100/검색)."""
+    job = collection.discover_shorts(db, body.query, celebrity_id=body.celebrity_id, max_results=body.max_results,
+                                     years=body.years, order=body.order, source_type=body.source_type)
+    return serializers.job(job)
 
 
 @router.post("/refresh-stats")

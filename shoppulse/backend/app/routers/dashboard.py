@@ -29,9 +29,14 @@ def stats(db: Session = Depends(get_db)):
     non_demo = Video.is_demo.is_(False)
     videos = db.query(Video).filter(non_demo).all()
     graph_counts: dict[str, int] = {}
+    graph_counts_derived: dict[str, int] = {}
+    graph_counts_original: dict[str, int] = {}
     for v in videos:
         g = video_graph(v)["graph_type"]
         graph_counts[g] = graph_counts.get(g, 0) + 1
+        bucket = graph_counts_derived if v.source_type in ("reedit_shorts", "competitor") else graph_counts_original
+        bucket[g] = bucket.get(g, 0) + 1
+    derived_total = sum(graph_counts_derived.values())
     cands = db.query(SourcingCandidate).filter(SourcingCandidate.is_demo.is_(False)).all()
     pending_verification = 0
     for c in cands:
@@ -46,6 +51,10 @@ def stats(db: Session = Depends(get_db)):
         "channels_verified": db.query(YoutubeChannel).filter(YoutubeChannel.verification_status == "verified").count(),
         "celebrities_total": db.query(Celebrity).filter(Celebrity.is_demo.is_(False)).count(),
         "videos_total": len(videos),
+        "videos_original": len(videos) - derived_total,
+        "videos_derived": derived_total,
+        "graph_derived": graph_counts_derived,
+        "graph_original": graph_counts_original,
         "videos_new_today": db.query(Video).filter(non_demo, Video.created_at >= today_start).count(),
         "candidates_today": db.query(SourcingCandidate).filter(SourcingCandidate.is_demo.is_(False), SourcingCandidate.created_at >= today_start).count(),
         "candidates_total": len(cands),

@@ -78,7 +78,7 @@ def video_summary(v: Video, with_graph: bool = True) -> dict:
         "thumbnail_url": v.thumbnail_url or f"https://i.ytimg.com/vi/{v.youtube_video_id}/hqdefault.jpg",
         "channel_id": v.channel_id, "channel_name": v.channel.channel_name if v.channel else None,
         "channel_verification": v.channel.verification_status if v.channel else None,
-        "celebrity_name": v.channel.celebrity.name if v.channel and v.channel.celebrity else None,
+        "celebrity_name": (v.channel.celebrity.name if v.channel and v.channel.celebrity else (v.celebrity.name if v.celebrity else None)),
         "published_at": iso(v.published_at), "duration_seconds": v.duration_seconds, "video_format": v.video_format,
         "view_count": v.view_count, "like_count": v.like_count, "comment_count": v.comment_count,
         "stats_updated_at": iso(v.stats_updated_at), "source_type": v.source_type, "access_status": v.access_status,
@@ -88,6 +88,13 @@ def video_summary(v: Video, with_graph: bool = True) -> dict:
         "vph": vph, "vph_basis": lm.get("vph", {}).get("basis"), "vph_band": band_label_for("vph", vph),
         "snapshot_count": len(v.snapshots),
         "sparkline": _sparkline(v),
+        "original_video_id": v.original_video_id,
+        "celebrity_id": v.celebrity_id,
+        "yt_channel_title": v.yt_channel_title,
+        "yt_channel_id": v.yt_channel_id,
+        "discovery_query": v.discovery_query,
+        "derived_count": len(v.derived),
+        "is_derived": v.source_type in ("reedit_shorts", "competitor"),
         "segment_count": len(v.segments), "candidate_count": len(v.candidates),
     }
     if with_graph:
@@ -106,8 +113,37 @@ def video_detail(v: Video) -> dict:
         "segments": [segment(s) for s in v.segments],
         "products": [product(m.product, with_offers=False) | {"segment_id": m.segment_id, "mention_id": m.id} for m in v.mentions],
         "candidates": [candidate_summary(c) for c in v.candidates],
+        "derived_shorts": [video_summary(x) for x in sorted(v.derived, key=lambda x: -(x.view_count or 0))],
+        "original": video_summary(v.original, with_graph=False) if v.original else None,
+        "evidence": evidence_summary(v),
     })
     return d
+
+
+def evidence_summary(v: Video) -> dict:
+    """원본 영상에 연결된 재편집 쇼츠의 성과 요약(바이럴 검증 자료)."""
+    shorts = list(v.derived)
+    if not shorts:
+        return {"count": 0, "note": "연결된 재편집 쇼츠 없음 — 바이럴 검증 자료 없음"}
+    graphs = {}
+    best_outlier = best_vph = None
+    total_views = 0
+    max_views = 0
+    for s in shorts:
+        g = video_graph(s)["graph_type"]
+        graphs[g] = graphs.get(g, 0) + 1
+        lm = latest_metrics(s)
+        o, p = lm.get("outlier", {}).get("value"), lm.get("vph", {}).get("value")
+        if o is not None and (best_outlier is None or o > best_outlier):
+            best_outlier = o
+        if p is not None and (best_vph is None or p > best_vph):
+            best_vph = p
+        total_views += s.view_count or 0
+        max_views = max(max_views, s.view_count or 0)
+    return {"count": len(shorts), "total_views": total_views, "max_views": max_views, "graph_types": graphs,
+            "best_outlier": best_outlier, "best_vph": best_vph,
+            "resurgence": graphs.get("resurgence", 0) + graphs.get("late_surge", 0),
+            "spike_plateau": graphs.get("spike_plateau", 0), "steady_rise": graphs.get("steady_rise", 0)}
 
 
 def score(s: SourcingScore, config: dict | None) -> dict:
@@ -149,6 +185,7 @@ def candidate_summary(c: SourcingCandidate, config: dict | None = None) -> dict:
         "product_identification": c.product.identification_status if c.product else None,
         "offer_status": (c.product.offers[0].stock_status if c.product and c.product.offers else None),
         "segment": segment(c.segment) if c.segment else None,
+        "evidence": evidence_summary(c.video),
         "updated_at": iso(c.updated_at), "created_at": iso(c.created_at),
     }
 

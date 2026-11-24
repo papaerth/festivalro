@@ -11,8 +11,8 @@ import threading
 from datetime import datetime, timedelta
 
 from ..database import SessionLocal
-from ..models import YoutubeChannel, utcnow
-from .collection import collect_channel_videos, finish_job, start_job
+from ..models import Celebrity, YoutubeChannel, utcnow
+from .collection import collect_channel_videos, discover_shorts, finish_job, start_job
 from .youtube_connector import YouTubeAPIError, YouTubeClient, YouTubeNotConfigured
 
 _lock = threading.Lock()
@@ -127,13 +127,36 @@ def _run_collect(max_videos: int, years: int, stale_days: int):
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 
+def _run_discover(limit: int, max_results: int, suffix: str, years: int, order: str):
+    with SessionLocal() as db:
+        celebs = (db.query(Celebrity).filter(Celebrity.is_demo.is_(False)).join(Celebrity.channels)
+                  .filter(YoutubeChannel.is_active.is_(True)).distinct().order_by(Celebrity.id).limit(limit).all())
+        BULK_STATE.update(total=len(celebs), done=0)
+        results, quota = [], 0
+        for c in celebs:
+            BULK_STATE["current"] = c.name
+            query = f"{c.name} {suffix}".strip()
+            job = discover_shorts(db, query, celebrity_id=c.id, max_results=max_results, years=years, order=order,
+                                  triggered_by="bulk")
+            quota += job.quota_used
+            results.append({"celebrity": c.name, "query": query, "status": job.status, "created": job.result.get("created"),
+                            "updated": job.result.get("updated"), "found": job.result.get("found"), "error": job.error})
+            BULK_STATE["done"] += 1
+            if job.status == "failed" and job.result.get("reason") == "quotaExceeded":
+                break
+        summary = {"celebrities": len(results), "success": sum(r["status"] == "success" for r in results),
+                   "created": sum(r["created"] or 0 for r in results), "failed": [r for r in results if r["status"] == "failed"],
+                   "quota_used": quota, "results": results}
+        BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
+
+
 def start(task: str, **params) -> dict:
     with _lock:
         if BULK_STATE["running"]:
             raise RuntimeError(f"다른 일괄 작업({BULK_STATE['task']})이 실행 중입니다. 완료 후 다시 시도하세요.")
         BULK_STATE.update(running=True, task=task, total=0, done=0, current=None, started_at=utcnow().isoformat(),
                           finished_at=None, summary={}, error=None)
-    target = _run_resolve if task == "resolve" else _run_collect
+    target = {"resolve": _run_resolve, "collect": _run_collect, "discover": _run_discover}[task]
     t = threading.Thread(target=target, kwargs=params, daemon=True, name=f"bulk-{task}")
     t.start()
     return status()
