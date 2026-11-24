@@ -58,7 +58,7 @@ export default function Channels() {
                 <td className="td"><div className="flex flex-wrap gap-1 text-xs">
                   <button className="btn-ghost px-2 py-1" onClick={() => setEdit(c)}>수정</button>
                   <button className="btn-ghost px-2 py-1" title="YouTube API 로 채널 후보 검색(할당량 100)" onClick={() => doResolve(c)}>ID 조회</button>
-                  <button className="btn-ghost px-2 py-1" disabled={!c.channel_id} title={c.channel_id ? '최근 3년 영상 수집' : '채널 ID 필요'} onClick={() => act(() => api.collectChannel(c.id, { max_videos: 200, years: 3 }).then((j) => { if (j.status === 'failed') throw new Error(j.error || '수집 실패') }), '수집 완료')}>영상 수집</button>
+                  <button className="btn-ghost px-2 py-1" disabled={!c.channel_id} title={c.channel_id ? '최근 3년 영상 수집' : '채널 ID 필요'} onClick={() => act(() => api.collectChannel(c.id, { max_videos: 200 }).then((j) => { if (j.status === 'failed') throw new Error(j.error || '수집 실패') }), '수집 완료')}>영상 수집</button>
                   <Confirm className="btn-danger px-2 py-1" onConfirm={() => act(() => api.deleteChannel(c.id), '삭제')}>삭제</Confirm>
                 </div></td>
               </tr>

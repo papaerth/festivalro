@@ -88,7 +88,7 @@ export default function Videos() {
 
       <Modal open={disc} onClose={() => setDisc(false)} title="재편집 쇼츠 검색 (YouTube)">
         <div className="space-y-3">
-          <p className="text-xs muted">"연예인 이름 + 키워드"로 YouTube 쇼츠를 검색해 <b>재편집 쇼츠(바이럴 검증 자료)</b>로 등록합니다. 검색 1회 = 할당량 100. 등록된 공식 채널 영상이 섞이면 원본으로 자동 분류됩니다.</p>
+          <p className="text-xs muted">설정의 조회 기간(기본 3개월 전~3년 전)에 게시된 쇼츠를 "연예인 이름 + 키워드"로 검색해 <b>재편집 쇼츠(바이럴 검증 자료)</b>로 등록합니다. 검색 1회 = 할당량 100. 등록된 공식 채널 영상이 섞이면 원본으로 자동 분류됩니다.</p>
           <Field label="연예인(선택)"><Select value={dform.celebrity_id} onChange={(v) => { const c = (celebs.data || []).find((x) => String(x.id) === v); setDform({ ...dform, celebrity_id: v, query: c && !dform.query ? `${c.name} 추천템` : dform.query }) }} placeholder="미지정" options={(celebs.data || []).map((c) => [String(c.id), c.name])} /></Field>
           <Field label="검색어 *" hint="예: 성시경 추천템 / 이서진 콜라 / 한예슬 스킨케어"><input className="input" value={dform.query} onChange={(e) => setDform({ ...dform, query: e.target.value })} /></Field>
           <div className="grid grid-cols-3 gap-3">
@@ -97,7 +97,7 @@ export default function Videos() {
             <Field label="분류"><Select value={dform.source_type} onChange={(v) => setDform({ ...dform, source_type: v })} options={[['reedit_shorts', '타인 재편집'], ['competitor', '경쟁·바이럴 참고']]} /></Field>
           </div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={dform.shopping_only} onChange={(e) => setDform({ ...dform, shopping_only: e.target.checked })} /> 쇼핑 쇼츠만 등록 (추천템·내돈내산·구매 링크 등 쇼핑 신호가 없으면 제외)</label>
-          <div className="flex justify-end"><button className="btn-primary" disabled={!dform.query} onClick={async () => { try { const j = await api.discoverShorts({ query: dform.query, celebrity_id: dform.celebrity_id ? Number(dform.celebrity_id) : null, max_results: dform.max_results, years: 3, order: dform.order, source_type: dform.source_type, shopping_only: dform.shopping_only }); if (j.status === 'failed') throw new Error(j.error || '실패'); toast(`검색 ${j.result.found}개 · 새로 등록 ${j.result.created}개 · 갱신 ${j.result.updated}개 · 쇼핑 신호 없어 제외 ${j.result.skipped_non_shopping ?? 0}개${j.result.official_channel_videos ? ` · 공식 채널 원본 ${j.result.official_channel_videos}개` : ''} (할당량 ${j.quota_used})`); setDisc(false); setF({ ...f, source_type: dform.source_type, sort: 'updated' }) } catch (e: any) { toast(e.message, 'err') } }}>검색·등록</button></div>
+          <div className="flex justify-end"><button className="btn-primary" disabled={!dform.query} onClick={async () => { try { const j = await api.discoverShorts({ query: dform.query, celebrity_id: dform.celebrity_id ? Number(dform.celebrity_id) : null, max_results: dform.max_results, order: dform.order, source_type: dform.source_type, shopping_only: dform.shopping_only }); if (j.status === 'failed') throw new Error(j.error || '실패'); toast(`검색 ${j.result.found}개 · 새로 등록 ${j.result.created}개 · 갱신 ${j.result.updated}개 · 쇼핑 신호 없어 제외 ${j.result.skipped_non_shopping ?? 0}개${j.result.official_channel_videos ? ` · 공식 채널 원본 ${j.result.official_channel_videos}개` : ''} (할당량 ${j.quota_used})`); setDisc(false); setF({ ...f, source_type: dform.source_type, sort: 'updated' }) } catch (e: any) { toast(e.message, 'err') } }}>검색·등록</button></div>
         </div>
       </Modal>
       <Modal open={add} onClose={() => setAdd(false)} title="영상 등록">

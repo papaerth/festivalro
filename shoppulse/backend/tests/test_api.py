@@ -415,3 +415,16 @@ def test_auto_discovery_creates_candidates_and_ai_skipped_without_key(client):
 def test_daily_sourcing_ai_products_skipped_without_key(client):
     rep = client.post("/api/sourcing/run", json={"report_date": "2026-11-29", "background": False}).json()
     assert rep["summary"]["ai_products"]["skipped"] is True and "ANTHROPIC_API_KEY" in rep["summary"]["ai_products"]["reason"]
+
+
+def test_auto_discovery_respects_window(client):
+    # 최근 10일 전 게시 쇼츠는 창(3개월~3년) 밖 → 후보에서 제외
+    from datetime import datetime, timedelta
+    recent = (datetime.now() - timedelta(days=10)).isoformat()
+    v = client.post("/api/videos", json={"url_or_id": "jjjjjjjjjjj", "title": "장영란 추천템 주방 냄비 내돈내산", "duration_seconds": 40,
+                                        "view_count": 3000000, "fetch": False, "source_type": "reedit_shorts", "published_at": recent}).json()
+    rep = client.post("/api/sourcing/run", json={"report_date": "2026-11-30", "background": False}).json()
+    disc = rep["summary"]["auto_discovery"]
+    assert disc["window_days"] == [90, 1095] and disc["skipped"]["out_of_window"] >= 1
+    assert not any(c["video_id"] == v["id"] for c in client.get("/api/candidates", params={"category": "living"}).json()["items"])
+    assert rep["summary"]["ai_plans"]["skipped"] is True

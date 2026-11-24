@@ -18,7 +18,7 @@ export default function Dashboard() {
     let alive = true, timer: ReturnType<typeof setTimeout> | undefined
     const tick = async () => {
       let running = false
-      try { const st = await api.bulkStatus(); if (alive) { running = st.running; setJob((prev) => { if (prev?.running && !st.running && st.task === 'sourcing') { const sm = st.summary || {}; const rf = sm.stats_refresh; const ad = sm.auto_discovery; const ai = sm.ai_scoring; const ap = sm.ai_products; toast(`소싱 완료 — ${rf?.skipped ? `갱신 건너뜀(${rf.reason})` : `조회수 ${rf?.updated ?? 0}개 갱신`} · 자동 발굴 ${ad ? Object.values(ad.created as Record<string, number>).reduce((a, b) => a + b, 0) : 0}개 · AI 상품 추정 ${ap?.skipped ? '건너뜀' : `${ap?.identified ?? 0}건(연결 ${ap?.linked ?? 0})`} · AI 채점 ${ai?.skipped ? `건너뜀(${ai.reason})` : `${ai?.scored ?? 0}건`} · 후보 ${sm.total_candidates}/27, 추천 ${sm.total_final}/9`); stats.reload(); cands.reload() } return st }) } } catch {}
+      try { const st = await api.bulkStatus(); if (alive) { running = st.running; setJob((prev) => { if (prev?.running && !st.running && st.task === 'sourcing') { const sm = st.summary || {}; const rf = sm.stats_refresh; const ad = sm.auto_discovery; const ai = sm.ai_scoring; const ap = sm.ai_products; toast(`소싱 완료 — ${rf?.skipped ? `갱신 건너뜀(${rf.reason})` : `조회수 ${rf?.updated ?? 0}개 갱신`} · 자동 발굴 ${ad ? Object.values(ad.created as Record<string, number>).reduce((a, b) => a + b, 0) : 0}개 · AI 상품 추정 ${ap?.skipped ? '건너뜀' : `${ap?.identified ?? 0}건(연결 ${ap?.linked ?? 0})`} · AI 채점 ${ai?.skipped ? `건너뜀(${ai.reason})` : `${ai?.scored ?? 0}건`} · 기획안 ${sm.ai_plans?.skipped ? '건너뜀' : `${sm.ai_plans?.generated ?? 0}건`} · 후보 ${sm.total_candidates}/27, 추천 ${sm.total_final}/9`); stats.reload(); cands.reload() } return st }) } } catch {}
       if (alive) timer = setTimeout(tick, running ? 2000 : 15000)
     }
     tick()
@@ -77,6 +77,7 @@ export default function Dashboard() {
             <p className="mb-2 text-[11px] muted">
               {rep.summary.auto_discovery && <>자동 발굴 {Object.entries(rep.summary.auto_discovery.created as Record<string, number>).map(([k, n]) => `${LABELS.category[k]} ${n}`).join(' · ')} (후보 풀 {Object.values(rep.summary.auto_discovery.pool as Record<string, number>).reduce((a, b) => a + b, 0)}개, 쇼핑 아님 {rep.summary.auto_discovery.skipped.not_shopping} · 분류 불가 {rep.summary.auto_discovery.skipped.no_category} 제외) · </>}
               {rep.summary.ai_products && (rep.summary.ai_products.skipped ? <>AI 상품 추정 건너뜀 · </> : <>AI 상품 추정 {rep.summary.ai_products.identified}건(자동 연결 {rep.summary.ai_products.linked}) · </>)}
+              {rep.summary.ai_plans && (rep.summary.ai_plans.skipped ? <>기획안 건너뜀 · </> : <>AI 기획안 {rep.summary.ai_plans.generated}건 생성{rep.summary.ai_plans.existing_today ? ` (오늘 생성된 ${rep.summary.ai_plans.existing_today}건 유지)` : ''} · </>)}
               {rep.summary.ai_scoring && (rep.summary.ai_scoring.skipped ? <>AI 채점 건너뜀: {rep.summary.ai_scoring.reason}</> : <>AI 1차 채점 {rep.summary.ai_scoring.scored}건{rep.summary.ai_scoring.failed?.length ? ` · 실패 ${rep.summary.ai_scoring.failed.length}` : ''}</>)}
             </p>
           )}

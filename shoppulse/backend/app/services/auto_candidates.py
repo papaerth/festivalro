@@ -62,9 +62,6 @@ def signal_score(v: Video, product_confirmed: bool) -> tuple[float, list[str]]:
     if g in GRAPH_BONUS:
         s += GRAPH_BONUS[g]
         reasons.append(f"그래프 {g}")
-    if v.published_at and (utcnow() - v.published_at) < timedelta(days=90):
-        s += 1.0
-        reasons.append("최근 90일 내 게시")
     if product_confirmed:
         s += 2.0
         reasons.append("상품 확인됨")
@@ -77,14 +74,20 @@ def signal_score(v: Video, product_confirmed: bool) -> tuple[float, list[str]]:
 def discover_candidates(db: Session, per_category: int = 9) -> dict:
     from ..serializers import product_status
 
+    from .collection import sourcing_window
+    after, before, mn, mx = sourcing_window(db)
+    after_n, before_n = after.replace(tzinfo=None), before.replace(tzinfo=None)
     videos = (db.query(Video).filter(Video.is_demo.is_(False), Video.source_type.in_(["reedit_shorts", "competitor"])).all())
     existing = {(c.video_id, c.channel_category) for c in db.query(SourcingCandidate).all()}
     per_cat_existing = {c: 0 for c in CATEGORIES}
     for _, cat in existing:
         per_cat_existing[cat] = per_cat_existing.get(cat, 0) + 1
     ranked: dict[str, list] = {c: [] for c in CATEGORIES}
-    skipped = {"not_shopping": 0, "no_category": 0, "already": 0}
+    skipped = {"not_shopping": 0, "no_category": 0, "already": 0, "out_of_window": 0}
     for v in videos:
+        if v.published_at and not (after_n <= v.published_at <= before_n):
+            skipped["out_of_window"] += 1
+            continue
         if not is_shopping(v):
             skipped["not_shopping"] += 1
             continue
@@ -115,4 +118,4 @@ def discover_candidates(db: Session, per_category: int = 9) -> dict:
             created_ids.append(c.id)
     db.commit()
     return {"created": created, "created_ids": created_ids, "pool": {c: len(ranked[c]) for c in CATEGORIES},
-            "skipped": skipped, "existing": per_cat_existing}
+            "skipped": skipped, "existing": per_cat_existing, "window_days": [mn, mx]}

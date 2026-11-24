@@ -42,17 +42,17 @@ export default function BulkPanel({ onDone, unresolvedCount, collectableCount, c
           <span className="muted">최대</span><input type="number" className="input w-20" value={limit} min={1} max={200} onChange={(e) => setLimit(Number(e.target.value))} /><span className="muted text-xs">개 · 채널당 할당량 100</span>
         </div>
         <div className="flex items-center gap-2 text-sm">
-          <button className="btn-primary" disabled={!!st?.running || collectableCount === 0} onClick={() => run(() => api.bulkCollect({ max_videos: 200, years: 3, stale_days: stale }))}>ID 있는 채널 전체 영상 수집 ({collectableCount}개)</button>
+          <button className="btn-primary" disabled={!!st?.running || collectableCount === 0} onClick={() => run(() => api.bulkCollect({ max_videos: 200, stale_days: stale }))}>ID 있는 채널 전체 영상 수집 ({collectableCount}개)</button>
           <span className="muted">최근</span><input type="number" className="input w-16" value={stale} min={0} max={365} onChange={(e) => setStale(Number(e.target.value))} /><span className="muted text-xs">일 내 수집한 채널은 건너뜀 (0=전부)</span>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-stone-200 pt-3 text-sm dark:border-stone-800">
-        <button className="btn-primary" disabled={!!st?.running || celebrityCount === 0} onClick={() => run(() => api.bulkDiscover({ limit: dLimit, max_results: 25, suffix, years: 3, order: 'relevance', shopping_only: shopOnly }))}>연예인별 재편집 쇼츠 일괄 검색 ({celebrityCount}명)</button>
+        <button className="btn-primary" disabled={!!st?.running || celebrityCount === 0} onClick={() => run(() => api.bulkDiscover({ limit: dLimit, max_results: 25, suffix, order: 'relevance', shopping_only: shopOnly }))}>연예인별 재편집 쇼츠 일괄 검색 ({celebrityCount}명)</button>
         <span className="muted">검색어: 이름 +</span><input className="input w-32" value={suffix} onChange={(e) => setSuffix(e.target.value)} />
         <span className="muted">최대</span><input type="number" className="input w-20" value={dLimit} min={1} max={200} onChange={(e) => setDLimit(Number(e.target.value))} /><span className="muted text-xs">명 · 1명당 할당량 100, 쇼츠 25개</span>
         <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={shopOnly} onChange={(e) => setShopOnly(e.target.checked)} /> 쇼핑 쇼츠만 등록(제목·설명의 쇼핑 신호 기준)</label>
       </div>
-      <p className="mt-2 text-[11px] muted">재편집 쇼츠 검색은 "연예인 이름 + 키워드"로 YouTube 쇼츠를 찾아 <b>재편집 쇼츠(바이럴 검증 자료)</b>로 등록합니다. 등록된 공식 채널의 영상이 섞여 나오면 자동으로 원본으로 분류됩니다. 이 쇼츠들의 조회수를 매일 갱신하면 급등 후 평탄화·재상승 패턴을 판별할 수 있습니다. 어떤 원본 영상을 썼는지는 영상 상세에서 연결하세요.</p>
+      <p className="mt-2 text-[11px] muted">수집·검색은 <b>설정의 조회 대상 게시 기간</b>(기본 3개월 전 ~ 3년 전)에 게시된 영상만 대상으로 합니다. 재편집 쇼츠 검색은 "연예인 이름 + 키워드"로 YouTube 쇼츠를 찾아 <b>재편집 쇼츠(바이럴 검증 자료)</b>로 등록합니다. 등록된 공식 채널의 영상이 섞여 나오면 자동으로 원본으로 분류됩니다. 이 쇼츠들의 조회수를 매일 갱신하면 급등 후 평탄화·재상승 패턴을 판별할 수 있습니다. 어떤 원본 영상을 썼는지는 영상 상세에서 연결하세요.</p>
       <p className="mt-2 text-[11px] muted">일괄 ID 조회는 가장 유력한 채널을 저장하되 <b>검증 상태는 '검증 전'으로 둡니다</b>. '확인 필요'로 표시된 채널과 구독자 수가 이상한 채널은 직접 확인한 뒤 「검증 완료」를 누르세요. 수집은 백그라운드에서 진행되며 이 화면을 떠나도 계속됩니다.</p>
       {st && (st.running || st.finished_at) && (
         <div className="mt-3 rounded-xl bg-stone-50 p-3 text-sm dark:bg-stone-800/60">

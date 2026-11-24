@@ -14,6 +14,8 @@ export default function SettingsPage() {
   const [slots, setSlots] = useState('')
   const [region, setRegion] = useState('')
   const [refreshLimit, setRefreshLimit] = useState(300)
+  const [winMin, setWinMin] = useState(90)
+  const [winMax, setWinMax] = useState(1095)
   const [lunar, setLunar] = useState('')
   const restoreRef = useRef<HTMLInputElement>(null)
   const [restoreMode, setRestoreMode] = useState<'replace' | 'merge'>('replace')
@@ -22,7 +24,7 @@ export default function SettingsPage() {
     if (!s.data) return
     setScoring(JSON.parse(JSON.stringify(s.data.scoring)))
     setRules(JSON.stringify(s.data.graph_rules, null, 2)); setBands(JSON.stringify(s.data.metric_bands, null, 2)); setSlots(JSON.stringify(s.data.upload_slots, null, 2))
-    setRegion(s.data.user.default_region || ''); setRefreshLimit(Number(s.data.user.daily_refresh_limit ?? 300)); setLunar(JSON.stringify(s.data.user.lunar_holidays || [{ date: '2027-02-06', name: '설날(예시—실제 날짜 확인)' }], null, 1))
+    setRegion(s.data.user.default_region || ''); setRefreshLimit(Number(s.data.user.daily_refresh_limit ?? 300)); setWinMin(Number(s.data.user.window_min_age_days ?? 90)); setWinMax(Number(s.data.user.window_max_age_days ?? 1095)); setLunar(JSON.stringify(s.data.user.lunar_holidays || [{ date: '2027-02-06', name: '설날(예시—실제 날짜 확인)' }], null, 1))
   }, [s.data])
   const act = async (fn: () => Promise<any>, ok: string) => { try { await fn(); toast(ok); s.reload(); backups.reload() } catch (e: any) { toast(e.message, 'err') } }
   if (s.error) return <ErrorBox error={s.error} onRetry={s.reload} />
@@ -47,6 +49,8 @@ export default function SettingsPage() {
           <h2 className="section-title mb-2 mt-4">기본 지역·명절</h2>
           <Field label="기본 지역(날씨·계절 참고)"><div className="flex gap-2"><input className="input" value={region} onChange={(e) => setRegion(e.target.value)} /><button className="btn-ghost" onClick={() => act(() => api.setUserSetting('default_region', region), '저장')}>저장</button></div></Field>
           <div className="mt-2"><Field label="음력 명절(설·추석) 날짜 JSON" hint="연도별로 달라 자동 계산하지 않습니다. 실제 날짜를 입력하세요."><textarea className="input font-mono text-xs" rows={4} value={lunar} onChange={(e) => setLunar(e.target.value)} /><button className="btn-ghost mt-1" onClick={() => { try { act(() => api.setUserSetting('lunar_holidays', JSON.parse(lunar)), '저장') } catch { toast('JSON 형식 오류', 'err') } }}>저장</button></Field></div>
+          <h2 className="section-title mb-2 mt-4">조회 대상 게시 기간</h2>
+          <Field label="오늘 기준 몇 일 전 ~ 몇 일 전 영상을 다룰지" hint="기본 90일 전 ~ 1095일(3년) 전. 채널 영상 수집·재편집 쇼츠 검색·자동 후보 발굴에 모두 적용. 최근 영상은 추이가 드러나지 않아 제외합니다."><div className="flex items-center gap-2"><input type="number" className="input w-24" min={0} value={winMin} onChange={(e) => setWinMin(Number(e.target.value))} /><span className="muted">일 전 ~</span><input type="number" className="input w-24" min={1} value={winMax} onChange={(e) => setWinMax(Number(e.target.value))} /><span className="muted">일 전</span><button className="btn-ghost" onClick={() => act(async () => { await api.setUserSetting('window_min_age_days', winMin); await api.setUserSetting('window_max_age_days', winMax) }, '저장')}>저장</button></div></Field>
           <h2 className="section-title mb-2 mt-4">일일 조회수 갱신 개수</h2>
           <Field label="「오늘 소싱 실행」 때 갱신할 영상 수 (오래된 것부터)" hint="영상 50개당 YouTube 할당량 1. 전체 영상 수보다 크게 두면 매일 전부 갱신됩니다. 0 = 갱신 안 함."><div className="flex gap-2"><input type="number" className="input" min={0} max={20000} value={refreshLimit} onChange={(e) => setRefreshLimit(Number(e.target.value))} /><button className="btn-ghost" onClick={() => act(() => api.setUserSetting('daily_refresh_limit', refreshLimit), '저장')}>저장</button></div></Field>
           <h2 className="section-title mb-2 mt-4">자동 소싱 (매일 05:00)</h2>

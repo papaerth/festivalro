@@ -90,7 +90,8 @@ class YouTubeClient:
         return out
 
     def search_videos(self, query: str, max_results: int = 25, duration: str = "short",
-                      published_after: datetime | None = None, order: str = "relevance") -> list[str]:
+                      published_after: datetime | None = None, order: str = "relevance",
+                      published_before: datetime | None = None) -> list[str]:
         """영상 검색(할당량 100/페이지). duration: short(<4분)/medium/long/any. 반환: 영상 ID 목록."""
         ids: list[str] = []
         token = None
@@ -101,6 +102,8 @@ class YouTubeClient:
                 params["videoDuration"] = duration
             if published_after:
                 params["publishedAfter"] = published_after.strftime("%Y-%m-%dT%H:%M:%SZ")
+            if published_before:
+                params["publishedBefore"] = published_before.strftime("%Y-%m-%dT%H:%M:%SZ")
             if token:
                 params["pageToken"] = token
             data = self._get("search", **params)
@@ -112,7 +115,7 @@ class YouTubeClient:
 
     # ---- 영상
     def list_upload_video_ids(self, uploads_playlist: str, published_after: datetime | None = None,
-                              max_videos: int = 200) -> list[str]:
+                              max_videos: int = 200, published_before: datetime | None = None) -> list[str]:
         ids: list[str] = []
         token = None
         while len(ids) < max_videos:
@@ -124,11 +127,13 @@ class YouTubeClient:
             for it in data.get("items", []):
                 cd = it.get("contentDetails", {})
                 pub = cd.get("videoPublishedAt")
-                if published_after and pub:
+                if pub and (published_after or published_before):
                     pub_dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
-                    if pub_dt < published_after:
-                        stop = True
+                    if published_after and pub_dt < published_after:
+                        stop = True  # 업로드 목록은 최신순이므로 이보다 오래된 것은 모두 범위 밖
                         continue
+                    if published_before and pub_dt > published_before:
+                        continue  # 아직 너무 최근 — 건너뛰고 계속
                 if cd.get("videoId"):
                     ids.append(cd["videoId"])
             token = data.get("nextPageToken")

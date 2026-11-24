@@ -144,6 +144,36 @@ def ai_identify_products_step(db: Session, max_calls: int = 30) -> dict:
     return {"skipped": False, "identified": identified, "linked": linked, "no_result": no_result, "failed": failed}
 
 
+def ai_plan_step(db: Session, candidate_ids: list[int]) -> dict:
+    """최종 추천 후보에 AI 쇼츠 기획안을 자동 생성한다(오늘 이미 있으면 건너뜀). 키가 없으면 건너뜀."""
+    from ..config import get_settings
+    from ..models import ShortsPlan, UserSetting
+    from .shorts_planner import generate_plan
+
+    if not get_settings().anthropic_api_key:
+        return {"skipped": True, "reason": "ANTHROPIC_API_KEY 미설정", "generated": 0}
+    ts = db.get(UserSetting, "default_target_seconds")
+    target = int(ts.value.get("value", 25)) if ts else 25
+    generated, failed, existing = 0, [], 0
+    today = utcnow().date()
+    for cid in candidate_ids:
+        c = db.get(SourcingCandidate, cid)
+        if not c:
+            continue
+        if any(p.created_at.date() == today and p.generated_by == "anthropic" for p in c.plans):
+            existing += 1
+            continue
+        try:
+            plan, by = generate_plan(c, target)
+        except Exception as e:
+            failed.append({"candidate_id": cid, "error": str(e)[:200]})
+            continue
+        db.add(ShortsPlan(candidate_id=cid, target_seconds=target, generated_by=by, plan=plan))
+        generated += 1
+        db.commit()
+    return {"skipped": False, "generated": generated, "existing_today": existing, "failed": failed}
+
+
 def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date | None = None,
                        refresh_limit: int | None = None, auto_discover: bool = True, ai_score: bool = True) -> DailyReport:
     report_date = report_date or date.today()
@@ -228,6 +258,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
         summary["total_candidates"] += len(top)
         summary["total_final"] += len(final)
 
+    summary["ai_plans"] = ai_plan_step(db, [cid for cat in out_categories for cid in cat["final_ids"]]) if ai_score else {"skipped": True, "reason": "비활성"}
     report = DailyReport(report_date=report_date, trigger=trigger, summary=summary, candidates=out_categories,
                          generated_at=utcnow())
     db.add(report)

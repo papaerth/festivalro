@@ -1,7 +1,7 @@
 """YouTube 수집 작업: 채널 확인, 영상 수집(최근 3년), 통계 갱신(스냅샷 축적). 모든 작업은 collection_jobs 에 기록."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,26 @@ def _utc_naive(value: str | None) -> datetime | None:
     if not value:
         return None
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def sourcing_window(db: Session, min_age_days: int | None = None, max_age_days: int | None = None) -> tuple[datetime, datetime, int, int]:
+    """조회 대상 게시 기간: (publishedAfter, publishedBefore, min_age_days, max_age_days). 기본 3개월 전 ~ 3년 전.
+    user_settings.window_min_age_days / window_max_age_days 로 변경 가능."""
+    from ..models import UserSetting
+
+    def setting(key: str, default: int) -> int:
+        s = db.get(UserSetting, key)
+        try:
+            return int(s.value.get("value", default)) if s else default
+        except (TypeError, ValueError):
+            return default
+
+    mn = min_age_days if min_age_days is not None else setting("window_min_age_days", 90)
+    mx = max_age_days if max_age_days is not None else setting("window_max_age_days", 365 * 3)
+    if mx <= mn:
+        mx = mn + 1
+    now = datetime.now(timezone.utc)
+    return now - timedelta(days=mx), now - timedelta(days=mn), mn, mx
 
 
 def start_job(db: Session, job_type: str, params: dict, triggered_by: str = "manual") -> CollectionJob:
@@ -73,9 +93,11 @@ def upsert_video_from_api(db: Session, item: dict, channel: YoutubeChannel | Non
 
 
 def collect_channel_videos(db: Session, channel: YoutubeChannel, max_videos: int = 200,
-                           years: int = 3, triggered_by: str = "manual") -> CollectionJob:
+                           years: int | None = None, triggered_by: str = "manual",
+                           min_age_days: int | None = None, max_age_days: int | None = None) -> CollectionJob:
+    after, before, mn, mx = sourcing_window(db, min_age_days, max_age_days if max_age_days is not None else (years * 365 if years else None))
     job = start_job(db, "collect_channel_videos", {"channel_id": channel.id, "channel_name": channel.channel_name,
-                                                   "max_videos": max_videos, "years": years}, triggered_by)
+                                                   "max_videos": max_videos, "window_days": [mn, mx]}, triggered_by)
     db.commit()
     try:
         client = YouTubeClient()
@@ -93,8 +115,7 @@ def collect_channel_videos(db: Session, channel: YoutubeChannel, max_videos: int
         channel.subscriber_count = ch["subscriber_count"]
         channel.handle = ch.get("handle") or channel.handle
         channel.channel_url = ch["url"]
-        after = datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year - years) if years else None
-        ids = client.list_upload_video_ids(ch["uploads_playlist"], published_after=after, max_videos=max_videos)
+        ids = client.list_upload_video_ids(ch["uploads_playlist"], published_after=after, published_before=before, max_videos=max_videos)
         now = utcnow().replace(microsecond=0)
         created = updated = 0
         for item in client.get_videos(ids):
@@ -186,16 +207,18 @@ def add_video_by_id(db: Session, youtube_video_id: str, channel: YoutubeChannel 
 
 
 def discover_shorts(db: Session, query: str, celebrity_id: int | None = None, max_results: int = 25,
-                    years: int = 3, order: str = "relevance", source_type: str = "reedit_shorts",
-                    triggered_by: str = "manual", shopping_only: bool = True) -> CollectionJob:
+                    years: int | None = None, order: str = "relevance", source_type: str = "reedit_shorts",
+                    triggered_by: str = "manual", shopping_only: bool = True,
+                    min_age_days: int | None = None, max_age_days: int | None = None) -> CollectionJob:
     """연예인 이름·상품 키워드로 YouTube 쇼츠를 검색해 '재편집 쇼츠'로 등록한다.
 
     - 등록된 공식 채널의 영상이 검색되면 원본(original_celebrity)으로 분류한다.
     - 이미 있는 영상은 메타·조회수만 갱신하고 source_type 은 바꾸지 않는다.
     - 할당량: 검색 100/페이지 + 영상 50개당 1.
     """
+    after, before, mn, mx = sourcing_window(db, min_age_days, max_age_days if max_age_days is not None else (years * 365 if years else None))
     job = start_job(db, "discover_shorts", {"query": query, "celebrity_id": celebrity_id, "max_results": max_results,
-                                            "years": years, "order": order, "shopping_only": shopping_only}, triggered_by)
+                                            "window_days": [mn, mx], "order": order, "shopping_only": shopping_only}, triggered_by)
     db.commit()
     try:
         client = YouTubeClient()
@@ -203,8 +226,8 @@ def discover_shorts(db: Session, query: str, celebrity_id: int | None = None, ma
         finish_job(job, "failed", error=str(e)); db.commit()
         return job
     try:
-        after = datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year - years) if years else None
-        ids = client.search_videos(query, max_results=max_results, duration="short", published_after=after, order=order)
+        ids = client.search_videos(query, max_results=max_results, duration="short", published_after=after,
+                                   published_before=before, order=order)
         now = utcnow().replace(microsecond=0)
         official = {c.channel_id: c for c in db.query(YoutubeChannel).filter(YoutubeChannel.channel_id.isnot(None)).all()}
         from .shopping_filter import score_text, threshold

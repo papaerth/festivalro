@@ -106,3 +106,23 @@ def test_shopping_filter_scores():
     assert s2 < threshold()
     s3, _ = score_text("임영웅 근황", "", [])
     assert s3 < threshold()
+
+
+def test_sourcing_window_defaults_and_settings():
+    from datetime import datetime, timezone
+    from app.database import SessionLocal
+    from app.models import UserSetting
+    from app.services.collection import sourcing_window
+    with SessionLocal() as db:
+        after, before, mn, mx = sourcing_window(db)
+        assert (mn, mx) == (90, 1095)
+        now = datetime.now(timezone.utc)
+        assert 1094 <= (now - after).days <= 1096 and 89 <= (now - before).days <= 91
+        db.merge(UserSetting(key="window_min_age_days", value={"value": 30}))
+        db.merge(UserSetting(key="window_max_age_days", value={"value": 400}))
+        db.commit()
+        _, _, mn, mx = sourcing_window(db)
+        assert (mn, mx) == (30, 400)
+        _, _, mn, mx = sourcing_window(db, min_age_days=0, max_age_days=10)
+        assert (mn, mx) == (0, 10)
+        db.delete(db.get(UserSetting, "window_min_age_days")); db.delete(db.get(UserSetting, "window_max_age_days")); db.commit()

@@ -104,7 +104,7 @@ def _run_resolve(limit: int):
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 
-def _run_collect(max_videos: int, years: int, stale_days: int):
+def _run_collect(max_videos: int, years: int | None, stale_days: int):
     with SessionLocal() as db:
         q = db.query(YoutubeChannel).filter(YoutubeChannel.channel_id.isnot(None), YoutubeChannel.is_active.is_(True))
         if stale_days:
@@ -127,7 +127,7 @@ def _run_collect(max_videos: int, years: int, stale_days: int):
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 
-def _run_discover(limit: int, max_results: int, suffix: str, years: int, order: str, shopping_only: bool = True):
+def _run_discover(limit: int, max_results: int, suffix: str, years: int | None, order: str, shopping_only: bool = True):
     with SessionLocal() as db:
         celebs = (db.query(Celebrity).filter(Celebrity.is_demo.is_(False)).join(Celebrity.channels)
                   .filter(YoutubeChannel.is_active.is_(True)).distinct().order_by(Celebrity.id).limit(limit).all())
@@ -203,7 +203,7 @@ def _run_sourcing(report_date, refresh_limit: int, trigger: str = "manual"):
         summary = {"report_id": rep.id, "report_date": rep.report_date.isoformat(), "stats_refresh": refresh,
                    "total_candidates": rep.summary["total_candidates"], "total_final": rep.summary["total_final"],
                    "auto_discovery": rep.summary.get("auto_discovery"), "ai_scoring": rep.summary.get("ai_scoring"),
-                   "ai_products": rep.summary.get("ai_products")}
+                   "ai_products": rep.summary.get("ai_products"), "ai_plans": rep.summary.get("ai_plans")}
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 

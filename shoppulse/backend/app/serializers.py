@@ -238,6 +238,7 @@ def candidate_summary(c: SourcingCandidate, config: dict | None = None) -> dict:
         "offer_status": (c.product.offers[0].stock_status if c.product and c.product.offers else None),
         "segment": segment(c.segment) if c.segment else None,
         "is_short_candidate": c.video.source_type in ("reedit_shorts", "competitor"),
+        "plan_count": len(c.plans), "latest_plan_by": (max(c.plans, key=lambda p: p.created_at).generated_by if c.plans else None),
         "original_video": (video_summary(c.video.original, with_graph=False) if c.video.original else None),
         "video_product_status": product_status(c.video),
         "evidence": evidence_summary(c.video.original) if c.video.original else evidence_summary(c.video),

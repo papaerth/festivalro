@@ -27,13 +27,13 @@ export default function DataPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card p-4">
           <h2 className="section-title mb-1">YouTube Data API 수집 {yt ? <Badge tone="green">키 설정됨</Badge> : <Badge tone="amber">키 미설정 — .env 의 YOUTUBE_API_KEY</Badge>}</h2>
-          <p className="mb-3 text-xs muted">채널 영상 수집(최근 3년, 업로드 목록 기반)과 기존 영상 조회수 갱신(스냅샷 축적). 할당량: 채널 검색 100, 영상/채널 조회 1 (일 10,000 기본).</p>
+          <p className="mb-3 text-xs muted">채널 영상 수집(설정의 조회 기간: 기본 3개월 전~3년 전, 업로드 목록 기반)과 기존 영상 조회수 갱신(스냅샷 축적). 할당량: 채널 검색 100, 영상/채널 조회 1 (일 10,000 기본).</p>
           <div className="grid gap-3 md:grid-cols-3">
             <div className="md:col-span-2"><Field label="채널 (채널 ID가 있는 채널만 수집 가능)"><Select value={ch} onChange={setCh} placeholder="선택" options={(channels.data || []).map((c) => [String(c.id), `${c.channel_name}${c.celebrity_name ? ` (${c.celebrity_name})` : ''}${c.channel_id ? '' : ' — ID 미확인'}`])} /></Field></div>
             <Field label="최대 영상 수"><input type="number" className="input" value={maxVideos} onChange={(e) => setMaxVideos(Number(e.target.value))} /></Field>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button className="btn-primary" disabled={!ch} onClick={() => act(() => api.collectChannel(Number(ch), { max_videos: maxVideos, years: 3 }), (j) => j.status === 'failed' ? `수집 실패: ${j.error}` : `수집 ${LABELS.jobStatus[j.status]}: 신규 ${j.result.created} · 갱신 ${j.result.updated} (할당량 ${j.quota_used})`)}>선택 채널 영상 수집</button>
+            <button className="btn-primary" disabled={!ch} onClick={() => act(() => api.collectChannel(Number(ch), { max_videos: maxVideos }), (j) => j.status === 'failed' ? `수집 실패: ${j.error}` : `수집 ${LABELS.jobStatus[j.status]}: 신규 ${j.result.created} · 갱신 ${j.result.updated} (할당량 ${j.quota_used})`)}>선택 채널 영상 수집</button>
             <div className="flex items-center gap-2"><input type="number" className="input w-24" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /><button className="btn-ghost" onClick={() => act(() => api.refreshStats({ limit }), (j) => j.status === 'failed' ? `갱신 실패: ${j.error}` : `조회수 갱신 ${LABELS.jobStatus[j.status]}: ${j.result.updated}개 (할당량 ${j.quota_used})`)}>오래된 영상부터 조회수 갱신</button></div>
           </div>
           <p className="mt-2 text-[11px] muted">「오늘 소싱 실행」을 누르면 조회수 갱신(기본 300개)이 먼저 자동 실행됩니다. 조회수 갱신을 매일 실행하면 실제 시계열이 쌓여 그래프 유형(급등 후 평탄화·재상승 등)을 판별할 수 있습니다. 과거 기록은 복원되지 않습니다.</p>
