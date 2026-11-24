@@ -95,6 +95,55 @@ def ai_score_step(db: Session, max_per_category: int = TARGET_CANDIDATES, report
     return {"skipped": False, "scored": scored, "failed": failed}
 
 
+def ai_identify_products_step(db: Session, max_calls: int = 30) -> dict:
+    """상품이 연결되지 않은 활성 후보 쇼츠에 AI 상품 추정을 돌리고, 확신도 high/medium 추정을 '유사 상품 후보'로 자동 연결한다."""
+    from ..config import get_settings
+    from ..models import Product, ProductMention
+    from ..serializers import product_status
+    from .product_identifier import AINotConfigured, identify
+
+    if not get_settings().anthropic_api_key:
+        return {"skipped": True, "reason": "ANTHROPIC_API_KEY 미설정", "identified": 0, "linked": 0}
+    cands = (db.query(SourcingCandidate)
+             .filter(SourcingCandidate.is_demo.is_(False), SourcingCandidate.status.notin_(["rejected", "published", "analyzing"]))
+             .order_by(SourcingCandidate.created_at.desc()).all())
+    identified = linked = 0
+    failed, no_result = [], 0
+    for c in cands:
+        if identified >= max_calls:
+            break
+        v = c.video
+        if product_status(v) != "none" or v.ai_product_suggestions is not None:
+            continue
+        try:
+            result = identify(v, extra_images=None, use_thumbnail=True)
+        except AINotConfigured as e:
+            return {"skipped": True, "reason": str(e), "identified": identified, "linked": linked}
+        except Exception as e:
+            failed.append({"video_id": v.id, "error": str(e)[:200]})
+            continue
+        identified += 1
+        v.ai_product_suggestions = result
+        adopted_first = None
+        for sg in result.get("suggestions", []):
+            if sg.get("confidence") not in ("high", "medium") or sg.get("category") not in CATEGORIES or not sg.get("name"):
+                continue
+            p = Product(name=sg["name"], brand=sg.get("brand") or None, category=sg["category"], subcategory=sg.get("subcategory") or None,
+                        identification_status="similar_candidate",
+                        notes=f"[AI 추정 자동 연결] 영상 {v.youtube_video_id} · 확신도 {sg['confidence']} · 근거: {sg.get('evidence', '')} — 사람이 확인 후 상태를 바꾸세요.")
+            db.add(p)
+            db.flush()
+            db.add(ProductMention(video_id=v.id, product_id=p.id, celebrity_id=v.celebrity_id))
+            linked += 1
+            adopted_first = adopted_first or p
+        if adopted_first and not c.product_id:
+            c.product_id = adopted_first.id
+        if not result.get("suggestions"):
+            no_result += 1
+        db.commit()
+    return {"skipped": False, "identified": identified, "linked": linked, "no_result": no_result, "failed": failed}
+
+
 def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date | None = None,
                        refresh_limit: int | None = None, auto_discover: bool = True, ai_score: bool = True) -> DailyReport:
     report_date = report_date or date.today()
@@ -107,6 +156,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
     if auto_discover:
         from .auto_candidates import discover_candidates
         discovery = discover_candidates(db, per_category=TARGET_CANDIDATES)
+    ai_products = ai_identify_products_step(db) if ai_score else {"skipped": True, "reason": "비활성", "identified": 0, "linked": 0}
     ai = ai_score_step(db) if ai_score else {"skipped": True, "reason": "비활성", "scored": 0}
     yesterday = report_date - timedelta(days=1)
     prev = (
@@ -121,7 +171,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
     cfg = get_active_version(db).config
     out_categories = []
     summary = {"graph_types": {}, "total_candidates": 0, "total_final": 0, "stats_refresh": refresh,
-               "auto_discovery": discovery, "ai_scoring": ai,
+               "auto_discovery": discovery, "ai_scoring": ai, "ai_products": ai_products,
                "targets": {"candidates_per_category": TARGET_CANDIDATES, "final_per_category": TARGET_FINAL}}
 
     for cat in CATEGORIES:

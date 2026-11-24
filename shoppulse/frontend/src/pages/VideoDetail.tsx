@@ -51,7 +51,7 @@ export default function VideoDetail() {
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="card p-4 lg:col-span-2">
           <div className="mb-2 flex items-center justify-between"><h2 className="section-title">실제 조회수 그래프</h2><div className="flex gap-2"><button className="btn-ghost text-xs" onClick={() => open('snapshot', { observed_at: new Date().toISOString().slice(0, 16) })}>+ 조회수 관측 입력</button></div></div>
-          <ViewGraph points={v.snapshots} analysis={v.graph} height={240} />
+          <ViewGraph points={v.snapshots} analysis={v.graph} height={240} publishedAt={v.published_at} />
           <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
             <MetricPill label="누적 조회수" value={v.view_count} band={v.stats_updated_at ? `${fmt.datetime(v.stats_updated_at)} 기준` : undefined} />
             <MetricPill label="좋아요" value={v.like_count} /><MetricPill label="댓글" value={v.comment_count} />

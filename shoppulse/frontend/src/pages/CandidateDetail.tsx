@@ -21,6 +21,7 @@ export default function CandidateDetail() {
   const [scores, setScores] = useState<Record<string, string>>({})
   const [rationale, setRationale] = useState<Record<string, string>>({})
   const [target, setTarget] = useState(25)
+  const [aiBusy, setAiBusy] = useState(false)
 
   useEffect(() => {
     if (!c || !cfg) return
@@ -57,7 +58,7 @@ export default function CandidateDetail() {
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="card p-4 lg:col-span-2">
           <h2 className="section-title mb-2">실제 조회수 그래프</h2>
-          <ViewGraph points={v.snapshots} analysis={v.graph} height={220} />
+          <ViewGraph points={v.snapshots} analysis={v.graph} height={220} publishedAt={v.published_at} />
           <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
             <MetricPill label="누적 조회수" value={v.view_count} band={v.stats_updated_at ? `${fmt.datetime(v.stats_updated_at)} 기준` : undefined} />
             <MetricPill label="Outlier" value={v.outlier} band={v.outlier_band ? `${v.outlier_band} (운영 기준)` : undefined} />
@@ -125,14 +126,31 @@ export default function CandidateDetail() {
           </div>
           <div className="card p-4">
             <h2 className="section-title mb-2">이 쇼츠의 상품 <ProductStatusBadge status={c.video_product_status} /></h2>
+            <p className="mb-2 text-[11px] muted">「오늘 소싱 실행」이 후보 쇼츠의 상품을 AI로 추정해 확신도 중간 이상이면 '유사 상품 후보'로 자동 연결합니다. 사람이 확인해 '정확한 상품 확인'으로 바꿔야 인정됩니다.</p>
             {v.products.length > 0 ? (
               <ul className="space-y-1 text-sm">{v.products.map((p) => <li key={p.mention_id} className="flex items-center justify-between rounded-lg border border-stone-200 p-2 dark:border-stone-800"><span>{p.brand} {p.name} <Badge tone={toneFor.identification(p.identification_status)}>{LABELS.identification[p.identification_status]}</Badge></span><div className="flex gap-2 text-xs">{c.product_id !== p.id && <button className="underline" onClick={() => act(() => api.patchCandidate(c.id, { product_id: p.id }), '후보 상품으로 지정')}>후보 상품으로</button>}{c.product_id === p.id && <Badge tone="blue">후보 상품</Badge>}</div></li>)}</ul>
             ) : <p className="text-sm muted">상품이 연결되지 않았습니다.</p>}
             <div className="mt-2 flex flex-wrap gap-1">
-              <Link to={`/videos/${v.id}`} className="btn-primary px-2 py-1 text-xs">쇼츠 상세에서 상품 연결·AI 추정 →</Link>
+              <button className="btn-primary px-2 py-1 text-xs" disabled={aiBusy} onClick={async () => { setAiBusy(true); try { const r = await api.identifyProduct(v.id, [], true); toast(r.suggestions.length ? `AI 추정 ${r.suggestions.length}건 — 아래에서 등록·연결하세요` : 'AI: 상품을 특정하지 못함'); q.reload() } catch (e: any) { toast(e.message, 'err') } finally { setAiBusy(false) } }}>{aiBusy ? '추정 중…' : 'AI로 상품 찾기(썸네일·설명)'}</button>
+              <Link to={`/videos/${v.id}`} className="btn-ghost px-2 py-1 text-xs">캡처 이미지로 추정·수동 연결 →</Link>
               {c.original_detail && c.original_detail.products.length > 0 && <button className="btn-ghost px-2 py-1 text-xs" onClick={() => act(() => api.copyOriginalProducts(v.id), '원본 상품 연결')}>원본의 상품 가져오기</button>}
             </div>
             <div className="mt-2"><Field label="등록된 상품 바로 연결"><Select value="" onChange={(pid) => pid && act(() => api.addMention({ video_id: v.id, product_id: Number(pid) }).then(() => api.patchCandidate(c.id, { product_id: Number(pid) })), '상품 연결')} placeholder="선택" options={(products.data || []).map((p) => [String(p.id), `${p.brand || ''} ${p.name} (${LABELS.identification[p.identification_status]})`])} /></Field></div>
+            {v.ai_product_suggestions && v.ai_product_suggestions.suggestions.length > 0 && (
+              <div className="mt-2 text-xs">
+                <div className="font-semibold">AI 추정 결과 <span className="muted font-normal">({v.ai_product_suggestions.model})</span></div>
+                {v.ai_product_suggestions.suggestions.map((sg, i) => {
+                  const already = v.products.some((p) => p.name === sg.name)
+                  return (
+                    <div key={i} className="mt-1 flex items-start justify-between gap-2 rounded-lg bg-stone-50 p-2 dark:bg-stone-800/60">
+                      <div><span className="font-medium">{sg.brand ? `${sg.brand} ` : ''}{sg.name}</span> <Badge tone={sg.confidence === 'high' ? 'green' : sg.confidence === 'medium' ? 'amber' : 'gray'}>확신 {sg.confidence}</Badge> <Badge tone="gray">{sg.category === 'unknown' ? '분류 미정' : LABELS.category[sg.category]}</Badge><div className="muted">근거: {sg.evidence}</div></div>
+                      {already ? <Badge tone="green">연결됨</Badge> : <button className="btn-ghost shrink-0 px-2 py-1" onClick={() => { const cat = sg.category === 'unknown' ? (prompt('분류를 입력하세요: beauty / living / food', c.channel_category) as any) : sg.category; if (!['beauty', 'living', 'food'].includes(cat)) return; act(() => api.adoptSuggestion(v.id, { name: sg.name, brand: sg.brand || null, category: cat, subcategory: sg.subcategory || null, evidence: sg.evidence }).then((p) => api.patchCandidate(c.id, { product_id: p.id })), '유사 상품 후보로 등록·연결') }}>등록·연결</button>}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {v.ai_product_suggestions && !v.ai_product_suggestions.video_is_shopping && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">AI 판단: 상품 판매와 무관한 영상으로 보임. {v.ai_product_suggestions.notes}</p>}
             {v.description_links.filter((l) => l.is_shopping_link).length > 0 && <div className="mt-2 text-xs"><div className="font-semibold">설명란 구매 링크</div>{v.description_links.filter((l) => l.is_shopping_link).map((l) => <div key={l.url} className="truncate"><a className="underline" href={l.url} target="_blank" rel="noreferrer">{l.host}</a> <span className="muted">{l.url.slice(0, 60)}</span></div>)}</div>}
           </div>
         </div>

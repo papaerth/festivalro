@@ -202,7 +202,8 @@ def _run_sourcing(report_date, refresh_limit: int, trigger: str = "manual"):
         db.commit()
         summary = {"report_id": rep.id, "report_date": rep.report_date.isoformat(), "stats_refresh": refresh,
                    "total_candidates": rep.summary["total_candidates"], "total_final": rep.summary["total_final"],
-                   "auto_discovery": rep.summary.get("auto_discovery"), "ai_scoring": rep.summary.get("ai_scoring")}
+                   "auto_discovery": rep.summary.get("auto_discovery"), "ai_scoring": rep.summary.get("ai_scoring"),
+                   "ai_products": rep.summary.get("ai_products")}
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 

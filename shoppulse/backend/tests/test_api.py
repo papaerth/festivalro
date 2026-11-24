@@ -410,3 +410,8 @@ def test_auto_discovery_creates_candidates_and_ai_skipped_without_key(client):
     rep2 = client.post("/api/sourcing/run", json={"report_date": "2026-11-28", "background": False}).json()
     assert rep2["summary"]["auto_discovery"]["skipped"]["already"] >= 1
     assert len([c for c in client.get("/api/candidates", params={"category": "food"}).json()["items"] if c["video_id"] == v["id"]]) == 1
+
+
+def test_daily_sourcing_ai_products_skipped_without_key(client):
+    rep = client.post("/api/sourcing/run", json={"report_date": "2026-11-29", "background": False}).json()
+    assert rep["summary"]["ai_products"]["skipped"] is True and "ANTHROPIC_API_KEY" in rep["summary"]["ai_products"]["reason"]
