@@ -44,11 +44,17 @@ def _fmt_ts(sec: int | None) -> str:
 
 
 def build_context(candidate) -> dict:
-    v = candidate.video
+    short = candidate.video
+    v = short.original or short  # 재편집 쇼츠 후보면 원본 영상이 소재
     seg = candidate.segment
     p = candidate.product
-    celeb = candidate.celebrity or (v.channel.celebrity if v.channel else None)
+    celeb = candidate.celebrity or (v.channel.celebrity if v.channel else None) or short.celebrity
+    ref = None
+    if short is not v:
+        ref = {"title": short.title, "url": short.url, "view_count": short.view_count, "channel": short.yt_channel_title,
+               "note": "타인이 만든 재편집 쇼츠 — 바이럴 참고 자료이며 제작 원본으로 쓰지 않음"}
     return {
+        "reference_short": ref,
         "celebrity": celeb.name if celeb else None,
         "channel": v.channel.channel_name if v.channel else None,
         "channel_verified": (v.channel.verification_status == "verified") if v.channel else False,

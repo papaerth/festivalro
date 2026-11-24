@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { CandidateSummary } from '../types'
 import { fmt, LABELS } from '../api'
-import { Badge, toneFor } from './ui'
+import { Badge, ProductStatusBadge, toneFor } from './ui'
 import ViewGraph from './ViewGraph'
 
 export default function CandidateCard({ c, draggable, onDragStart }: { c: CandidateSummary; draggable?: boolean; onDragStart?: (e: React.DragEvent) => void }) {
@@ -18,10 +18,11 @@ export default function CandidateCard({ c, draggable, onDragStart }: { c: Candid
       </Link>
       <div className="space-y-2 p-3">
         <div className="flex items-center justify-between text-xs">
-          <span className="font-medium">{c.celebrity_name || '연예인 미지정'} <span className="muted">· {v?.channel_name || '채널 미확인'}</span></span>
-          <Badge tone={toneFor.verification(v?.channel_verification || null)}>{LABELS.verification[v?.channel_verification || 'unverified']}</Badge>
+          <span className="font-medium">{c.celebrity_name || '연예인 미지정'} <span className="muted">· {v?.channel_name || v?.yt_channel_title || '채널 미확인'}</span></span>
+          {c.is_short_candidate ? <Badge tone="amber">재편집 쇼츠</Badge> : <Badge tone={toneFor.verification(v?.channel_verification || null)}>{LABELS.verification[v?.channel_verification || 'unverified']}</Badge>}
         </div>
         <Link to={`/candidates/${c.id}`} className="line-clamp-2 text-sm font-semibold leading-snug hover:underline">{v?.title}</Link>
+        {c.is_short_candidate && <div className="text-[11px] muted">{c.original_video ? <>원본: <span className="text-stone-700 dark:text-stone-300">{c.original_video.title.slice(0, 40)}</span></> : <span className="text-amber-700 dark:text-amber-300">원본 영상 미연결</span>}</div>}
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] muted">
           <span>{fmt.date(v?.published_at)}</span><span>조회 {fmt.compact(v?.view_count)}</span>
           <span>VPH {v?.vph === null || v?.vph === undefined ? '미확인' : v.vph.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}</span>
@@ -29,8 +30,7 @@ export default function CandidateCard({ c, draggable, onDragStart }: { c: Candid
         </div>
         {v && <ViewGraph points={v.sparkline} analysis={v.graph} height={70} compact />}
         <div className="flex flex-wrap gap-1 text-[11px]">
-          <Badge tone="gray">{c.product_name || '상품 미확인'}</Badge>
-          <Badge tone={toneFor.identification(c.product_identification)}>{LABELS.identification[c.product_identification || 'unidentified']}</Badge>
+          {c.is_short_candidate ? <ProductStatusBadge status={c.video_product_status} names={c.product_name ? [c.product_name] : undefined} /> : <><Badge tone="gray">{c.product_name || '상품 미확인'}</Badge><Badge tone={toneFor.identification(c.product_identification)}>{LABELS.identification[c.product_identification || 'unidentified']}</Badge></>}
           {c.content_type_label && <Badge tone="blue">{c.content_type_label}</Badge>}
           <Badge tone={toneFor.status(c.status)}>{LABELS.status[c.status] || c.status}</Badge>{c.notes?.includes('[자동 발굴') && <Badge tone="gray" title={c.notes || ''}>자동 발굴</Badge>}{c.score_scorer === 'ai' && <Badge tone="gray">AI 점수</Badge>}
           {c.recommended_slot && <Badge tone="violet">{LABELS.slot[c.recommended_slot]}</Badge>}

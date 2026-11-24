@@ -1,10 +1,12 @@
-"""후보 자동 발굴. 쇼핑 관련 원본 영상을 소싱 신호로 순위 매겨 카테고리별 N개를 후보로 등록한다.
+"""후보 자동 발굴. **쇼핑 재편집 쇼츠**를 소싱 신호로 순위 매겨 카테고리별 N개를 후보로 등록한다.
+
+후보의 주체는 재편집 쇼츠다. 쇼츠 상세(후보 상세)에서 원본 영상·상품을 연결·확인한다.
 
 규칙(투명):
-- 대상: 시연용이 아닌 제작용 원본(original_celebrity) 중 쇼핑 판정(사람 우선, 규칙 점수)이 참인 영상.
-  + 상품 확인된 재편집 쇼츠가 연결된 원본은 쇼핑 판정과 무관하게 대상에 포함(바이럴 근거가 있으므로).
-- 신호 점수: log10(조회수) + 재편집 근거(상품 확인 쇼츠 수, 최고 Outlier, 재상승/급등후평탄화) + 원본 그래프 유형 + 최근성.
-- 카테고리: 연결 상품 분류 → 제목·설명 단어(category_terms) → 채널 관련성 최대값. 못 정하면 제외(사유 기록).
+- 대상: 시연용이 아닌 재편집·경쟁 쇼츠(reedit_shorts/competitor) 중 쇼핑 판정(사람 우선, 규칙 점수)이 참인 영상.
+- 신호 점수: log10(조회수) + Outlier + 그래프 유형(재상승/뒤늦은 급상승/급등 후 평탄화/꾸준히 상승) + 최근성
+  + 상품 확인됨(+2) + 원본 연결됨(+1).
+- 카테고리: 연결 상품 분류 → 제목·설명 단어(category_terms) → 연예인 채널 관련성 최대값. 못 정하면 제외(사유 기록).
 - 같은 영상·카테고리 후보가 이미 있으면 만들지 않는다. 만든 후보에는 notes 에 '[자동 발굴]' 근거를 적는다.
 """
 from __future__ import annotations
@@ -33,49 +35,49 @@ def infer_category(v: Video) -> tuple[str | None, str]:
     best = max(counts, key=counts.get)
     if counts[best] > 0 and list(counts.values()).count(counts[best]) == 1:
         return best, f"제목·설명 단어({best} {counts[best]}회)"
-    if v.channel:
-        rel = {"beauty": v.channel.relevance_beauty, "living": v.channel.relevance_living, "food": v.channel.relevance_food}
+    chans = [v.channel] if v.channel else (v.celebrity.channels if v.celebrity else [])
+    if chans:
+        rel = {"beauty": max(c.relevance_beauty for c in chans), "living": max(c.relevance_living for c in chans),
+               "food": max(c.relevance_food for c in chans)}
         b = max(rel, key=rel.get)
         if rel[b] > 0 and list(rel.values()).count(rel[b]) == 1:
-            return b, f"채널 관련성({b} {rel[b]})"
+            return b, f"연예인 채널 관련성({b} {rel[b]})"
     return None, "분류 추정 불가"
 
 
-def signal_score(v: Video, evidence: dict) -> tuple[float, list[str]]:
+def signal_score(v: Video, product_confirmed: bool) -> tuple[float, list[str]]:
     reasons = []
     s = 0.0
     if v.view_count:
         s += math.log10(max(v.view_count, 1))
         reasons.append(f"조회수 {v.view_count:,}")
-    if evidence.get("count"):
-        s += 2.0 + min(evidence["count"], 5) * 0.5
-        reasons.append(f"상품 확인 재편집 쇼츠 {evidence['count']}개")
-        if evidence.get("best_outlier"):
-            s += min(evidence["best_outlier"], 50) / 10
-            reasons.append(f"쇼츠 최고 Outlier {evidence['best_outlier']:g}")
-        gt = evidence.get("graph_types", {})
-        for k, b in GRAPH_BONUS.items():
-            if gt.get(k):
-                s += b
-                reasons.append(f"쇼츠 {k} {gt[k]}개")
-    g = video_graph(v)["graph_type"]
-    if g in GRAPH_BONUS:
-        s += GRAPH_BONUS[g] / 2
-        reasons.append(f"원본 그래프 {g}")
     lm = latest_metrics(v)
     if lm.get("outlier", {}).get("value"):
         s += min(lm["outlier"]["value"], 50) / 10
-        reasons.append(f"원본 Outlier {lm['outlier']['value']:g}")
+        reasons.append(f"Outlier {lm['outlier']['value']:g}")
+    if lm.get("vph", {}).get("value"):
+        s += min(math.log10(max(lm["vph"]["value"], 1)), 4)
+        reasons.append(f"VPH {lm['vph']['value']:g}")
+    g = video_graph(v)["graph_type"]
+    if g in GRAPH_BONUS:
+        s += GRAPH_BONUS[g]
+        reasons.append(f"그래프 {g}")
     if v.published_at and (utcnow() - v.published_at) < timedelta(days=90):
         s += 1.0
         reasons.append("최근 90일 내 게시")
+    if product_confirmed:
+        s += 2.0
+        reasons.append("상품 확인됨")
+    if v.original_video_id:
+        s += 1.0
+        reasons.append("원본 연결됨")
     return round(s, 2), reasons
 
 
 def discover_candidates(db: Session, per_category: int = 9) -> dict:
-    from ..serializers import evidence_summary
+    from ..serializers import product_status
 
-    videos = (db.query(Video).filter(Video.is_demo.is_(False), Video.source_type == "original_celebrity").all())
+    videos = (db.query(Video).filter(Video.is_demo.is_(False), Video.source_type.in_(["reedit_shorts", "competitor"])).all())
     existing = {(c.video_id, c.channel_category) for c in db.query(SourcingCandidate).all()}
     per_cat_existing = {c: 0 for c in CATEGORIES}
     for _, cat in existing:
@@ -83,8 +85,7 @@ def discover_candidates(db: Session, per_category: int = 9) -> dict:
     ranked: dict[str, list] = {c: [] for c in CATEGORIES}
     skipped = {"not_shopping": 0, "no_category": 0, "already": 0}
     for v in videos:
-        ev = evidence_summary(v)
-        if not is_shopping(v) and not ev.get("count"):
+        if not is_shopping(v):
             skipped["not_shopping"] += 1
             continue
         cat, cat_reason = infer_category(v)
@@ -94,7 +95,7 @@ def discover_candidates(db: Session, per_category: int = 9) -> dict:
         if (v.id, cat) in existing:
             skipped["already"] += 1
             continue
-        sc, reasons = signal_score(v, ev)
+        sc, reasons = signal_score(v, product_status(v) == "confirmed")
         ranked[cat].append((sc, v, reasons + [cat_reason]))
     created = {c: 0 for c in CATEGORIES}
     created_ids = []
@@ -103,9 +104,9 @@ def discover_candidates(db: Session, per_category: int = 9) -> dict:
         for sc, v, reasons in ranked[cat][:per_category]:
             product = next((m.product for m in v.mentions if m.product.category == cat), None)
             c = SourcingCandidate(video_id=v.id, product_id=product.id if product else None, channel_category=cat,
-                                  celebrity_id=(v.channel.celebrity_id if v.channel else v.celebrity_id), status="candidate",
+                                  celebrity_id=(v.celebrity_id or (v.channel.celebrity_id if v.channel else None)), status="candidate",
                                   notes=f"[자동 발굴 {utcnow():%Y-%m-%d}] 신호 {sc} — " + " / ".join(reasons),
-                                  research_todo="상품 확인·연결, 실제 발언·타임스탬프 기록, 광고·협찬 여부 확인")
+                                  research_todo="원본 영상 연결, 상품 확인·연결, 원본의 실제 발언·타임스탬프 기록, 광고·협찬 여부 확인")
             db.add(c)
             db.flush()
             for key, _ in VERIFICATION_ITEMS:

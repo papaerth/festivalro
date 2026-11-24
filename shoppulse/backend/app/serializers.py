@@ -237,7 +237,10 @@ def candidate_summary(c: SourcingCandidate, config: dict | None = None) -> dict:
         "product_identification": c.product.identification_status if c.product else None,
         "offer_status": (c.product.offers[0].stock_status if c.product and c.product.offers else None),
         "segment": segment(c.segment) if c.segment else None,
-        "evidence": evidence_summary(c.video),
+        "is_short_candidate": c.video.source_type in ("reedit_shorts", "competitor"),
+        "original_video": (video_summary(c.video.original, with_graph=False) if c.video.original else None),
+        "video_product_status": product_status(c.video),
+        "evidence": evidence_summary(c.video.original) if c.video.original else evidence_summary(c.video),
         "updated_at": iso(c.updated_at), "created_at": iso(c.created_at),
     }
 
@@ -247,6 +250,7 @@ def candidate_detail(c: SourcingCandidate, config: dict) -> dict:
     ls = latest_scores(c.scores)
     d.update({
         "video": video_detail(c.video),
+        "original_detail": video_detail(c.video.original) if c.video.original else None,
         "product": product(c.product) if c.product else None,
         "scores": {"ai": score(ls["ai"], config) if ls["ai"] else None,
                    "human": score(ls["human"], config) if ls["human"] else None,

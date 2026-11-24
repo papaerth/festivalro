@@ -18,7 +18,7 @@ export default function Candidates() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="text-2xl font-bold tracking-tight">소싱 후보</h1><p className="text-sm muted">저장된 후보를 필터·정렬합니다 (외부 새 검색 아님). 후보 등록은 영상 상세 화면에서.</p></div>
+        <div><h1 className="text-2xl font-bold tracking-tight">소싱 후보</h1><p className="text-sm muted">후보의 주체는 <b>쇼핑 재편집 쇼츠</b>입니다. 들어가면 원본 영상·상품을 연결·확인할 수 있습니다. 「오늘 소싱 실행」이 자동 발굴하거나 영상 상세에서 직접 등록합니다. (저장된 후보의 필터·정렬, 외부 새 검색 아님)</p></div>
         <div className="text-sm muted">{q.data ? `${q.data.total}개 · ${q.data.sort_label}` : ''}</div>
       </div>
       <div className="card grid gap-3 p-4 md:grid-cols-4 xl:grid-cols-7">

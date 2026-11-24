@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
-import { Badge, Confirm, ErrorBox, Field, MetricPill, Select, Spinner, toneFor, useToast } from '../components/ui'
+import { Badge, Confirm, ErrorBox, Field, MetricPill, ProductStatusBadge, Select, Spinner, toneFor, useToast } from '../components/ui'
 import ViewGraph from '../components/ViewGraph'
 import type { CandidateDetail as CD, Score } from '../types'
 
@@ -12,6 +12,9 @@ export default function CandidateDetail() {
   const nav = useNavigate()
   const q = useAsync(() => api.candidate(cid), [cid])
   const meta = useAsync(() => api.candidateMeta())
+  const originals = useAsync(() => api.videos({ source_type: 'original_celebrity', limit: 500, sort: 'view_count', with_graph: false }))
+  const products = useAsync(() => api.products())
+  const celebs = useAsync(() => api.celebrities())
   const { toast, node } = useToast()
   const c = q.data
   const cfg = meta.data?.scoring
@@ -42,7 +45,7 @@ export default function CandidateDetail() {
         <div>
           <div className="mb-1 flex flex-wrap gap-1"><Badge tone={toneFor.category(c.channel_category)}>{LABELS.category[c.channel_category]}</Badge>{c.content_type_label && <Badge tone="blue">{c.content_type_label}</Badge>}<Badge tone={toneFor.status(c.status)}>{LABELS.status[c.status]}</Badge>{c.production_ready ? <Badge tone="green">제작 준비 완료</Badge> : <Badge tone="amber">중대 검증 {c.unresolved_critical.length}건 미해결 → 점수와 무관하게 제작 준비 아님</Badge>}{c.is_demo && <Badge tone="red">DEMO</Badge>}</div>
           <h1 className="text-xl font-bold leading-snug tracking-tight">{v.title}</h1>
-          <p className="text-sm muted">{c.celebrity_name || '연예인 미지정'} · {v.channel_name || '채널 미확인'} · {fmt.date(v.published_at)} · {fmt.duration(v.duration_seconds)} · <Link className="underline" to={`/videos/${v.id}`}>영상 상세</Link></p>
+          <p className="text-sm muted">{c.is_short_candidate && <Badge tone="amber">재편집 쇼츠</Badge>} {c.celebrity_name || '연예인 미지정'} · {v.channel_name || v.yt_channel_title || '채널 미확인'} · {fmt.date(v.published_at)} · {fmt.duration(v.duration_seconds)} · 조회 {fmt.compact(v.view_count)} · <Link className="underline" to={`/videos/${v.id}`}>영상 상세</Link></p>
         </div>
         <div className="flex flex-wrap gap-2">
           {v.url && <a className="btn-ghost" href={v.url} target="_blank" rel="noreferrer">원본 영상 열기 ↗</a>}
@@ -63,7 +66,7 @@ export default function CandidateDetail() {
           </div>
         </div>
         <div className="card p-4">
-          <h2 className="section-title mb-2">연예인 실제 발언·장면</h2>
+          <h2 className="section-title mb-2">연예인 실제 발언·장면 {c.is_short_candidate && <span className="muted text-xs font-normal">(원본 영상 기준)</span>}</h2>
           {c.segment ? (
             <div className="space-y-2 text-sm">
               <div className="rounded-xl bg-stone-50 p-3 dark:bg-stone-800/60">
@@ -74,14 +77,14 @@ export default function CandidateDetail() {
               <div className="flex flex-wrap gap-1"><Badge tone={c.segment.sponsorship_status === 'sponsored' || c.segment.sponsorship_status === 'suspected' ? 'amber' : 'gray'}>{LABELS.sponsorship[c.segment.sponsorship_status]}</Badge><Badge tone="gray">{c.segment.is_recommendation === null ? '추천/언급 미확인' : c.segment.is_recommendation ? '구매 추천' : '단순 언급'}</Badge><Badge tone="gray">{LABELS.access[v.access_status]}</Badge></div>
             </div>
           ) : <p className="text-sm muted">연결된 장면이 없습니다. 영상 상세에서 타임스탬프와 발언을 기록한 뒤 후보에 연결하세요.</p>}
-          <h2 className="section-title mb-2 mt-4">바이럴 검증 (재편집 쇼츠)</h2>
+          <h2 className="section-title mb-2 mt-4">바이럴 검증 {c.is_short_candidate ? <span className="muted text-xs font-normal">(원본에 연결된 상품 확인 쇼츠 기준)</span> : <span className="muted text-xs font-normal">(재편집 쇼츠)</span>}</h2>
           <p className="mb-1 text-[11px] muted">{c.evidence.note}</p>
           {c.evidence.count > 0 ? (
             <div className="flex flex-wrap gap-1 text-xs">
               <Badge tone="gray">상품 확인 쇼츠 {c.evidence.count}개{c.evidence.unconfirmed_count ? ` (미확인 ${c.evidence.unconfirmed_count} 제외)` : ''}</Badge><Badge tone="gray">합계 조회 {fmt.compact(c.evidence.total_views)}</Badge>
               <Badge tone="gray">최고 Outlier {c.evidence.best_outlier ?? '미확인'}</Badge>
               {Object.entries(c.evidence.graph_types || {}).map(([k, n]) => <Badge key={k} tone={toneFor.graph(k)}>{LABELS.graph[k]} {n}</Badge>)}
-              <Link to={`/videos/${v.id}`} className="underline">목록 보기</Link>
+              <Link to={`/videos/${c.original_video ? c.original_video.id : v.id}`} className="underline">목록 보기</Link>
             </div>
           ) : null}
           <h2 className="section-title mb-2 mt-4">상품·판매처</h2>
@@ -97,6 +100,43 @@ export default function CandidateDetail() {
           ) : <p className="text-sm muted">상품 미연결</p>}
         </div>
       </div>
+
+      {c.is_short_candidate && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="card p-4">
+            <h2 className="section-title mb-2">원본 영상 {c.original_detail ? <Badge tone="green">연결됨</Badge> : <Badge tone="amber">미연결</Badge>}</h2>
+            {c.original_detail ? (
+              <div className="flex gap-3">
+                <img src={c.original_detail.thumbnail_url} alt="" className="w-40 rounded-lg object-cover" style={{ aspectRatio: '16/9' }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
+                <div className="min-w-0 text-sm">
+                  <Link to={`/videos/${c.original_detail.id}`} className="line-clamp-2 font-semibold hover:underline">{c.original_detail.title}</Link>
+                  <div className="text-xs muted">{c.original_detail.celebrity_name} · {c.original_detail.channel_name} <Badge tone={toneFor.verification(c.original_detail.channel_verification)}>{LABELS.verification[c.original_detail.channel_verification || 'unverified']}</Badge> · {fmt.date(c.original_detail.published_at)} · {fmt.duration(c.original_detail.duration_seconds)} · 조회 {fmt.compact(c.original_detail.view_count)}</div>
+                  <div className="mt-1 flex flex-wrap gap-1">{c.original_detail.url && <a className="btn-ghost px-2 py-1 text-xs" href={c.original_detail.url} target="_blank" rel="noreferrer">원본 열기 ↗</a>}<button className="btn-ghost px-2 py-1 text-xs" onClick={() => act(() => api.patchVideo(v.id, { original_video_id: null }), '원본 연결 해제')}>연결 해제</button></div>
+                  <div className="mt-2"><Field label="원본 장면(발언·타임스탬프) 선택" hint="원본 영상 상세에서 장면을 기록한 뒤 여기서 고릅니다."><Select value={c.segment_id ? String(c.segment_id) : ''} onChange={(sid) => act(() => api.patchCandidate(c.id, { segment_id: sid ? Number(sid) : null }), '장면 연결')} placeholder={c.original_detail.segments.length ? '선택' : '기록된 장면 없음'} options={c.original_detail.segments.map((sg) => [String(sg.id), `${fmt.ts(sg.start_seconds)} ${sg.quote?.slice(0, 40) || '(발언 미기록)'}`])} /></Field></div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm">
+                <p className="mb-2 text-xs muted">이 쇼츠가 어떤 공식 원본 영상을 썼는지 연결하세요. 연예인을 먼저 지정하면 그 연예인의 원본만 목록에 나옵니다.</p>
+                <Field label="연예인"><Select value={v.celebrity_id ? String(v.celebrity_id) : ''} onChange={(s) => act(() => api.patchVideo(v.id, { celebrity_id: s ? Number(s) : null }), '저장')} placeholder="미지정" options={(celebs.data || []).map((x) => [String(x.id), x.name])} /></Field>
+                <div className="mt-2"><Field label="원본 영상"><Select value="" onChange={(s) => s && act(() => api.patchVideo(v.id, { original_video_id: Number(s) }), '원본 연결')} placeholder="선택" options={(originals.data?.items || []).filter((o) => !v.celebrity_id || o.celebrity_name === (celebs.data || []).find((x) => x.id === v.celebrity_id)?.name).map((o) => [String(o.id), `${o.celebrity_name || o.channel_name || ''} · ${o.title.slice(0, 50)}`])} /></Field></div>
+              </div>
+            )}
+          </div>
+          <div className="card p-4">
+            <h2 className="section-title mb-2">이 쇼츠의 상품 <ProductStatusBadge status={c.video_product_status} /></h2>
+            {v.products.length > 0 ? (
+              <ul className="space-y-1 text-sm">{v.products.map((p) => <li key={p.mention_id} className="flex items-center justify-between rounded-lg border border-stone-200 p-2 dark:border-stone-800"><span>{p.brand} {p.name} <Badge tone={toneFor.identification(p.identification_status)}>{LABELS.identification[p.identification_status]}</Badge></span><div className="flex gap-2 text-xs">{c.product_id !== p.id && <button className="underline" onClick={() => act(() => api.patchCandidate(c.id, { product_id: p.id }), '후보 상품으로 지정')}>후보 상품으로</button>}{c.product_id === p.id && <Badge tone="blue">후보 상품</Badge>}</div></li>)}</ul>
+            ) : <p className="text-sm muted">상품이 연결되지 않았습니다.</p>}
+            <div className="mt-2 flex flex-wrap gap-1">
+              <Link to={`/videos/${v.id}`} className="btn-primary px-2 py-1 text-xs">쇼츠 상세에서 상품 연결·AI 추정 →</Link>
+              {c.original_detail && c.original_detail.products.length > 0 && <button className="btn-ghost px-2 py-1 text-xs" onClick={() => act(() => api.copyOriginalProducts(v.id), '원본 상품 연결')}>원본의 상품 가져오기</button>}
+            </div>
+            <div className="mt-2"><Field label="등록된 상품 바로 연결"><Select value="" onChange={(pid) => pid && act(() => api.addMention({ video_id: v.id, product_id: Number(pid) }).then(() => api.patchCandidate(c.id, { product_id: Number(pid) })), '상품 연결')} placeholder="선택" options={(products.data || []).map((p) => [String(p.id), `${p.brand || ''} ${p.name} (${LABELS.identification[p.identification_status]})`])} /></Field></div>
+            {v.description_links.filter((l) => l.is_shopping_link).length > 0 && <div className="mt-2 text-xs"><div className="font-semibold">설명란 구매 링크</div>{v.description_links.filter((l) => l.is_shopping_link).map((l) => <div key={l.url} className="truncate"><a className="underline" href={l.url} target="_blank" rel="noreferrer">{l.host}</a> <span className="muted">{l.url.slice(0, 60)}</span></div>)}</div>}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="card p-4 lg:col-span-2">

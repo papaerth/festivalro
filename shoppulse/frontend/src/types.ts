@@ -57,10 +57,10 @@ export interface CandidateSummary {
   research_todo: string | null; notes: string | null; is_demo: boolean; last_recommended_date: string | null; recommendation_count: number; duplicate_reason: string | null;
   score: number | null; grade_key: string | null; grade_label: string | null; score_scorer: string | null; ai_score: number | null; human_score: number | null;
   production_ready: boolean; unresolved_critical: string[]; product_name: string | null; product_identification: string | null; offer_status: string | null;
-  segment: Segment | null; evidence: Evidence; updated_at: string; created_at: string; video?: VideoSummary
+  segment: Segment | null; is_short_candidate: boolean; original_video: VideoSummary | null; video_product_status: 'confirmed' | 'candidate' | 'none'; evidence: Evidence; updated_at: string; created_at: string; video?: VideoSummary
 }
 export interface CandidateDetail extends CandidateSummary {
-  video: VideoDetail; product: Product | null; scores: { ai: Score | null; human: Score | null; history: Score[] }; verification: Verification[]; plans: Plan[]
+  video: VideoDetail; original_detail: VideoDetail | null; product: Product | null; scores: { ai: Score | null; human: Score | null; history: Score[] }; verification: Verification[]; plans: Plan[]
 }
 
 export interface ScoringItem { key: string; label: string; max: number; criteria: string }

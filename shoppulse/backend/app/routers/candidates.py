@@ -123,13 +123,13 @@ def list_candidates(
 
 @router.post("", status_code=201)
 def create_candidate(body: schemas.CandidateIn, db: Session = Depends(get_db)):
-    get_or_404(db, Video, body.video_id, "영상")
+    video = get_or_404(db, Video, body.video_id, "영상")
     if body.product_id:
         get_or_404(db, Product, body.product_id, "상품")
     if body.segment_id:
         s = get_or_404(db, VideoSegment, body.segment_id, "장면")
-        if s.video_id != body.video_id:
-            raise HTTPException(400, "장면이 해당 영상에 속하지 않습니다")
+        if s.video_id not in (body.video_id, video.original_video_id):
+            raise HTTPException(400, "장면이 해당 영상(또는 연결된 원본)에 속하지 않습니다")
     dup = db.query(SourcingCandidate).filter_by(video_id=body.video_id, product_id=body.product_id,
                                                 channel_category=body.channel_category).first()
     if dup and (dup.segment_id == body.segment_id):
@@ -156,6 +156,12 @@ def patch_candidate(cid: int, body: schemas.CandidatePatch, db: Session = Depend
     data = body.model_dump(exclude_unset=True)
     if "status" in data and data["status"] not in CANDIDATE_STATUSES:
         raise HTTPException(400, f"상태 값은 {CANDIDATE_STATUSES} 중 하나여야 합니다")
+    if data.get("segment_id"):
+        seg = get_or_404(db, VideoSegment, data["segment_id"], "장면")
+        if seg.video_id not in (c.video_id, c.video.original_video_id):
+            raise HTTPException(400, "장면이 해당 영상(또는 연결된 원본)에 속하지 않습니다")
+    if data.get("product_id"):
+        get_or_404(db, Product, data["product_id"], "상품")
     apply_patch(c, body)
     log(db, "candidate", c.id, "update", data)
     db.commit()

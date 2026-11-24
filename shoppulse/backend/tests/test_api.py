@@ -381,10 +381,14 @@ def test_sourcing_background_without_api_key_completes(client):
 
 
 def test_auto_discovery_creates_candidates_and_ai_skipped_without_key(client):
-    # 쇼핑 판정이 참이고 먹거리 단어가 있는 원본 영상을 하나 더 등록
-    v = client.post("/api/videos", json={"url_or_id": "hhhhhhhhhhh", "title": "성시경 추천템 간식 라면 내돈내산", "duration_seconds": 900,
-                                        "view_count": 2500000, "fetch": False}).json()
+    # 쇼핑 판정이 참이고 먹거리 단어가 있는 재편집 쇼츠를 등록 → 후보 대상
+    orig = client.get("/api/videos", params={"q": "테스트 영상"}).json()["items"][0]
+    v = client.post("/api/videos", json={"url_or_id": "hhhhhhhhhhh", "title": "성시경 추천템 간식 라면 내돈내산", "duration_seconds": 45,
+                                        "view_count": 2500000, "fetch": False, "source_type": "reedit_shorts"}).json()
+    client.patch(f"/api/videos/{v['id']}", json={"original_video_id": orig["id"]})
     assert v["is_shopping"] is True
+    # 원본 영상은 후보 대상이 아님
+    client.post("/api/videos", json={"url_or_id": "iiiiiiiiiii", "title": "성시경 추천템 간식 원본 롱폼", "duration_seconds": 900, "view_count": 9000000, "fetch": False})
     rep = client.post("/api/sourcing/run", json={"report_date": "2026-11-27", "background": False}).json()
     disc = rep["summary"]["auto_discovery"]
     assert disc["created"]["food"] >= 1
@@ -392,6 +396,16 @@ def test_auto_discovery_creates_candidates_and_ai_skipped_without_key(client):
     cands = client.get("/api/candidates", params={"category": "food"}).json()["items"]
     auto = [c for c in cands if c["video_id"] == v["id"]]
     assert len(auto) == 1 and "[자동 발굴" in auto[0]["notes"] and auto[0]["status"] == "candidate"
+    assert auto[0]["is_short_candidate"] is True and auto[0]["original_video"]["id"] == orig["id"]
+    assert not any("원본 롱폼" in (c.get("video") or {}).get("title", "") for c in cands)
+    det = client.get(f"/api/candidates/{auto[0]['id']}").json()
+    assert det["original_detail"]["id"] == orig["id"]
+    # 원본의 장면을 쇼츠 후보에 연결할 수 있다
+    seg_id = det["original_detail"]["segments"][0]["id"]
+    assert client.patch(f"/api/candidates/{auto[0]['id']}", json={"segment_id": seg_id}).status_code == 200
+    plan = client.post(f"/api/candidates/{auto[0]['id']}/plans", json={"target_seconds": 25, "provider": "template"}).json()
+    assert plan["plan"]["context_snapshot"]["reference_short"]["title"].startswith("성시경 추천템")
+    assert plan["plan"]["context_snapshot"]["video_title"] == orig["title"]
     # 다시 돌려도 같은 영상·카테고리 후보는 중복 생성하지 않음
     rep2 = client.post("/api/sourcing/run", json={"report_date": "2026-11-28", "background": False}).json()
     assert rep2["summary"]["auto_discovery"]["skipped"]["already"] >= 1
