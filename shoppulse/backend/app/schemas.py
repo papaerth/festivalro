@@ -252,6 +252,7 @@ class ScoringConfigIn(BaseModel):
 
 class RunSourcingIn(BaseModel):
     report_date: date | None = None
+    background: bool = True
 
 
 class ChannelCollectIn(BaseModel):

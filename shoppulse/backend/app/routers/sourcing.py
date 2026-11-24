@@ -14,6 +14,17 @@ router = APIRouter(prefix="/api/sourcing", tags=["sourcing"])
 
 @router.post("/run")
 def run(body: schemas.RunSourcingIn, db: Session = Depends(get_db)):
+    """background=True(기본): 조회수 갱신→평가를 백그라운드로 실행하고 진행 상태를 돌려준다(/api/channels/bulk/status 로 확인).
+    background=False: 동기 실행 후 보고서를 바로 돌려준다."""
+    if body.background:
+        from ..services import bulk
+        from ..models import UserSetting
+        s = db.get(UserSetting, "daily_refresh_limit")
+        limit = int(s.value.get("value", 300)) if s else 300
+        try:
+            return bulk.start("sourcing", report_date=body.report_date, refresh_limit=limit)
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
     rep = run_daily_sourcing(db, trigger="manual", report_date=body.report_date)
     return serializers.report(rep)
 

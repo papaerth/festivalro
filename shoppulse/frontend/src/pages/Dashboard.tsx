@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fmt } from '../api'
 import { useAsync } from '../hooks'
 import { Badge, ErrorBox, Spinner, Stat, toneFor, useToast } from '../components/ui'
+import type { BulkState } from '../types'
 import CandidateCard from '../components/CandidateCard'
 
 export default function Dashboard() {
@@ -11,13 +13,22 @@ export default function Dashboard() {
   const { toast, node } = useToast()
   const s = stats.data
 
+  const [job, setJob] = useState<BulkState | null>(null)
+  useEffect(() => {
+    let alive = true, timer: ReturnType<typeof setTimeout> | undefined
+    const tick = async () => {
+      let running = false
+      try { const st = await api.bulkStatus(); if (alive) { running = st.running; setJob((prev) => { if (prev?.running && !st.running && st.task === 'sourcing') { const sm = st.summary || {}; const rf = sm.stats_refresh; toast(`소싱 실행 완료 — ${rf?.skipped ? `조회수 갱신 건너뜀(${rf.reason})` : `조회수 ${rf?.updated ?? 0}개 갱신`} · 후보 ${sm.total_candidates}개, 최종 추천 ${sm.total_final}개 (목표 27/9)`); stats.reload(); cands.reload() } return st }) } } catch {}
+      if (alive) timer = setTimeout(tick, running ? 2000 : 15000)
+    }
+    tick()
+    return () => { alive = false; if (timer) clearTimeout(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const run = async () => {
-    try {
-      const r = await api.runSourcing()
-      const rf = r.summary.stats_refresh; toast(`소싱 실행 완료 — ${rf?.skipped ? `조회수 갱신 건너뜀(${rf.reason})` : `조회수 ${rf?.updated ?? 0}개 갱신`} · 후보 ${r.summary.total_candidates}개, 최종 추천 ${r.summary.total_final}개 (목표 27/9)`)
-      stats.reload(); cands.reload()
-    } catch (e: any) { toast(e.message, 'err') }
+    try { setJob(await api.runSourcing()); toast('소싱 실행 시작 — 조회수 갱신 후 후보를 평가합니다') } catch (e: any) { toast(e.message, 'err') }
   }
+  const running = !!job?.running
 
   if (stats.error) return <ErrorBox error={stats.error} onRetry={stats.reload} />
   if (!s) return <Spinner />
@@ -32,11 +43,17 @@ export default function Dashboard() {
           <p className="text-sm muted">{s.season.date} ({s.season.weekday}) · {s.season.season} · {s.season.region} · {s.season.events.length ? s.season.events.join(', ') : '특별 이벤트 없음'} · 날씨: 미연동</p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-primary" onClick={run}>▶ 오늘 소싱 실행 (수동)</button>
+          <button className="btn-primary" disabled={running} onClick={run}>{running ? '실행 중…' : '▶ 오늘 소싱 실행 (수동)'}</button>
           <Link to="/data" className="btn-ghost">데이터 수집</Link>
         </div>
       </div>
 
+      {job?.running && (
+        <div className="card p-3 text-sm">
+          <div className="flex items-center justify-between"><span>{job.task === 'sourcing' ? '오늘 소싱 실행' : job.task === 'collect' ? '영상 일괄 수집' : job.task === 'discover' ? '재편집 쇼츠 일괄 검색' : 'ID 일괄 조회'} <Badge tone="blue">진행 중</Badge> {job.current && <span className="muted">· {job.current}</span>}</span><span className="tabular-nums">{job.done} / {job.total}</span></div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded bg-stone-200 dark:bg-stone-700"><div className="h-full bg-stone-900 transition-all dark:bg-stone-100" style={{ width: `${job.total ? (job.done / job.total) * 100 : 0}%` }} /></div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <Stat label="등록된 연예인 채널" value={s.channels_total} sub={`검증 완료 ${s.channels_verified}개 · 연예인 ${s.celebrities_total}명`} />
         <Stat label="누적 분석 영상" value={s.videos_total} sub={`원본 ${s.videos_original} · 재편집 쇼츠 ${s.videos_derived} (상품 확인 ${s.videos_derived_confirmed}) · 오늘 새로 발견 ${s.videos_new_today}`} />

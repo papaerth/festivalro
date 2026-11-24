@@ -11,8 +11,8 @@ import threading
 from datetime import datetime, timedelta
 
 from ..database import SessionLocal
-from ..models import Celebrity, YoutubeChannel, utcnow
-from .collection import collect_channel_videos, discover_shorts, finish_job, start_job
+from ..models import Celebrity, Video, YoutubeChannel, utcnow
+from .collection import collect_channel_videos, discover_shorts, finish_job, start_job, upsert_video_from_api
 from .youtube_connector import YouTubeAPIError, YouTubeClient, YouTubeNotConfigured
 
 _lock = threading.Lock()
@@ -153,13 +153,61 @@ def _run_discover(limit: int, max_results: int, suffix: str, years: int, order: 
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 
+def _run_sourcing(report_date, refresh_limit: int, trigger: str = "manual"):
+    """조회수 갱신(진행률 표시) → 일일 소싱 평가. 백그라운드."""
+    from ..config import get_settings
+    from .daily_sourcing import run_daily_sourcing
+
+    with SessionLocal() as db:
+        refresh = {"skipped": True, "reason": "YOUTUBE_API_KEY 미설정"}
+        if get_settings().youtube_api_key and refresh_limit > 0:
+            videos = (db.query(Video).filter(Video.is_demo.is_(False))
+                      .order_by(Video.stats_updated_at.asc().nullsfirst()).limit(refresh_limit).all())
+            BULK_STATE.update(total=len(videos), done=0, current="조회수 갱신")
+            job = start_job(db, "refresh_video_stats", {"count": len(videos), "mode": "daily"}, trigger)
+            db.commit()
+            updated, missing, error = 0, [], None
+            try:
+                client = YouTubeClient()
+                try:
+                    now = utcnow().replace(microsecond=0)
+                    for i in range(0, len(videos), 50):
+                        chunk = videos[i:i + 50]
+                        by_id = {v.youtube_video_id: v for v in chunk}
+                        seen = set()
+                        for item in client.get_videos(list(by_id)):
+                            seen.add(item["video_id"])
+                            upsert_video_from_api(db, item, by_id[item["video_id"]].channel, now)
+                            updated += 1
+                        missing += [vid for vid in by_id if vid not in seen]
+                        db.commit()
+                        BULK_STATE["done"] = min(len(videos), i + 50)
+                finally:
+                    client.close()
+                finish_job(job, "success" if not missing else "partial", {"updated": updated, "missing_or_private": missing[:200],
+                                                                         "missing_count": len(missing)}, items=updated, quota=client.quota_used)
+            except YouTubeNotConfigured as e:
+                error = str(e); finish_job(job, "failed", error=error)
+            except YouTubeAPIError as e:
+                error = str(e); finish_job(job, "failed", error=error)
+            db.commit()
+            refresh = {"skipped": False, "job_id": job.id, "status": job.status, "updated": updated, "quota_used": job.quota_used, "error": error}
+        BULK_STATE.update(current="후보 평가")
+        rep = run_daily_sourcing(db, trigger=trigger, report_date=report_date, refresh_limit=0)
+        rep.summary = dict(rep.summary, stats_refresh=refresh)
+        db.commit()
+        summary = {"report_id": rep.id, "report_date": rep.report_date.isoformat(), "stats_refresh": refresh,
+                   "total_candidates": rep.summary["total_candidates"], "total_final": rep.summary["total_final"]}
+        BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
+
+
 def start(task: str, **params) -> dict:
     with _lock:
         if BULK_STATE["running"]:
             raise RuntimeError(f"다른 일괄 작업({BULK_STATE['task']})이 실행 중입니다. 완료 후 다시 시도하세요.")
         BULK_STATE.update(running=True, task=task, total=0, done=0, current=None, started_at=utcnow().isoformat(),
                           finished_at=None, summary={}, error=None)
-    target = {"resolve": _run_resolve, "collect": _run_collect, "discover": _run_discover}[task]
+    target = {"resolve": _run_resolve, "collect": _run_collect, "discover": _run_discover, "sourcing": _run_sourcing}[task]
     t = threading.Thread(target=target, kwargs=params, daemon=True, name=f"bulk-{task}")
     t.start()
     return status()

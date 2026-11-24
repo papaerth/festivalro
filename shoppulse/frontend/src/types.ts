@@ -86,4 +86,4 @@ export interface Settings {
   user: Record<string, any>; scoring: ScoringConfig; graph_rules: Record<string, any>; metric_bands: Record<string, any>; upload_slots: Record<string, any>
 }
 
-export interface BulkState { running: boolean; task: 'resolve' | 'collect' | 'discover' | null; total: number; done: number; current: string | null; started_at: string | null; finished_at: string | null; summary: Record<string, any>; error: string | null }
+export interface BulkState { running: boolean; task: 'resolve' | 'collect' | 'discover' | 'sourcing' | null; total: number; done: number; current: string | null; started_at: string | null; finished_at: string | null; summary: Record<string, any>; error: string | null }

@@ -171,7 +171,7 @@ def test_schedule(client):
 
 
 def test_daily_sourcing_reports_actual_counts(client):
-    r = client.post("/api/sourcing/run", json={"report_date": "2026-11-24"})
+    r = client.post("/api/sourcing/run", json={"report_date": "2026-11-24", "background": False})
     assert r.status_code == 200
     rep = r.json()
     assert rep["summary"]["total_final"] == 1  # 점수 있는 후보 1개만 — 가짜로 채우지 않음
@@ -180,7 +180,7 @@ def test_daily_sourcing_reports_actual_counts(client):
     beauty = [c for c in rep["categories"] if c["category"] == "beauty"][0]
     assert beauty["found"] == 0 and beauty["note"]
     # 다음 날 다시 돌리면 중복 사유 기록
-    r2 = client.post("/api/sourcing/run", json={"report_date": "2026-11-25"}).json()
+    r2 = client.post("/api/sourcing/run", json={"report_date": "2026-11-25", "background": False}).json()
     food2 = [c for c in r2["categories"] if c["category"] == "food"][0]
     assert len(food2["duplicates_from_previous_day"]) == 1
     stats = client.get("/api/dashboard/stats").json()
@@ -365,3 +365,16 @@ def test_identify_product_requires_ai_key_and_adopt(client):
     assert v["shopping_score"] is not None
     res = client.post("/api/videos/reclassify-shopping", params={"scope": "all"}).json()
     assert res["total"] >= 5
+
+
+def test_sourcing_background_without_api_key_completes(client):
+    import time
+    r = client.post("/api/sourcing/run", json={"report_date": "2026-11-26"})
+    assert r.status_code == 200 and r.json()["task"] == "sourcing"
+    for _ in range(50):
+        st = client.get("/api/channels/bulk/status").json()
+        if not st["running"]:
+            break
+        time.sleep(0.1)
+    assert st["running"] is False and st["summary"]["report_date"] == "2026-11-26"
+    assert st["summary"]["stats_refresh"]["skipped"] is True

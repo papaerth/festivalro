@@ -101,7 +101,7 @@ export const api = {
   importCsv: (f: File, source = 'vidiq_csv') => { const fd = new FormData(); fd.append('file', f); return req<T.Job>('POST', `/api/import/metrics-csv?source=${source}`, fd, true) },
   jobs: () => req<T.Job[]>('GET', '/api/import/jobs'),
 
-  runSourcing: (report_date?: string) => req<T.Report>('POST', '/api/sourcing/run', { report_date }),
+  runSourcing: (report_date?: string) => req<T.BulkState>('POST', '/api/sourcing/run', { report_date, background: true }),
   reports: () => req<T.Report[]>('GET', '/api/sourcing/reports'),
   schedulerStatus: () => req<any>('GET', '/api/sourcing/scheduler'),
   setScheduler: (v: boolean) => req<any>('PUT', '/api/sourcing/scheduler', { value: v }),
