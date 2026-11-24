@@ -329,6 +329,21 @@ def tighten(plan: dict, asr) -> tuple[dict, list[str]]:
     return out, notes
 
 
+TITLE_MAX = 20      # 업로드 제목 글자 수 상한(띄어쓰기 포함. 사용자 피드백으로 확정)
+
+
+def title_problems(copy: dict, limit: int = TITLE_MAX) -> list[str]:
+    """업로드 제목(combos[].title)이 글자 수 상한을 넘는지."""
+    out = []
+    for i, c in enumerate((copy or {}).get("combos") or []):
+        t = " ".join(str(c.get("title", "")).split())
+        if not t:
+            out.append(f"combos[{i}].title 이 비었습니다.")
+        elif len(t) > limit:
+            out.append(f"combos[{i}].title '{t}' 이 {len(t)}자입니다. 업로드 제목은 띄어쓰기 포함 {limit}자 이내로 줄이세요.")
+    return out
+
+
 def validate_tight(plan: dict, meta, assets, asr) -> dict:
     """쉼을 잘라낸 뒤의 길이로 20초 규칙을 본다. 나머지 규칙은 원래 plan 기준(구간 번호가 바뀌지 않게)."""
     res = validate(plan, meta, assets, asr)

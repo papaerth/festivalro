@@ -189,6 +189,13 @@ def stage_design(ep: Episode, max_rounds: int = 3):
         if not res["errors"] and tts.available():
             tts.ensure(plan, ep.inp, ep.work)          # 실제 음성 길이로 20초 규칙을 다시 본다
             res = checks.validate_tight(full, metas, ep.inp, asrs)
+        titles = checks.title_problems(copy)          # 업로드 제목 20자 이내
+        if not res["errors"] and titles and rnd > max_rounds:
+            copy.setdefault("notes", "")
+            copy["notes"] = (copy["notes"] + "\n" if copy["notes"] else "") + \
+                f"업로드 제목이 {checks.TITLE_MAX}자를 넘습니다. 올리기 전에 직접 줄여 주세요."
+            break                                     # 제목 길이만 남았으면 멈추지 않고 알린다
+        res["errors"] += titles
         if not res["errors"]:
             break
         log(checks.report(res))
