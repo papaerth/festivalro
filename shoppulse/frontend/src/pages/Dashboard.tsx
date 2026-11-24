@@ -39,13 +39,13 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <Stat label="등록된 연예인 채널" value={s.channels_total} sub={`검증 완료 ${s.channels_verified}개 · 연예인 ${s.celebrities_total}명`} />
-        <Stat label="누적 분석 영상" value={s.videos_total} sub={`원본 ${s.videos_original} · 재편집 쇼츠 ${s.videos_derived} · 오늘 새로 발견 ${s.videos_new_today}`} />
+        <Stat label="누적 분석 영상" value={s.videos_total} sub={`원본 ${s.videos_original} · 재편집 쇼츠 ${s.videos_derived} (상품 확인 ${s.videos_derived_confirmed}) · 오늘 새로 발견 ${s.videos_new_today}`} />
         <Stat label="오늘 소싱 후보" value={s.candidates_today} sub={`전체 후보 ${s.candidates_total}개`} />
         <Stat label="오늘 최종 추천" value={s.final_today} sub="목표 9개 (3채널×3)" tone="green" />
         <Stat label="검증 대기 후보" value={s.pending_verification} sub="중대 검증 항목 미해결" tone="amber" />
-        <Stat label="급등 후 평탄화 (재편집 쇼츠)" value={s.graph_derived?.spike_plateau || 0} sub={`원본 영상 ${s.graph_original?.spike_plateau || 0}개 · 실제 관측 기반`} tone="violet" />
-        <Stat label="재상승 (재편집 쇼츠)" value={(s.graph_derived?.resurgence || 0) + (s.graph_derived?.late_surge || 0)} tone="green" sub={`재상승 ${s.graph_derived?.resurgence || 0} · 뒤늦은 급상승 ${s.graph_derived?.late_surge || 0} · 원본 ${(s.graph_original?.resurgence || 0) + (s.graph_original?.late_surge || 0)}`} />
-        <Stat label="꾸준히 상승 (재편집 쇼츠)" value={s.graph_derived?.steady_rise || 0} tone="blue" sub={`원본 영상 ${s.graph_original?.steady_rise || 0}개`} />
+        <Stat label="급등 후 평탄화 (재편집 쇼츠)" value={s.graph_derived?.spike_plateau || 0} sub={`상품 확인 ${s.graph_derived_confirmed?.spike_plateau || 0} · 원본 영상 ${s.graph_original?.spike_plateau || 0}`} tone="violet" />
+        <Stat label="재상승 (재편집 쇼츠)" value={(s.graph_derived?.resurgence || 0) + (s.graph_derived?.late_surge || 0)} tone="green" sub={`상품 확인 ${(s.graph_derived_confirmed?.resurgence || 0) + (s.graph_derived_confirmed?.late_surge || 0)} · 뒤늦은 급상승 ${s.graph_derived?.late_surge || 0} · 원본 ${(s.graph_original?.resurgence || 0) + (s.graph_original?.late_surge || 0)}`} />
+        <Stat label="꾸준히 상승 (재편집 쇼츠)" value={s.graph_derived?.steady_rise || 0} tone="blue" sub={`상품 확인 ${s.graph_derived_confirmed?.steady_rise || 0} · 원본 영상 ${s.graph_original?.steady_rise || 0}`} />
         <Stat label="그래프 판별 불가" value={s.insufficient} sub={`재편집 ${s.graph_derived?.insufficient || 0} · 원본 ${s.graph_original?.insufficient || 0} — 관측 부족`} />
         <Stat label="마지막 데이터 수집" value={<span className="text-base">{fmt.datetime(s.last_collection_at)}</span>} sub={`최근 조회수 관측: ${fmt.datetime(s.last_snapshot_at)}`} />
       </div>

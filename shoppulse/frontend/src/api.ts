@@ -53,6 +53,7 @@ export const api = {
   bulkCollect: (b: { max_videos?: number; years?: number; stale_days?: number }) => req<T.BulkState>('POST', '/api/channels/bulk/collect', b),
   bulkDiscover: (b: { limit?: number; max_results?: number; suffix?: string; years?: number; order?: string; shopping_only?: boolean }) => req<T.BulkState>('POST', '/api/channels/bulk/discover', b),
   discoverShorts: (b: { query: string; celebrity_id?: number | null; max_results?: number; years?: number; order?: string; source_type?: string; shopping_only?: boolean }) => req<T.Job>('POST', '/api/videos/discover-shorts', b),
+  copyOriginalProducts: (id: number) => req<{ added: number }>('POST', `/api/videos/${id}/copy-original-products`),
   reclassifyShopping: () => req<{ total: number; shopping: number; non_shopping: number; threshold: number }>('POST', '/api/videos/reclassify-shopping'),
   bulkDeleteVideos: (video_ids: number[]) => req<{ deleted: number; skipped: any[] }>('POST', '/api/videos/bulk-delete', { video_ids }),
 

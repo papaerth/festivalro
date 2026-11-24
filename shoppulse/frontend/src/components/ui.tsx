@@ -117,3 +117,10 @@ export function Confirm({ onConfirm, children, className = 'btn-danger' }: { onC
   useEffect(() => { if (!arm) return; const t = setTimeout(() => setArm(false), 3000); return () => clearTimeout(t) }, [arm])
   return <button className={className} onClick={() => (arm ? onConfirm() : setArm(true))}>{arm ? '정말 삭제? (다시 클릭)' : children}</button>
 }
+
+export function ProductStatusBadge({ status, names }: { status: 'confirmed' | 'candidate' | 'none'; names?: string[] }) {
+  const title = names && names.length ? names.join(', ') : undefined
+  if (status === 'confirmed') return <Badge tone="green" title={title}>상품 확인됨{names && names.length ? `: ${names[0]}${names.length > 1 ? ` 외 ${names.length - 1}` : ''}` : ''}</Badge>
+  if (status === 'candidate') return <Badge tone="amber" title={title}>상품 후보(미확정)</Badge>
+  return <Badge tone="red">상품 미연결</Badge>
+}

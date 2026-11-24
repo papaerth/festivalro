@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
-import { Badge, Confirm, ErrorBox, Field, MetricPill, Modal, Select, Spinner, toneFor, useToast } from '../components/ui'
+import { Badge, Confirm, ErrorBox, Field, MetricPill, Modal, ProductStatusBadge, Select, Spinner, toneFor, useToast } from '../components/ui'
 import ViewGraph from '../components/ViewGraph'
 
 const CT: [string, string][] = [['direct_recommend', '직접 추천형'], ['sponsored', '광고·협찬형'], ['long_term_love', '애정템형'], ['natural_use', '자연 사용형'], ['experience', '경험담형'], ['comparison', '비교형'], ['taste_reveal', '취향 공개형'], ['value_find', '가성비 발견형'], ['premium_taste', '프리미엄 취향형'], ['regret', '실패·후회형'], ['life_tip', '생활 노하우형'], ['curiosity_debate', '호기심·논쟁형'], ['accidental_find', '우연한 발견형'], ['repeat_buy', '반복 구매형'], ['gift', '선물 추천형']]
@@ -33,7 +33,7 @@ export default function VideoDetail() {
         <div className="flex gap-4">
           <img src={v.thumbnail_url} alt="" className="hidden w-56 rounded-xl object-cover md:block" style={{ aspectRatio: '16/9' }} onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
           <div>
-            <div className="mb-1 flex flex-wrap gap-1"><Badge tone={toneFor.graph(v.graph.graph_type)}>{v.graph.label}</Badge><Badge tone="gray">{LABELS.format[v.video_format]}</Badge><Badge tone={v.source_type === 'original_celebrity' ? 'green' : 'amber'}>{LABELS.sourceType[v.source_type]}</Badge><Badge tone="gray">{LABELS.access[v.access_status]}</Badge><Badge tone="gray">출처 {LABELS.source[v.data_source] || v.data_source}</Badge>{v.is_demo && <Badge tone="red">DEMO</Badge>}</div>
+            <div className="mb-1 flex flex-wrap gap-1"><Badge tone={toneFor.graph(v.graph.graph_type)}>{v.graph.label}</Badge><Badge tone="gray">{LABELS.format[v.video_format]}</Badge><Badge tone={v.source_type === 'original_celebrity' ? 'green' : 'amber'}>{LABELS.sourceType[v.source_type]}</Badge><Badge tone="gray">{LABELS.access[v.access_status]}</Badge><Badge tone="gray">출처 {LABELS.source[v.data_source] || v.data_source}</Badge>{v.is_derived && <ProductStatusBadge status={v.product_status} names={v.product_names} />}{v.is_demo && <Badge tone="red">DEMO</Badge>}</div>
             <h1 className="text-xl font-bold leading-snug tracking-tight">{v.title}</h1>
             <p className="text-sm muted">{v.celebrity_name ? `${v.celebrity_name} · ` : ''}{v.channel_name ? <Link to="/channels" className="underline">{v.channel_name}</Link> : '채널 미확인'} {v.channel_verification && <Badge tone={toneFor.verification(v.channel_verification)}>{LABELS.verification[v.channel_verification]}</Badge>} · {fmt.date(v.published_at)} · {fmt.duration(v.duration_seconds)} · {v.youtube_video_id}</p>
           </div>
@@ -88,18 +88,20 @@ export default function VideoDetail() {
             <h2 className="section-title">이 원본 기반 재편집 쇼츠 — 바이럴 검증 <span className="muted text-sm font-normal">({v.derived_shorts.length}개)</span></h2>
             <Link to={`/videos?source_type=reedit_shorts`} className="text-xs underline">재편집 쇼츠 목록</Link>
           </div>
+          <p className="mb-2 text-[11px] muted">{v.evidence.note}</p>
           {v.evidence.count > 0 ? (
             <div className="mb-3 flex flex-wrap gap-2 text-xs">
               <Badge tone="gray">합계 조회 {fmt.compact(v.evidence.total_views)}</Badge><Badge tone="gray">최대 {fmt.compact(v.evidence.max_views)}</Badge>
               <Badge tone="gray">최고 Outlier {v.evidence.best_outlier ?? '미확인'}</Badge><Badge tone="gray">최고 VPH {v.evidence.best_vph ?? '미확인'}</Badge>
               {Object.entries(v.evidence.graph_types || {}).map(([k, n]) => <Badge key={k} tone={toneFor.graph(k)}>{LABELS.graph[k]} {n}</Badge>)}
             </div>
-          ) : <p className="mb-2 text-xs muted">{v.evidence.note} — 「영상」 메뉴의 「재편집 쇼츠 검색」으로 찾은 뒤, 각 쇼츠 상세에서 이 영상을 원본으로 연결하세요.</p>}
+          ) : <p className="mb-2 text-xs muted">「영상」 메뉴의 「재편집 쇼츠 검색」으로 찾은 뒤, 각 쇼츠 상세에서 이 영상을 원본으로 연결하고 상품을 확인·연결하세요.</p>}
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {v.derived_shorts.map((d) => (
               <Link key={d.id} to={`/videos/${d.id}`} className="rounded-xl border border-stone-200 p-3 text-xs hover:bg-stone-50 dark:border-stone-800 dark:hover:bg-stone-800">
                 <div className="line-clamp-2 font-medium">{d.title}</div>
                 <div className="muted">{d.yt_channel_title || d.channel_name || '채널 미확인'} · {fmt.date(d.published_at)} · 조회 {fmt.compact(d.view_count)} · Outlier {d.outlier ?? '미확인'}</div>
+                <div className="mt-1"><ProductStatusBadge status={d.product_status} names={d.product_names} /></div>
                 <div className="mt-1"><ViewGraph points={d.sparkline} analysis={d.graph} height={56} compact /></div>
               </Link>
             ))}
@@ -122,7 +124,14 @@ export default function VideoDetail() {
           ))}
         </div>
         <div className="card p-4">
-          <div className="mb-2 flex items-center justify-between"><h2 className="section-title">연결된 상품</h2><button className="btn-ghost text-xs" onClick={() => open('product', {})}>+ 상품 연결</button></div>
+          <div className="mb-2 flex items-center justify-between"><h2 className="section-title">연결된 상품 {v.is_derived && <ProductStatusBadge status={v.product_status} />}</h2><div className="flex gap-1">{v.is_derived && v.original && v.original_products.length > 0 && <button className="btn-ghost text-xs" title={`원본 영상의 상품 ${v.original_products.length}개를 이 쇼츠에 연결`} onClick={() => act(() => api.copyOriginalProducts(v.id).then((r) => { if (!r.added) throw new Error('추가된 상품 없음(이미 연결됨)') }), '원본 상품 연결')}>원본의 상품 가져오기</button>}<button className="btn-ghost text-xs" onClick={() => open('product', {})}>+ 상품 연결</button></div></div>
+          {v.is_derived && v.product_status !== 'confirmed' && <p className="mb-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-200">이 쇼츠가 어떤 상품을 파는지 확인해 연결해야 바이럴 검증 근거로 집계됩니다. 아래 설명란 링크와 영상 내용을 보고 상품을 등록·연결하세요. 상품 확인 상태가 '정확한 상품' 또는 '브랜드만 확인'이어야 인정됩니다.</p>}
+          {v.is_derived && v.description_links.length > 0 && (
+            <div className="mb-3 rounded-xl border border-stone-200 p-2 text-xs dark:border-stone-800">
+              <div className="mb-1 font-semibold">설명란 링크 {v.description_links.filter((l) => l.is_shopping_link).length > 0 && <Badge tone="blue">구매 링크 {v.description_links.filter((l) => l.is_shopping_link).length}</Badge>}</div>
+              <ul className="space-y-0.5">{v.description_links.map((l) => <li key={l.url} className="truncate"><a className={`underline ${l.is_shopping_link ? 'font-medium' : 'muted'}`} href={l.url} target="_blank" rel="noreferrer">{l.host}</a> <span className="muted">{l.url.slice(0, 70)}</span></li>)}</ul>
+            </div>
+          )}
           {v.products.length === 0 ? <p className="text-sm muted">연결된 상품이 없습니다. 상품 메뉴에서 등록한 뒤 연결하세요.</p> : v.products.map((p) => (
             <div key={p.mention_id} className="mb-2 flex items-center justify-between rounded-xl border border-stone-200 p-3 text-sm dark:border-stone-800">
               <div><div className="font-medium">{p.brand} {p.name}</div><div className="flex gap-1 text-xs"><Badge tone={toneFor.category(p.category)}>{LABELS.category[p.category]}</Badge><Badge tone={toneFor.identification(p.identification_status)}>{LABELS.identification[p.identification_status]}</Badge>{p.segment_id && <Badge tone="gray">장면 #{p.segment_id}</Badge>}</div></div>

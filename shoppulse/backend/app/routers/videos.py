@@ -48,6 +48,7 @@ def list_videos(
     min_duration: int | None = None, max_duration: int | None = None,
     graph_type: str | None = None, content_type: str | None = None, sponsorship: str | None = None,
     original_video_id: int | None = None, unlinked_derived: bool = False, shopping: str | None = None,
+    product_status: str | None = None,
     include_demo: bool = False, sort: str = "view_count",
     limit: int = Query(50, le=500), offset: int = 0, with_graph: bool = True,
     db: Session = Depends(get_db),
@@ -126,14 +127,17 @@ def list_videos(
     else:
         qs = qs.order_by(Video.view_count.desc().nullslast())
 
-    rows = qs.all() if (graph_type or sort == "growth_7d") else qs.offset(offset).limit(limit).all()
+    post_filter = bool(graph_type or sort == "growth_7d" or product_status)
+    rows = qs.all() if post_filter else qs.offset(offset).limit(limit).all()
     items = [serializers.video_summary(v, with_graph=with_graph or bool(graph_type) or sort == "growth_7d") for v in rows]
+    if product_status:
+        items = [i for i in items if i["product_status"] == product_status]
     if graph_type:
         items = [i for i in items if i["graph"]["graph_type"] == graph_type]
     if sort == "growth_7d":
         items = [i for i in items if i["graph"]["growth_7d"] is not None]
         items.sort(key=lambda i: i["graph"]["growth_7d"], reverse=True)
-    if graph_type or sort == "growth_7d":
+    if post_filter:
         total = len(items)
         items = items[offset: offset + limit]
     return {"total": total, "items": items, "sort": sort, "sort_label": SORTS.get(sort, sort),
@@ -277,6 +281,24 @@ def discover_shorts(body: schemas.DiscoverShortsIn, db: Session = Depends(get_db
                                      years=body.years, order=body.order, source_type=body.source_type,
                                      shopping_only=body.shopping_only)
     return serializers.job(job)
+
+
+@router.post("/{vid}/copy-original-products", status_code=201)
+def copy_original_products(vid: int, db: Session = Depends(get_db)):
+    """재편집 쇼츠에 원본 영상의 상품 연결을 그대로 복사한다(같은 상품을 다루는 경우)."""
+    from ..models import ProductMention
+    v = get_or_404(db, Video, vid, "영상")
+    if not v.original:
+        raise HTTPException(400, "원본 영상이 연결되어 있지 않습니다")
+    existing = {m.product_id for m in v.mentions}
+    added = 0
+    for m in v.original.mentions:
+        if m.product_id in existing:
+            continue
+        db.add(ProductMention(video_id=v.id, product_id=m.product_id, celebrity_id=m.celebrity_id))
+        added += 1
+    db.commit()
+    return {"added": added}
 
 
 @router.post("/reclassify-shopping")

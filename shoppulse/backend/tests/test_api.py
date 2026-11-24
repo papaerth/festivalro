@@ -263,6 +263,11 @@ def test_derived_shorts_link_and_evidence(client):
         total += d
         client.post(f"/api/videos/{short['id']}/snapshots", json={"observed_at": (base + timedelta(days=i + 1)).isoformat(), "view_count": total})
     client.post(f"/api/videos/{short['id']}/metrics", json={"metric_type": "outlier", "value": 35, "source": "vidiq_manual"})
+    # 상품이 연결되지 않은 쇼츠는 근거로 집계하지 않는다
+    d = client.get(f"/api/videos/{orig['id']}").json()
+    assert d["derived_count"] == 1 and d["evidence"]["count"] == 0 and d["evidence"]["unconfirmed_count"] == 1
+    pid = client.get("/api/candidates").json()["items"][0]["product_id"]
+    assert client.post("/api/products/mentions", json={"video_id": short["id"], "product_id": pid}).status_code == 201
     d = client.get(f"/api/videos/{orig['id']}").json()
     assert d["derived_count"] == 1 and d["evidence"]["count"] == 1 and d["evidence"]["best_outlier"] == 35
     assert d["derived_shorts"][0]["graph"]["graph_type"] == "resurgence"
@@ -319,3 +324,28 @@ def test_shopping_flag_filter_and_bulk_delete(client):
     res = client.post("/api/videos/bulk-delete", json={"video_ids": [r["id"], cand_vid]}).json()
     assert res["deleted"] == 1 and len(res["skipped"]) == 1
     assert client.get(f"/api/videos/{r['id']}").status_code == 404
+
+
+def test_evidence_requires_confirmed_product(client):
+    orig = client.get("/api/videos", params={"q": "테스트 영상"}).json()["items"][0]
+    short = client.post("/api/videos", json={"url_or_id": "ggggggggggg", "title": "[재편집] 상품 미연결 쇼츠 추천템", "source_type": "reedit_shorts", "fetch": False}).json()
+    client.patch(f"/api/videos/{short['id']}", json={"original_video_id": orig["id"]})
+    assert client.get(f"/api/videos/{short['id']}").json()["product_status"] == "none"
+    d = client.get(f"/api/videos/{orig['id']}").json()
+    assert d["evidence"]["count"] == 1 and d["evidence"]["unconfirmed_count"] == 1  # 상품 미연결 쇼츠는 집계 안 함
+    # 원본의 상품(brand_only=확인됨)을 쇼츠로 복사 → 확인됨
+    r = client.post(f"/api/videos/{short['id']}/copy-original-products").json()
+    assert r["added"] == 1
+    sd = client.get(f"/api/videos/{short['id']}").json()
+    assert sd["product_status"] == "confirmed" and sd["product_names"]
+    d = client.get(f"/api/videos/{orig['id']}").json()
+    assert d["evidence"]["count"] == 2 and d["evidence"]["unconfirmed_count"] == 0
+    assert client.get("/api/videos", params={"product_status": "confirmed", "source_type": "reedit_shorts"}).json()["total"] == 2
+    # 설명란 링크 추출
+    v = client.post("/api/videos", json={"url_or_id": "fffffffffff", "title": "링크 테스트 추천템", "source_type": "reedit_shorts", "fetch": False,
+                                        "description": "구매는 여기 https://link.coupang.com/a/abc 와 https://example.com/page."}).json()
+    links = client.get(f"/api/videos/{v['id']}").json()["description_links"]
+    assert len(links) == 2 and links[0]["is_shopping_link"] is True and links[1]["is_shopping_link"] is False
+    assert links[1]["url"].endswith("/page")
+    stats = client.get("/api/dashboard/stats").json()
+    assert stats["videos_derived_confirmed"] == 2

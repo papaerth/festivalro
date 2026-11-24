@@ -61,6 +61,36 @@ def product(p: Product, with_offers: bool = True) -> dict:
     return d
 
 
+import re as _re
+
+_URL_RE = _re.compile(r"https?://[^\s<>\"')\]]+")
+CONFIRMED_IDENT = ("exact", "brand_only")
+
+
+def product_status(v: Video) -> str:
+    """confirmed(정확/브랜드 확인 상품 연결) / candidate(미확정 상품만 연결) / none(상품 미연결)."""
+    if not v.mentions:
+        return "none"
+    if any(m.product.identification_status in CONFIRMED_IDENT for m in v.mentions):
+        return "confirmed"
+    return "candidate"
+
+
+def description_links(v: Video) -> list[dict]:
+    out, seen = [], set()
+    for url in _URL_RE.findall(v.description or ""):
+        url = url.rstrip(".,")
+        if url in seen:
+            continue
+        seen.add(url)
+        host = _re.sub(r"^https?://(www\.)?", "", url).split("/")[0]
+        shop = any(k in url.lower() for k in ("coupang", "smartstore", "brand.naver", "shopping.naver", "oliveyoung", "kurly",
+                                                   "musinsa", "29cm", "ohou", "gmarket", "11st", "ssg.com", "lotteon", "amazon",
+                                                   "aliexpress", "temu", "zigzag", "a-bly", "link.", "bit.ly", "naver.me"))
+        out.append({"url": url, "host": host, "is_shopping_link": shop})
+    return out[:30]
+
+
 def _is_shopping(v: Video):
     from .services.shopping_filter import is_shopping
     return is_shopping(v)
@@ -102,6 +132,9 @@ def video_summary(v: Video, with_graph: bool = True) -> dict:
         "is_derived": v.source_type in ("reedit_shorts", "competitor"),
         "shopping_score": v.shopping_score, "shopping_hits": v.shopping_hits or [],
         "is_shopping_manual": v.is_shopping, "is_shopping": _is_shopping(v),
+        "product_status": product_status(v),
+        "product_names": [f"{m.product.brand + ' ' if m.product.brand else ''}{m.product.name}" for m in v.mentions][:5],
+        "shopping_link_count": sum(1 for l in description_links(v) if l["is_shopping_link"]),
         "segment_count": len(v.segments), "candidate_count": len(v.candidates),
     }
     if with_graph:
@@ -122,16 +155,26 @@ def video_detail(v: Video) -> dict:
         "candidates": [candidate_summary(c) for c in v.candidates],
         "derived_shorts": [video_summary(x) for x in sorted(v.derived, key=lambda x: -(x.view_count or 0))],
         "original": video_summary(v.original, with_graph=False) if v.original else None,
+        "original_products": ([product(m.product, with_offers=False) for m in v.original.mentions] if v.original else []),
         "evidence": evidence_summary(v),
+        "description_links": description_links(v),
     })
     return d
 
 
 def evidence_summary(v: Video) -> dict:
-    """원본 영상에 연결된 재편집 쇼츠의 성과 요약(바이럴 검증 자료)."""
-    shorts = list(v.derived)
+    """원본 영상에 연결된 재편집 쇼츠 중 **상품이 확인·연결된 것만** 성과를 집계한다(바이럴 검증 자료).
+
+    상품 미확인 쇼츠는 unconfirmed_count 로만 보고하고 수치에 넣지 않는다.
+    """
+    all_shorts = list(v.derived)
+    shorts = [s for s in all_shorts if product_status(s) == "confirmed"]
+    unconfirmed = len(all_shorts) - len(shorts)
+    if not all_shorts:
+        return {"count": 0, "unconfirmed_count": 0, "note": "연결된 재편집 쇼츠 없음 — 바이럴 검증 자료 없음"}
     if not shorts:
-        return {"count": 0, "note": "연결된 재편집 쇼츠 없음 — 바이럴 검증 자료 없음"}
+        return {"count": 0, "unconfirmed_count": unconfirmed,
+                "note": f"재편집 쇼츠 {unconfirmed}개가 있지만 상품이 확인·연결된 것이 없어 집계하지 않음 — 각 쇼츠에서 상품을 연결하세요"}
     graphs = {}
     best_outlier = best_vph = None
     total_views = 0
@@ -147,8 +190,9 @@ def evidence_summary(v: Video) -> dict:
             best_vph = p
         total_views += s.view_count or 0
         max_views = max(max_views, s.view_count or 0)
-    return {"count": len(shorts), "total_views": total_views, "max_views": max_views, "graph_types": graphs,
-            "best_outlier": best_outlier, "best_vph": best_vph,
+    return {"count": len(shorts), "unconfirmed_count": unconfirmed, "total_views": total_views, "max_views": max_views,
+            "graph_types": graphs, "best_outlier": best_outlier, "best_vph": best_vph,
+            "note": "상품이 확인·연결된 재편집 쇼츠만 집계" + (f" (미확인 {unconfirmed}개 제외)" if unconfirmed else ""),
             "resurgence": graphs.get("resurgence", 0) + graphs.get("late_surge", 0),
             "spike_plateau": graphs.get("spike_plateau", 0), "steady_rise": graphs.get("steady_rise", 0)}
 

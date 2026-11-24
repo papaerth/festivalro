@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
-import { Badge, Empty, ErrorBox, Field, Modal, Select, Spinner, toneFor, useToast } from '../components/ui'
+import { Badge, Empty, ErrorBox, Field, Modal, ProductStatusBadge, Select, Spinner, toneFor, useToast } from '../components/ui'
 import ViewGraph from '../components/ViewGraph'
 
 const SORTS: [string, string][] = [['view_count', '조회수 높은 순'], ['outlier', 'Outlier 높은 순'], ['vph', 'VPH 높은 순'], ['published_desc', '최근 업로드순'], ['published_asc', '오래된 영상순'], ['growth_7d', '최근 7일 증가량순(데이터 있을 때만)'], ['updated', '최근 갱신순']]
@@ -60,6 +60,7 @@ export default function Videos() {
         <Field label="정렬 (저장 데이터)"><Select value={f.sort} onChange={(v) => set('sort', v)} options={SORTS} /></Field>
         <Field label="재편집 쇼츠 연결"><Select value={f.unlinked_derived || ''} onChange={(v) => set('unlinked_derived', v)} placeholder="전체" options={[['true', '원본 미연결 재편집만']]} /></Field>
         <Field label="쇼핑 쇼츠 판정"><Select value={f.shopping || ''} onChange={(v) => set('shopping', v)} placeholder="전체" options={[['yes', '쇼핑 쇼츠'], ['no', '쇼핑 아님'], ['unknown', '미판별']]} /></Field>
+        <Field label="상품 연결"><Select value={f.product_status || ''} onChange={(v) => set('product_status', v)} placeholder="전체" options={[['confirmed', '상품 확인됨'], ['candidate', '상품 후보(미확정)'], ['none', '상품 미연결']]} /></Field>
         <div className="flex items-end gap-2"><label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={f.include_demo === 'true'} onChange={(e) => set('include_demo', e.target.checked ? 'true' : '')} /> DEMO 포함</label><button className="btn-ghost w-full" onClick={() => setF({ sort: 'view_count' })}>초기화</button></div>
       </div>
       <ErrorBox error={q.error} onRetry={q.reload} />
@@ -76,7 +77,7 @@ export default function Videos() {
                 <div className="line-clamp-2 text-sm font-semibold leading-snug">{v.title}</div>
                 <div className="text-[11px] muted">{v.celebrity_name ? `${v.celebrity_name} · ` : ''}{v.channel_name || v.yt_channel_title || '채널 미확인'} · {fmt.date(v.published_at)}</div>
                 <div className="flex flex-wrap gap-x-3 text-[11px]"><span>조회 {fmt.compact(v.view_count)}</span><span>VPH {v.vph === null ? '미확인' : Math.round(v.vph).toLocaleString()}</span><span>Outlier {v.outlier === null ? '미확인' : v.outlier + '배'}</span></div>
-                <div className="flex flex-wrap gap-1"><Badge tone={toneFor.graph(v.graph.graph_type)}>{v.graph.label}</Badge><Badge tone="gray">{LABELS.format[v.video_format]}</Badge>{v.source_type !== 'original_celebrity' && <Badge tone="amber">{LABELS.sourceType[v.source_type]}{v.is_derived && (v.original_video_id ? ' · 원본 연결됨' : ' · 원본 미연결')}</Badge>}{v.derived_count > 0 && <Badge tone="violet">재편집 쇼츠 {v.derived_count}</Badge>}{v.is_derived && (v.is_shopping === null ? <Badge tone="gray">쇼핑 미판별</Badge> : v.is_shopping ? <Badge tone="green" title={v.shopping_hits.join(', ')}>쇼핑 {v.shopping_score ?? ''}점{v.is_shopping_manual !== null ? ' · 수동' : ''}</Badge> : <Badge tone="red" title={v.shopping_hits.join(', ') || '쇼핑 신호 없음'}>쇼핑 아님{v.is_shopping_manual !== null ? ' · 수동' : ''}</Badge>)}{v.candidate_count > 0 && <Badge tone="blue">후보 {v.candidate_count}</Badge>}{v.is_demo && <Badge tone="red">DEMO</Badge>}</div>
+                <div className="flex flex-wrap gap-1"><Badge tone={toneFor.graph(v.graph.graph_type)}>{v.graph.label}</Badge><Badge tone="gray">{LABELS.format[v.video_format]}</Badge>{v.source_type !== 'original_celebrity' && <Badge tone="amber">{LABELS.sourceType[v.source_type]}{v.is_derived && (v.original_video_id ? ' · 원본 연결됨' : ' · 원본 미연결')}</Badge>}{v.derived_count > 0 && <Badge tone="violet">재편집 쇼츠 {v.derived_count}</Badge>}{v.is_derived && <ProductStatusBadge status={v.product_status} names={v.product_names} />}{v.is_derived && v.shopping_link_count > 0 && <Badge tone="blue">구매링크 {v.shopping_link_count}</Badge>}{v.is_derived && (v.is_shopping === null ? <Badge tone="gray">쇼핑 미판별</Badge> : v.is_shopping ? <Badge tone="green" title={v.shopping_hits.join(', ')}>쇼핑 {v.shopping_score ?? ''}점{v.is_shopping_manual !== null ? ' · 수동' : ''}</Badge> : <Badge tone="red" title={v.shopping_hits.join(', ') || '쇼핑 신호 없음'}>쇼핑 아님{v.is_shopping_manual !== null ? ' · 수동' : ''}</Badge>)}{v.candidate_count > 0 && <Badge tone="blue">후보 {v.candidate_count}</Badge>}{v.is_demo && <Badge tone="red">DEMO</Badge>}</div>
                 <div className="pt-1"><ViewGraph points={v.sparkline} analysis={v.graph} height={48} compact /></div>
               </div>
             </Link>

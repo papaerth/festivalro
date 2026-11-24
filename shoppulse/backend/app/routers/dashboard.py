@@ -30,12 +30,19 @@ def stats(db: Session = Depends(get_db)):
     videos = db.query(Video).filter(non_demo).all()
     graph_counts: dict[str, int] = {}
     graph_counts_derived: dict[str, int] = {}
+    graph_counts_confirmed: dict[str, int] = {}
     graph_counts_original: dict[str, int] = {}
+    derived_confirmed = 0
     for v in videos:
         g = video_graph(v)["graph_type"]
         graph_counts[g] = graph_counts.get(g, 0) + 1
-        bucket = graph_counts_derived if v.source_type in ("reedit_shorts", "competitor") else graph_counts_original
-        bucket[g] = bucket.get(g, 0) + 1
+        if v.source_type in ("reedit_shorts", "competitor"):
+            graph_counts_derived[g] = graph_counts_derived.get(g, 0) + 1
+            if serializers.product_status(v) == "confirmed":
+                derived_confirmed += 1
+                graph_counts_confirmed[g] = graph_counts_confirmed.get(g, 0) + 1
+        else:
+            graph_counts_original[g] = graph_counts_original.get(g, 0) + 1
     derived_total = sum(graph_counts_derived.values())
     cands = db.query(SourcingCandidate).filter(SourcingCandidate.is_demo.is_(False)).all()
     pending_verification = 0
@@ -54,6 +61,8 @@ def stats(db: Session = Depends(get_db)):
         "videos_original": len(videos) - derived_total,
         "videos_derived": derived_total,
         "graph_derived": graph_counts_derived,
+        "graph_derived_confirmed": graph_counts_confirmed,
+        "videos_derived_confirmed": derived_confirmed,
         "graph_original": graph_counts_original,
         "videos_new_today": db.query(Video).filter(non_demo, Video.created_at >= today_start).count(),
         "candidates_today": db.query(SourcingCandidate).filter(SourcingCandidate.is_demo.is_(False), SourcingCandidate.created_at >= today_start).count(),
