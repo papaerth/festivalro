@@ -27,7 +27,8 @@ export default function ViewGraph({ points, analysis, height = 180, compact = fa
   }
   const pub = publishedAt ? ts(publishedAt) : null
   const showFull = full && pub !== null && pub < obs[0].t
-  const data = showFull ? [{ t: pub!, v: 0, s: 'published' }, ...obs] : obs
+  // 게시점과 첫 관측 사이는 선을 끊는다(null 점) — 직선으로 이으면 추정처럼 보이므로
+  const data: { t: number; v: number | null; s: string }[] = showFull ? [{ t: pub!, v: 0, s: 'published' }, { t: pub! + 1, v: null, s: 'gap' }, ...obs] : obs
   const gapEnd = showFull ? obs[0].t : null
   const spanDays = (data[data.length - 1].t - data[0].t) / 86400000
   const fmtTick = (t: number) => new Date(t).toLocaleDateString('ko-KR', spanDays > 400 ? { year: '2-digit', month: 'numeric' } : spanDays > 2 ? { month: 'numeric', day: 'numeric' } : { hour: 'numeric', minute: '2-digit' })
@@ -52,7 +53,7 @@ export default function ViewGraph({ points, analysis, height = 180, compact = fa
               labelFormatter={(t) => new Date(Number(t)).toLocaleString('ko-KR', { hour12: false })}
               formatter={(v: any, _n: any, p: any) => [p.payload.s === 'published' ? '0 회 (게시 시점)' : `${Number(v).toLocaleString('ko-KR')} 회 (${LABELS.source[p.payload.s] || p.payload.s})`, '조회수']} />
             <Line type="monotone" dataKey="v" stroke="var(--series-1)" strokeWidth={2} strokeDasharray={showFull ? undefined : undefined}
-              dot={(props: any) => { const { cx, cy, payload } = props; if (payload.s === 'published') return <circle key="pub" cx={cx} cy={cy} r={3} fill="var(--text-secondary)" />; return <circle key={payload.t} cx={cx} cy={cy} r={3} fill="var(--surface-2)" stroke="var(--series-1)" strokeWidth={2} /> }}
+              dot={(props: any) => { const { cx, cy, payload } = props; if (payload.s === 'gap' || payload.v === null) return <g key={payload.t} />; if (payload.s === 'published') return <circle key="pub" cx={cx} cy={cy} r={3} fill="var(--text-secondary)" />; return <circle key={payload.t} cx={cx} cy={cy} r={3} fill="var(--surface-2)" stroke="var(--series-1)" strokeWidth={2} /> }}
               activeDot={{ r: 5 }} isAnimationActive={false} connectNulls={false} />
           </LineChart>
         </ResponsiveContainer>
