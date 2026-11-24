@@ -20,10 +20,16 @@ for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /i "SHOPPULSE_UPDATE_B
 set ZIPURL=https://github.com/papaerth/festivalro/archive/refs/heads/%BRANCH%.zip
 set WORK=%TEMP%\shoppulse-update
 
-netstat -ano | findstr /r /c:":8787 .*LISTENING" >nul 2>nul
+set PORT=8787
+for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /i "SHOPPULSE_PORT=" .env 2^>nul`) do if not "%%b"=="" set PORT=%%b
+netstat -ano | findstr /r /c:":%PORT% .*LISTENING" >nul 2>nul
 if not errorlevel 1 (
-  echo [오류] SHOPPULSE 서버가 실행 중입니다. start.bat 창을 먼저 닫고 다시 실행하세요.
-  goto :end
+  echo [안내] SHOPPULSE 서버가 실행 중입니다. 업데이트하려면 서버를 종료해야 합니다.
+  set /p STOPOK=서버를 종료하고 계속할까요? [Y/n]: 
+  if /i "%STOPOK%"=="n" goto :end
+  for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":%PORT% .*LISTENING"') do taskkill /pid %%p /f >nul 2>nul
+  timeout /t 2 >nul
+  echo [확인] 서버를 종료했습니다.
 )
 
 if exist backend\.venv\Scripts\python.exe (
