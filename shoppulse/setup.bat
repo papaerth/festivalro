@@ -35,6 +35,12 @@ if errorlevel 1 (
   goto :fail
 )
 echo [확인] 백엔드 패키지 설치 완료
+echo [진행] Windows 앱 제어 정책 대응 - SQLAlchemy 컴파일 확장 제거...
+backend\.venv\Scripts\python backend\scripts\strip_sqlalchemy_ext.py
+if errorlevel 1 (
+  echo [오류] SQLAlchemy 를 불러올 수 없습니다.
+  goto :fail
+)
 
 if not exist .env (
   copy .env.example .env >nul
