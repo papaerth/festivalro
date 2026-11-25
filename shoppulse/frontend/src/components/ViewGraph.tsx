@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { GraphAnalysis } from '../types'
 import { LABELS, fmt } from '../api'
@@ -59,7 +60,7 @@ export default function ViewGraph({ points, analysis, height = 180, compact = fa
           </LineChart>
         </ResponsiveContainer>
       </div>
-      {!compact && <p className="mt-1 text-[11px] muted">{analysis.reason}{showFull ? ' · 게시 시점(0회)과 관측점만 사실이며, 회색 구간의 실제 추이는 기록이 없습니다. 과거 일별 기록은 vidIQ video_stats JSON 가져오기로 채울 수 있습니다.' : ''}</p>}
+      {!compact && <p className="mt-1 text-[11px] muted">{analysis.reason}{showFull ? <> · 게시 시점(0회)과 관측점만 사실이며, 회색 구간의 실제 추이는 기록이 없습니다. 과거 일별 기록은 <Link className="underline" to="/data#vidiq">vidIQ 시계열 가져오기</Link>로 채울 수 있습니다.</> : ''}</p>}
     </div>
   )
 }

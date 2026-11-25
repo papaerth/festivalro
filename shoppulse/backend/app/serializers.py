@@ -104,10 +104,31 @@ def _sparkline(v: Video, max_points: int = 60) -> list[dict]:
     return [{"observed_at": s.observed_at.isoformat(), "view_count": s.view_count, "source": s.source} for s in snaps]
 
 
+def _computed(v: Video) -> dict:
+    from .services.computed_metrics import outlier_for, vph_overall, vph_recent
+    from .database import SessionLocal
+    from sqlalchemy.orm import object_session
+
+    db = object_session(v)
+    out = None
+    if db is not None:
+        try:
+            out = outlier_for(db, v)
+        except Exception:
+            out = None
+    return {"vph_overall": vph_overall(v), "vph_recent": vph_recent(v), "outlier": out}
+
+
 def video_summary(v: Video, with_graph: bool = True) -> dict:
     lm = latest_metrics(v)
+    comp = _computed(v)
     out = lm.get("outlier", {}).get("value")
     vph = lm.get("vph", {}).get("value")
+    # 표시용: vidIQ 값이 없으면 계산값을 쓰되 출처를 명시
+    out_display = out if out is not None else (comp["outlier"]["value"] if comp["outlier"] else None)
+    out_source = "vidiq" if out is not None else ("computed" if comp["outlier"] else None)
+    vph_display = vph if vph is not None else ((comp["vph_recent"] or comp["vph_overall"] or {}).get("value"))
+    vph_source = "vidiq" if vph is not None else ("computed_recent" if comp["vph_recent"] else ("computed_overall" if comp["vph_overall"] else None))
     d = {
         "id": v.id, "youtube_video_id": v.youtube_video_id, "title": v.title, "url": v.url,
         "thumbnail_url": v.thumbnail_url or f"https://i.ytimg.com/vi/{v.youtube_video_id}/hqdefault.jpg",
@@ -119,8 +140,11 @@ def video_summary(v: Video, with_graph: bool = True) -> dict:
         "stats_updated_at": iso(v.stats_updated_at), "source_type": v.source_type, "access_status": v.access_status,
         "data_source": v.data_source, "is_demo": v.is_demo,
         "metrics": lm,
-        "outlier": out, "outlier_band": band_label_for("outlier", out),
-        "vph": vph, "vph_basis": lm.get("vph", {}).get("basis"), "vph_band": band_label_for("vph", vph),
+        "computed": comp,
+        "outlier": out_display, "outlier_band": band_label_for("outlier", out_display), "outlier_source": out_source,
+        "outlier_basis": (lm.get("outlier", {}).get("basis") if out is not None else (comp["outlier"]["basis"] if comp["outlier"] else None)),
+        "vph": vph_display, "vph_basis": (lm.get("vph", {}).get("basis") if vph is not None else ((comp["vph_recent"] or comp["vph_overall"] or {}).get("basis"))),
+        "vph_band": band_label_for("vph", vph_display), "vph_source": vph_source,
         "snapshot_count": len(v.snapshots),
         "sparkline": _sparkline(v),
         "original_video_id": v.original_video_id,

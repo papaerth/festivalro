@@ -144,6 +144,32 @@ def list_videos(
             "note": "저장된 데이터 정렬입니다(외부 새 검색 아님)."}
 
 
+@router.get("/vidiq-request")
+def vidiq_request(limit: int = Query(30, le=200), only_candidates: bool = True, db: Session = Depends(get_db)):
+    """vidIQ(MCP) 에서 과거 일별 조회수를 받아오기 위한 영상 ID 목록과 요청 문구를 만든다."""
+    from ..models import SourcingCandidate
+    if only_candidates:
+        rows = (db.query(Video).join(SourcingCandidate, SourcingCandidate.video_id == Video.id)
+                .filter(SourcingCandidate.status != "rejected", Video.is_demo.is_(False)).distinct().all())
+    else:
+        rows = db.query(Video).filter(Video.is_demo.is_(False), Video.source_type.in_(["reedit_shorts", "competitor"])).all()
+    # 관측이 적은(과거 기록 없는) 영상 우선
+    rows.sort(key=lambda v: (len(v.snapshots), -(v.view_count or 0)))
+    picked = rows[:limit]
+    ids = [v.youtube_video_id for v in picked]
+    earliest = min((v.published_at for v in picked if v.published_at), default=None)
+    prompt = (
+        "vidIQ 도구를 사용해 아래 유튜브 영상들의 과거 일별 조회수 시계열을 받아 주세요.\n"
+        "각 영상마다 vidiq_video_stats 를 granularity=daily 로 호출하고, from 은 영상 게시일(모르면 "
+        f"{earliest.date().isoformat() if earliest else '3년 전'}), to 는 오늘로 해 주세요.\n"
+        "결과는 가공하지 말고 각 호출의 원본 JSON 응답({\"videoId\": ..., \"data\": [...]})을 그대로 JSON 배열로 묶어 "
+        "하나의 .json 파일(예: vidiq_stats.json)로 저장해 주세요. 추가로 vidiq_get_videos_by_ids 로 같은 ID들의 최신 VPH·Outlier 도 받아 "
+        "vidiq_meta.json 으로 저장해 주세요.\n\n영상 ID 목록:\n" + "\n".join(ids)
+    )
+    return {"count": len(ids), "video_ids": ids, "prompt": prompt,
+            "note": "ChatGPT 또는 Claude 에 vidIQ 를 연결한 대화창에 붙여넣으세요. 받은 JSON 파일은 「데이터 수집 → vidIQ JSON 업로드」로 올리면 그래프가 채워집니다. 영상 1개당 vidIQ 크레딧 5가 듭니다."}
+
+
 @router.post("", status_code=201)
 def create_video(body: schemas.VideoIn, db: Session = Depends(get_db)):
     vid = extract_video_id(body.url_or_id)
@@ -320,6 +346,17 @@ def reclassify_shopping(scope: str = "all", db: Session = Depends(get_db)):
             no += 1
     db.commit()
     return {"total": len(rows), "shopping": yes, "non_shopping": no, "threshold": threshold()}
+
+
+@router.post("/{vid}/compute-outlier")
+def compute_outlier(vid: int, db: Session = Depends(get_db)):
+    """채널 중앙값 기준 Outlier 를 계산한다(미등록 채널은 YouTube API 로 최근 업로드 50개 조회, 할당량 약 3)."""
+    from ..services.computed_metrics import ensure_outlier
+    v = get_or_404(db, Video, vid, "영상")
+    out, quota, err = ensure_outlier(db, v, allow_api=True)
+    if out is None:
+        raise HTTPException(400, f"계산 불가: {err or '기준 자료 부족'}")
+    return {"outlier": out, "quota_used": quota}
 
 
 @router.post("/{vid}/resolve-links")

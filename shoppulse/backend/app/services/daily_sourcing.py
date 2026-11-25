@@ -95,6 +95,34 @@ def ai_score_step(db: Session, max_per_category: int = TARGET_CANDIDATES, report
     return {"skipped": False, "scored": scored, "failed": failed}
 
 
+def computed_outlier_step(db: Session, max_api_channels: int = 60) -> dict:
+    """활성 후보 영상의 채널 기준선을 만들어 계산 Outlier 를 확보한다(미등록 채널은 API, 채널당 약 3 유닛)."""
+    from .computed_metrics import ensure_outlier
+    from ..config import get_settings
+
+    cands = (db.query(SourcingCandidate)
+             .filter(SourcingCandidate.is_demo.is_(False), SourcingCandidate.status.notin_(["rejected", "published", "analyzing"])).all())
+    done, api_calls, quota, errors = 0, 0, 0, []
+    allow_api = bool(get_settings().youtube_api_key)
+    seen_channels: set[str] = set()
+    for c in cands:
+        v = c.video
+        key = v.yt_channel_id or (f"db:{v.channel_id}" if v.channel_id else None)
+        if not key:
+            continue
+        use_api = allow_api and api_calls < max_api_channels and key not in seen_channels
+        out, q, err = ensure_outlier(db, v, allow_api=use_api)
+        if q:
+            api_calls += 1
+            quota += q
+        seen_channels.add(key)
+        if out:
+            done += 1
+        elif err and len(errors) < 10:
+            errors.append({"video_id": v.id, "error": err})
+    return {"with_outlier": done, "candidates": len(cands), "api_channels": api_calls, "quota_used": quota, "errors": errors}
+
+
 def ai_identify_products_step(db: Session, max_calls: int = 30) -> dict:
     """상품이 연결되지 않은 활성 후보 쇼츠에 AI 상품 추정을 돌리고, 확신도 high/medium 추정을 '유사 상품 후보'로 자동 연결한다."""
     from ..config import get_settings
@@ -206,6 +234,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
         db.commit()
         discovery = discover_candidates(db, per_category=TARGET_CANDIDATES)
         discovery["legacy_retired"] = legacy_retired
+    outliers = computed_outlier_step(db)
     ai_products = ai_identify_products_step(db) if ai_score else {"skipped": True, "reason": "비활성", "identified": 0, "linked": 0}
     ai = ai_score_step(db) if ai_score else {"skipped": True, "reason": "비활성", "scored": 0}
     yesterday = report_date - timedelta(days=1)
@@ -221,7 +250,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
     cfg = get_active_version(db).config
     out_categories = []
     summary = {"graph_types": {}, "total_candidates": 0, "total_final": 0, "stats_refresh": refresh,
-               "auto_discovery": discovery, "ai_scoring": ai, "ai_products": ai_products,
+               "auto_discovery": discovery, "ai_scoring": ai, "ai_products": ai_products, "computed_outliers": outliers,
                "targets": {"candidates_per_category": TARGET_CANDIDATES, "final_per_category": TARGET_FINAL}}
 
     for cat in CATEGORIES:

@@ -22,7 +22,7 @@ export interface VideoSummary {
   id: number; youtube_video_id: string; title: string; url: string | null; thumbnail_url: string; channel_id: number | null; channel_name: string | null;
   channel_verification: string | null; celebrity_name: string | null; published_at: string | null; duration_seconds: number | null; video_format: string;
   view_count: number | null; like_count: number | null; comment_count: number | null; stats_updated_at: string | null; source_type: string; access_status: string;
-  data_source: string; is_demo: boolean; metrics: Record<string, MetricVal>; outlier: number | null; outlier_band: string | null; vph: number | null;
+  data_source: string; is_demo: boolean; metrics: Record<string, MetricVal>; computed: { vph_overall: ComputedVal | null; vph_recent: ComputedVal | null; outlier: ComputedOutlier | null }; outlier: number | null; outlier_band: string | null; outlier_source: 'vidiq' | 'computed' | null; outlier_basis: string | null; vph: number | null; vph_source: 'vidiq' | 'computed_recent' | 'computed_overall' | null;
   vph_basis: string | null; vph_band: string | null; snapshot_count: number; sparkline: { observed_at: string; view_count: number; source: string }[]; original_video_id: number | null; celebrity_id: number | null; yt_channel_title: string | null; yt_channel_id: string | null; discovery_query: string | null; derived_count: number; is_derived: boolean; shopping_score: number | null; shopping_hits: string[]; is_shopping_manual: boolean | null; is_shopping: boolean | null; product_status: 'confirmed' | 'candidate' | 'none'; product_names: string[]; shopping_link_count: number; segment_count: number; candidate_count: number; graph: GraphAnalysis
 }
 
@@ -97,3 +97,7 @@ export interface OfferSearch { query: string; naver: { status: string; items: Of
 
 export interface InvestigateItem { name: string; brand: string; model_or_option: string; visible_price: string; category: 'beauty' | 'living' | 'food' | 'unknown'; features: string; confidence: 'high' | 'medium' | 'low'; evidence: string; search_queries: string[]; links: { coupang: string; naver_shopping: string; google: string }; naver_results?: OfferSearchItem[] }
 export interface InvestigateResult { items: InvestigateItem[]; notes: string; model: string; disclaimer: string; naver_api: string }
+
+export interface ComputedVal { value: number; basis: string; hours?: number; note: string }
+export interface ComputedOutlier { value: number; basis: string; median_views: number; sample_size: number; sample_format: string; computed_at: string; note: string }
+export interface VidiqRequest { count: number; video_ids: string[]; prompt: string; note: string }

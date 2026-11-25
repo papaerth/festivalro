@@ -7,6 +7,7 @@ import type { AISuggestion } from '../types'
 import ViewGraph from '../components/ViewGraph'
 import CaptureInvestigateModal from '../components/CaptureInvestigate'
 import ProductLinks from '../components/ProductLinks'
+import MetricBlock from '../components/MetricBlock'
 
 const CT: [string, string][] = [['direct_recommend', '직접 추천형'], ['sponsored', '광고·협찬형'], ['long_term_love', '애정템형'], ['natural_use', '자연 사용형'], ['experience', '경험담형'], ['comparison', '비교형'], ['taste_reveal', '취향 공개형'], ['value_find', '가성비 발견형'], ['premium_taste', '프리미엄 취향형'], ['regret', '실패·후회형'], ['life_tip', '생활 노하우형'], ['curiosity_debate', '호기심·논쟁형'], ['accidental_find', '우연한 발견형'], ['repeat_buy', '반복 구매형'], ['gift', '선물 추천형']]
 const toSec = (s: string) => { if (!s) return null; const p = s.split(':').map(Number); if (p.some(isNaN)) return null; return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p.length === 2 ? p[0] * 60 + p[1] : p[0] }
@@ -55,12 +56,9 @@ export default function VideoDetail() {
         <div className="card p-4 lg:col-span-2">
           <div className="mb-2 flex items-center justify-between"><h2 className="section-title">실제 조회수 그래프</h2><div className="flex gap-2"><button className="btn-ghost text-xs" onClick={() => open('snapshot', { observed_at: new Date().toISOString().slice(0, 16) })}>+ 조회수 관측 입력</button></div></div>
           <ViewGraph points={v.snapshots} analysis={v.graph} height={240} publishedAt={v.published_at} />
-          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
-            <MetricPill label="누적 조회수" value={v.view_count} band={v.stats_updated_at ? `${fmt.datetime(v.stats_updated_at)} 기준` : undefined} />
+          <MetricBlock v={v} onChanged={() => q.reload()} extra={<MetricPill label="게시 후 경과" value={fmt.daysAgo(v.published_at)} band="일" />} />
+          <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
             <MetricPill label="좋아요" value={v.like_count} /><MetricPill label="댓글" value={v.comment_count} />
-            <MetricPill label="게시 후 경과" value={fmt.daysAgo(v.published_at)} band="일" />
-            <MetricPill label="Outlier" value={v.outlier} band={v.outlier_band ? `${v.outlier_band} (운영 기준)` : undefined} />
-            <MetricPill label="VPH" value={v.vph} basis={v.vph_basis} band={v.vph_band ? `${v.vph_band} (운영 기준)` : undefined} />
             <MetricPill label="최근 7일 증가" value={v.graph.growth_7d} missing="데이터 부족" /><MetricPill label="최근 28일 증가" value={v.graph.growth_28d} missing="데이터 부족" />
           </div>
           <div className="mt-3 flex items-center justify-between"><h3 className="text-sm font-semibold">vidIQ·외부 지표 이력</h3><button className="btn-ghost text-xs" onClick={() => open('metric', { metric_type: 'outlier', basis: 'unspecified', source: 'vidiq_manual' })}>+ 지표 입력</button></div>

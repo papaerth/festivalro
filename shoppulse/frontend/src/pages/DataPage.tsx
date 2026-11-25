@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import type { VidiqRequest } from '../types'
 import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
 import { Badge, ErrorBox, Field, Select, toneFor, useToast } from '../components/ui'
@@ -16,6 +17,8 @@ export default function DataPage() {
   const [limit, setLimit] = useState(200)
   const jsonRef = useRef<HTMLInputElement>(null)
   const csvRef = useRef<HTMLInputElement>(null)
+  const [vq, setVq] = useState<VidiqRequest | null>(null)
+  const [vqLimit, setVqLimit] = useState(30)
   const act = async (fn: () => Promise<any>, ok: (r: any) => string) => { try { const r = await fn(); toast(ok(r), r?.status === 'failed' ? 'err' : 'ok'); jobs.reload() } catch (e: any) { toast(e.message, 'err') } }
   const yt = health.data?.youtube_api
 
@@ -39,8 +42,19 @@ export default function DataPage() {
           <p className="mt-2 text-[11px] muted">「오늘 소싱 실행」을 누르면 조회수 갱신(기본 300개)이 먼저 자동 실행됩니다. 조회수 갱신을 매일 실행하면 실제 시계열이 쌓여 그래프 유형(급등 후 평탄화·재상승 등)을 판별할 수 있습니다. 과거 기록은 복원되지 않습니다.</p>
         </div>
 
-        <div className="card p-4">
-          <h2 className="section-title mb-1">vidIQ 지표 가져오기</h2>
+        <div className="card p-4" id="vidiq">
+          <h2 className="section-title mb-1">vidIQ 지표·과거 시계열 가져오기</h2>
+          <div className="mb-3 rounded-xl bg-stone-50 p-3 text-xs dark:bg-stone-800/60">
+            <div className="mb-1 font-semibold">1단계 · 요청 문구 만들기</div>
+            <p className="muted">전체 기간 조회수 그래프(게시일부터)는 vidIQ 가 보유한 과거 일별 기록으로만 채울 수 있습니다. 아래 버튼으로 후보 영상 ID 목록과 요청 문구를 만들어 vidIQ 가 연결된 ChatGPT/Claude 대화에 붙여넣으세요. 영상 1개당 vidIQ 크레딧 5.</p>
+            <div className="mt-2 flex items-center gap-2"><span className="muted">관측이 적은 후보 영상부터 최대</span><input type="number" className="input w-20" value={vqLimit} min={1} max={200} onChange={(e) => setVqLimit(Number(e.target.value))} /><span className="muted">개</span><button className="btn-primary" onClick={async () => { try { setVq(await api.vidiqRequest(vqLimit, true)) } catch (e: any) { toast(e.message, 'err') } }}>요청 문구 만들기</button></div>
+            {vq && <div className="mt-2">
+              <div className="mb-1 flex items-center justify-between"><span>영상 {vq.count}개</span><button className="btn-ghost px-2 py-1" onClick={() => { navigator.clipboard.writeText(vq.prompt).then(() => toast('요청 문구 복사됨')) }}>문구 복사</button></div>
+              <textarea className="input font-mono text-[11px]" rows={8} readOnly value={vq.prompt} />
+              <p className="mt-1 muted">{vq.note}</p>
+            </div>}
+            <div className="mt-2 font-semibold">2단계 · 받은 JSON 업로드 (아래 버튼)</div>
+          </div>
           <p className="mb-3 text-xs muted">vidIQ 는 외부 프로그램용 공개 REST API 를 제공하지 않습니다. 공식 경로는 ChatGPT·Claude 등에 연결된 <b>vidIQ MCP</b>입니다. 그 대화에서 받은 <code>vidiq_get_videos_by_ids</code>(최신 VPH·Outlier) / <code>vidiq_video_stats</code>(일별 조회수 시계열) 응답 JSON을 파일로 저장해 올리세요. Outlier가 null 이면 0이 아닌 '미확인'으로 저장됩니다. VPH 측정 구간은 vidIQ 가 명시하지 않아 '기준 미확인'으로 표시합니다.</p>
           <div className="flex flex-wrap items-center gap-2">
             <input ref={jsonRef} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) act(() => api.importVidiqJson(f), (j) => `JSON 가져오기 ${LABELS.jobStatus[j.status]}: 영상 신규 ${j.result.videos_created} · 갱신 ${j.result.videos_updated} · 지표 ${j.result.metrics_added} · 관측 ${j.result.snapshots_added}${j.result.skipped?.length ? ` · 건너뜀 ${j.result.skipped.length}` : ''}`); e.target.value = '' }} />

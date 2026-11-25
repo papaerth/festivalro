@@ -486,3 +486,27 @@ def test_resolve_links_and_product_from_link(client, monkeypatch):
     p = client.post(f"/api/videos/{v['id']}/product-from-link", json={"url": r["products"][0]["final_url"], "name": "백종원 소갈비찜", "category": "food"}).json()
     assert p["identification_status"] == "similar_candidate" and p["offers"][0]["seller"] == "쿠팡"
     assert client.get(f"/api/videos/{v['id']}").json()["product_status"] == "candidate"
+
+
+def test_computed_vph_and_outlier(client):
+    from datetime import datetime, timedelta
+    # 등록 채널에 영상 6개(조회수 분포) → 기준선 → Outlier 계산
+    chid = [c for c in client.get("/api/channels").json() if c["channel_name"] == "테스트 채널"][0]["id"]
+    pub = (datetime.now() - timedelta(days=30)).isoformat()
+    ids = []
+    for i, views in enumerate([1000, 1200, 900, 1100, 1000, 50000]):
+        v = client.post("/api/videos", json={"url_or_id": f"outl{i:07d}", "channel_id": chid, "title": f"기준 영상 {i}", "duration_seconds": 600,
+                                            "view_count": views, "published_at": pub, "fetch": False}).json()
+        ids.append(v["id"])
+    big = client.get(f"/api/videos/{ids[-1]}").json()
+    assert big["computed"]["vph_overall"]["value"] > 0 and big["vph_source"] == "computed_overall"
+    r = client.post(f"/api/videos/{ids[-1]}/compute-outlier").json()
+    assert r["outlier"]["basis"] == "channel_median" and r["outlier"]["value"] > 10
+    d = client.get(f"/api/videos/{ids[-1]}").json()
+    assert d["outlier_source"] == "computed" and d["outlier"] > 10 and d["outlier_band"]
+    # 최근 구간 VPH: 2시간 뒤 관측 추가
+    client.post(f"/api/videos/{ids[-1]}/snapshots", json={"observed_at": (datetime.now() + timedelta(hours=2)).isoformat(), "view_count": 52000})
+    d = client.get(f"/api/videos/{ids[-1]}").json()
+    assert abs(d["computed"]["vph_recent"]["value"] - 1000.0) < 5 and d["vph_source"] == "computed_recent"
+    req = client.get("/api/videos/vidiq-request", params={"limit": 5}).json()
+    assert req["count"] >= 1 and "vidiq_video_stats" in req["prompt"]

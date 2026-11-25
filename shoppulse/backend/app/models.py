@@ -137,6 +137,21 @@ class Video(TimestampMixin, Base):
     candidates: Mapped[list["SourcingCandidate"]] = relationship(back_populates="video", cascade="all, delete-orphan")
 
 
+class ChannelBaseline(Base):
+    """채널별 '평소 성과' 기준선(조회수 중앙값). 계산 Outlier = 영상 조회수 / 중앙값."""
+
+    __tablename__ = "channel_baselines"
+    yt_channel_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    channel_title: Mapped[str | None] = mapped_column(String(200))
+    median_views: Mapped[float | None] = mapped_column(Float)
+    mean_views: Mapped[float | None] = mapped_column(Float)
+    sample_size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sample_format: Mapped[str] = mapped_column(String(20), default="all", nullable=False)  # all / short / long
+    source: Mapped[str] = mapped_column(String(30), nullable=False)  # db / youtube_api
+    computed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+
+
 class VideoMetric(Base):
     """vidIQ 등 외부 지표. 측정 기준(basis)·출처·측정 시각을 함께 저장한다."""
 

@@ -7,6 +7,7 @@ import ViewGraph from '../components/ViewGraph'
 import OfferSearchModal from '../components/OfferSearch'
 import CaptureInvestigateModal from '../components/CaptureInvestigate'
 import ProductLinks from '../components/ProductLinks'
+import MetricBlock from '../components/MetricBlock'
 import type { CandidateDetail as CD, Score } from '../types'
 
 export default function CandidateDetail() {
@@ -70,12 +71,7 @@ export default function CandidateDetail() {
         <div className="card p-4 lg:col-span-2">
           <h2 className="section-title mb-2">실제 조회수 그래프</h2>
           <ViewGraph points={v.snapshots} analysis={v.graph} height={220} publishedAt={v.published_at} />
-          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
-            <MetricPill label="누적 조회수" value={v.view_count} band={v.stats_updated_at ? `${fmt.datetime(v.stats_updated_at)} 기준` : undefined} />
-            <MetricPill label="Outlier" value={v.outlier} band={v.outlier_band ? `${v.outlier_band} (운영 기준)` : undefined} />
-            <MetricPill label="VPH" value={v.vph} basis={v.vph_basis} band={v.vph_band ? `${v.vph_band} (운영 기준)` : undefined} />
-            <MetricPill label="최근 7일 증가" value={v.graph.growth_7d} missing="데이터 부족" />
-          </div>
+          <MetricBlock v={v} onChanged={() => q.reload()} extra={<MetricPill label="최근 7일 증가" value={v.graph.growth_7d} missing="데이터 부족" />} />
         </div>
         <div className="card p-4">
           <h2 className="section-title mb-2">연예인 실제 발언·장면 {c.is_short_candidate && <span className="muted text-xs font-normal">(원본 영상 기준)</span>}</h2>

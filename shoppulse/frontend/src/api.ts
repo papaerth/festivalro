@@ -93,6 +93,8 @@ export const api = {
   suggestScore: (id: number) => req<T.CandidateDetail>('POST', `/api/candidates/${id}/scores/suggest`),
   setVerification: (id: number, b: { item: string; status: string; note?: string | null }) => req<T.CandidateDetail>('PUT', `/api/candidates/${id}/verification`, b),
   setProduced: (id: number, b: { produced: boolean; produced_url?: string | null }) => req<T.CandidateDetail>('PUT', `/api/candidates/${id}/produced`, b),
+  computeOutlier: (id: number) => req<{ outlier: T.ComputedOutlier; quota_used: number }>('POST', `/api/videos/${id}/compute-outlier`),
+  vidiqRequest: (limit = 30, only_candidates = true) => req<T.VidiqRequest>('GET', `/api/videos/vidiq-request${qs({ limit, only_candidates })}`),
   resolveLinks: (id: number) => req<T.ResolvedLinks>('POST', `/api/videos/${id}/resolve-links`),
   productFromLink: (id: number, b: { url: string; name: string; brand?: string | null; category: 'beauty' | 'living' | 'food' }) => req<T.Product>('POST', `/api/videos/${id}/product-from-link`, b),
   investigate: (files: File[], hint?: string, video_id?: number) => { const fd = new FormData(); files.forEach((f) => fd.append('files', f)); if (hint) fd.append('hint', hint); if (video_id) fd.append('video_id', String(video_id)); return req<T.InvestigateResult>('POST', '/api/products/investigate', fd, true) },
