@@ -107,14 +107,14 @@ export default function Styles() {
       )}
 
       {q.data.styles.length === 0 && <div className="card p-6 text-center text-sm muted">아직 등록한 레퍼런스 채널이 없습니다.</div>}
-      {q.data.styles.map((s) => <StyleCard key={s.id} s={s} onChange={q.reload} toast={toast} />)}
+      {[...q.data.styles].sort((a, b) => Number(b.id === q.data!.default_style_id) - Number(a.id === q.data!.default_style_id)).map((s) => <StyleCard key={s.id} s={s} onChange={q.reload} toast={toast} isDefault={s.id === q.data!.default_style_id} isHouse={s.id === q.data!.house_style_id} />)}
     </div>
   )
 }
 
 function Swatch({ c }: { c: string }) { return c ? <span className="inline-block h-3.5 w-3.5 rounded border border-stone-300 align-middle" style={{ background: c }} title={c} /> : null }
 
-function StyleCard({ s, onChange, toast }: { s: RefStyle; onChange: () => void; toast: (m: string, t?: 'ok' | 'err') => void }) {
+function StyleCard({ s, onChange, toast, isDefault, isHouse }: { s: RefStyle; onChange: () => void; toast: (m: string, t?: 'ok' | 'err') => void; isDefault: boolean; isHouse: boolean }) {
   const [p, setP] = useState<StyleProfile | null>(s.profile)
   const [dirty, setDirty] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -126,11 +126,13 @@ function StyleCard({ s, onChange, toast }: { s: RefStyle; onChange: () => void; 
     <div className="card space-y-3 p-4 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-base font-bold">{s.name}</h2>
+        {isDefault && <Badge tone="blue">「쇼츠 만들기」 기본</Badge>}{isHouse && <Badge tone="gray">레퍼런스 분석으로 만든 내 스타일</Badge>}
         {s.status === 'ready' ? <Badge tone="green">사용 가능</Badge> : s.status === 'learning' ? <Badge tone="amber">학습 중 · {s.step}</Badge> : <Badge tone="red">학습 실패</Badge>}
         {st.confidence && <Badge tone="gray">확신도 {st.confidence === 'high' ? '높음' : st.confidence === 'medium' ? '보통' : '낮음'}</Badge>}
         {s.channel_url && <a className="text-xs underline muted" href={s.channel_url.startsWith('http') ? s.channel_url : `https://www.youtube.com/${s.channel_url}`} target="_blank" rel="noreferrer">{s.channel_title || '채널 열기'} ↗</a>}
         <span className="ml-auto text-[11px] muted">{fmt.datetime(s.updated_at)}</span>
         <input ref={fileRef} type="file" multiple accept={ACCEPT} className="hidden" onChange={(e) => { const fs = Array.from(e.target.files || []); e.target.value = ''; run(() => api.styleRelearn(s.id, fs), '다시 학습 시작') }} />
+        {!isDefault && s.status === 'ready' && <button className="btn-ghost text-xs" onClick={() => run(() => api.styleMakeDefault(s.id), '기본 스타일로 지정했습니다')}>기본으로 쓰기</button>}
         <button className="btn-ghost text-xs" disabled={s.status === 'learning'} onClick={() => fileRef.current?.click()} title="샘플 쇼츠 mp4·캡처를 더 넣어 다시 학습">샘플 넣고 다시 학습</button>
         <button className="text-xs text-red-600 underline" onClick={() => { if (confirm(`「${s.name}」 스타일을 지울까요?`)) run(() => api.styleDelete(s.id), '삭제됨') }}>삭제</button>
       </div>
@@ -140,7 +142,7 @@ function StyleCard({ s, onChange, toast }: { s: RefStyle; onChange: () => void; 
         <div className="grid gap-3 text-xs md:grid-cols-2">
           <div className="space-y-1">
             <div><b>화면 배치</b> · {LAYOUT[p.layout.mode]}{p.layout.fg_zoom > 1 ? ` · ${p.layout.fg_zoom}배 확대` : ''}</div>
-            <div><b>상단 제목</b> · {p.title.enabled ? <>{SIZE[p.title.size]} <Swatch c={p.title.color} /> <Swatch c={p.title.second_line_color} />{p.title.box ? ' · 박스' : ''} · {p.title.tone}</> : '없음'}</div>
+            <div><b>상단 제목</b> · {p.title.enabled ? <>{SIZE[p.title.size]} <Swatch c={p.title.color} /> <Swatch c={p.title.second_line_color} /> <Swatch c={p.title.keyword_color} />{p.title.box ? ' · 박스' : ''} · {p.title.tone}</> : '없음'}</div>
             <div><b>자막</b> · {p.caption.enabled ? <>{CAP_POS[p.caption.position]} · {SIZE[p.caption.size]} <Swatch c={p.caption.color} />{p.caption.box ? ' · 박스' : ''} · {p.caption.tone}{p.caption.highlight_color ? <> · 강조 <Swatch c={p.caption.highlight_color} /></> : null}</> : '없음'}</div>
             <div><b>후킹</b> · 처음 {p.hook.seconds}초 · {p.hook.pattern}{p.hook.zoom_punch ? ' · 확대 강조' : ''}</div>
             <div><b>속도</b> · 총 {p.pacing.total_seconds}초 · 본편 {p.pacing.segments}컷 · 컷당 최대 {p.pacing.max_clip_seconds}초{p.pacing.note ? ` · ${p.pacing.note}` : ''}</div>
@@ -165,12 +167,13 @@ function StyleCard({ s, onChange, toast }: { s: RefStyle; onChange: () => void; 
             <div className="flex items-end gap-3">
               <label>제목색<input type="color" className="mt-0.5 block h-9 w-12" value={p.title.color} onChange={(e) => set((d) => { d.title.color = e.target.value })} /></label>
               <label>둘째 줄<input type="color" className="mt-0.5 block h-9 w-12" value={p.title.second_line_color || p.title.color} onChange={(e) => set((d) => { d.title.second_line_color = e.target.value })} /></label>
+              <label>제목 강조<input type="color" className="mt-0.5 block h-9 w-12" value={p.title.keyword_color || p.title.second_line_color || p.title.color} onChange={(e) => set((d) => { d.title.keyword_color = e.target.value })} /></label>
               <label>자막색<input type="color" className="mt-0.5 block h-9 w-12" value={p.caption.color} onChange={(e) => set((d) => { d.caption.color = e.target.value })} /></label>
               <label>강조색<input type="color" className="mt-0.5 block h-9 w-12" value={p.caption.highlight_color || '#FFD400'} onChange={(e) => set((d) => { d.caption.highlight_color = e.target.value })} /></label>
             </div>
             <label>후킹 길이(초)<input type="number" step={0.5} min={1.5} max={5} className="input mt-0.5" value={p.hook.seconds} onChange={(e) => set((d) => { d.hook.seconds = Number(e.target.value) })} /></label>
             <label>총 길이(초)<input type="number" min={18} max={60} className="input mt-0.5" value={p.pacing.total_seconds} onChange={(e) => set((d) => { d.pacing.total_seconds = Number(e.target.value) })} /></label>
-            <label>본편 컷 수<input type="number" min={1} max={10} className="input mt-0.5" value={p.pacing.segments} onChange={(e) => set((d) => { d.pacing.segments = Number(e.target.value) })} /></label>
+            <label>본편 컷 수<input type="number" min={1} max={12} className="input mt-0.5" value={p.pacing.segments} onChange={(e) => set((d) => { d.pacing.segments = Number(e.target.value) })} /></label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={p.title.box} onChange={(e) => set((d) => { d.title.box = e.target.checked })} /> 제목 박스</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={p.hook.zoom_punch} onChange={(e) => set((d) => { d.hook.zoom_punch = e.target.checked })} /> 후킹 컷 확대 강조</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={!!p.narration?.enabled} onChange={(e) => set((d) => { d.narration = { ...(d.narration || { rate: 1.12, pattern: '' }), enabled: e.target.checked } })} /> AI 음성 내레이션(첫 장면 한 문장)</label>

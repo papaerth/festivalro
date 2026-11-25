@@ -104,7 +104,7 @@ export interface OriginalMatch { confidence: string; reason: string | null; chec
 export interface SegmentProposal { status: string; basis?: string; start?: number; end?: number; quote?: string | null; matched?: string[]; link?: string | null; range_label?: string; note?: string; needs_transcript?: boolean; transcript_request?: string; chapter_title?: string; ai?: { confidence: string; reason: string; model?: string }; ai_note?: string }
 export interface VidiqRequest { count: number; video_ids: string[]; prompt: string; note: string }
 
-export interface EdlClip { start: number; end: number; caption: string; src?: number }
+export interface EdlClip { start: number; end: number; caption: string; src?: number; focus?: 'left' | 'center' | 'right' | null }
 export interface StudioSource { slot: number; name: string | null; info: { duration?: number; width?: number; height?: number; size?: number; has_audio?: boolean } | null; exists: boolean; hint_start: number | null; url: string | null; title: string | null; channel: string | null; warning: string | null }
 export interface StudioBrief {
   needs: { slot: number; status: 'ready' | 'need_file' | 'need_url'; title: string | null; url: string | null; channel: string | null; duration_seconds: number | null; range: string | null; why: string; candidates?: { title: string | null; url: string | null; channel: string | null; reasons: string[] }[] }[]
@@ -129,14 +129,14 @@ export interface StudioState {
   source: { name: string | null; info: { duration?: number; width?: number; height?: number; size?: number; has_audio?: boolean } | null; exists: boolean; hint_start: number | null; hint_end: number | null; warning?: string | null } | null
   renders: StudioRender[]; ffmpeg: { available: boolean; reason?: string; version?: string; ass?: boolean }; ai: boolean
   styles: { id: number; name: string; status: string; summary: string | null }[]
-  assets: StudioAsset[]; tts: TtsStatus; sources: StudioSource[]; brief: StudioBrief
+  assets: StudioAsset[]; tts: TtsStatus; sources: StudioSource[]; brief: StudioBrief; default_style_id: number | null
   upload_text: { title_suggestion: string; description: string; plan_titles: string[] | null }; notice: string
 }
 
 export interface StyleProfile {
   summary: string
   layout: { mode: 'blur_bg' | 'crop_fill' | 'color_bg'; bg_color: string; fg_zoom: number; fg_position: 'center' | 'upper' }
-  title: { enabled: boolean; size: 'small' | 'medium' | 'large'; color: string; second_line_color: string; outline_color: string; box: boolean; box_color: string; tone: string; patterns: string[] }
+  title: { enabled: boolean; size: 'small' | 'medium' | 'large'; color: string; second_line_color: string; outline_color: string; box: boolean; box_color: string; tone: string; patterns: string[]; keyword_color: string }
   caption: { enabled: boolean; position: 'below_video' | 'bottom' | 'over_video'; size: 'small' | 'medium' | 'large'; color: string; outline_color: string; box: boolean; box_color: string; tone: string; max_chars: number; emoji: boolean; highlight_color: string; bounce: boolean; bounce_mode: 'line' | 'char' }
   hook: { seconds: number; pattern: string; zoom_punch: boolean; caption_color: string }
   pacing: { total_seconds: number; segments: number; max_clip_seconds: number; note: string }

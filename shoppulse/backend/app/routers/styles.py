@@ -53,8 +53,10 @@ def _save_uploads(style_id: int, files: list[UploadFile]) -> tuple[list[str], li
 
 @router.get("")
 def list_styles(db: Session = Depends(get_db)):
+    from ..services.house_style import default_style_id, house_style
+    hs = house_style(db)
     return {"styles": [_ser(s) for s in db.query(ReferenceStyle).order_by(ReferenceStyle.id).all()],
-            "default": normalize_style(DEFAULT_STYLE),
+            "default": normalize_style(DEFAULT_STYLE), "default_style_id": default_style_id(db), "house_style_id": hs.id if hs else None,
             "note": "스타일은 '편집 방식'만 학습합니다(화면 배치·자막 모양·후킹 방식·컷 속도). 다른 채널의 문구·장면은 복제하지 않습니다."}
 
 
@@ -239,11 +241,31 @@ def patch_style(sid: int, body: schemas.StylePatch, db: Session = Depends(get_db
     if body.profile is not None:
         st.profile = normalize_style(body.profile)
         st.status = "ready"
+        if (st.stats or {}).get("house"):  # 내 채널 스타일을 직접 고쳤으면 업데이트 때 내장 값으로 덮어쓰지 않는다
+            st.stats = dict(st.stats, user_edited=True)
     db.commit()
     return _ser(st)
 
 
+@router.put("/{sid}/default")
+def make_default(sid: int, db: Session = Depends(get_db)):
+    """「쇼츠 만들기」 기본 버튼이 쓸 스타일로 지정."""
+    from ..services.house_style import set_default_style
+    st = get_or_404(db, ReferenceStyle, sid, "스타일")
+    if st.status != "ready":
+        raise HTTPException(400, "학습이 끝난 스타일만 기본으로 쓸 수 있습니다")
+    set_default_style(db, st.id)
+    return {"default_style_id": st.id}
+
+
 @router.delete("/{sid}", status_code=204)
 def delete_style(sid: int, db: Session = Depends(get_db)):
-    db.delete(get_or_404(db, ReferenceStyle, sid, "스타일"))
+    from ..services import house_style as hs
+    st = get_or_404(db, ReferenceStyle, sid, "스타일")
+    if (st.stats or {}).get("house"):
+        hs._set(db, "house_style_removed", True)
+        hs._set(db, "house_style_id", 0)
+    if hs._get(db, "default_style_id") == sid:
+        hs._set(db, "default_style_id", 0)
+    db.delete(st)
     db.commit()

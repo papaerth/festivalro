@@ -15,6 +15,7 @@ from ..database import get_db
 from ..models import ReferenceStyle, ShortsProject, ShortsRender, SourcingCandidate, Video, utcnow
 from ..services import audio_fx, overlay_assets, shorts_maker
 from ..services.audit import log
+from ..services.house_style import default_style_id
 from ..services.scoring import get_active_version
 from .common import get_or_404
 
@@ -133,6 +134,7 @@ def _state(db: Session, c: SourcingCandidate) -> dict:
     # 업로드용 제목 제안: 우리가 만든 편집안의 제목 → 확인된 연예인·상품 이름. 참고 쇼츠(타인의 재편집물) 제목은 제안하지 않는다
     done = next((r for r in renders if r.status == "done" and r.edl and r.edl.get("title_lines")), None)
     title = " ".join(done.edl["title_lines"]) if done else " ".join(shorts_maker.own_title_lines(c))
+    title = title.replace("*", "")
     desc = "\n".join(x for x in [
         f"원본: {(orig.channel.channel_name if orig and orig.channel else (orig.yt_channel_title if orig else '')) or ''} - {orig.title if orig else ''}".strip(" -"),
         orig.url if orig else None,
@@ -157,6 +159,7 @@ def _state(db: Session, c: SourcingCandidate) -> dict:
         "styles": [{"id": x.id, "name": x.name, "status": x.status, "summary": (x.profile or {}).get("summary")}
                    for x in db.query(ReferenceStyle).order_by(ReferenceStyle.id).all()],
         "ai": bool(get_settings().anthropic_api_key),
+        "default_style_id": default_style_id(db),
         "assets": [_asset(c.id, x) for x in ((proj.assets if proj else None) or [])],
         "tts": audio_fx.tts_status(),
         "upload_text": {"title_suggestion": title, "description": desc,

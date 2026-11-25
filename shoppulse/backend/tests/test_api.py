@@ -735,7 +735,11 @@ def test_reference_style_learn_and_make_with_style(client, tmp_path):
                             "title": s1["profile"]["title"] | {"color": "#00E5FF", "box": True}, "end_question": True, "kick": ["끝 질문 자막"]}
     p1 = client.patch(f"/api/styles/{s1['id']}", json={"name": "빠른 컷", "profile": prof}).json()
     assert p1["name"] == "빠른 컷" and p1["profile"]["layout"]["fg_zoom"] == 1.8 and p1["profile"]["title"]["color"] == "#00E5FF"
-    assert [x["name"] for x in client.get("/api/styles").json()["styles"]] == ["주소만", "빠른 컷"]
+    listing = client.get("/api/styles").json()
+    names = [x["name"] for x in listing["styles"]]
+    assert names[-2:] == ["주소만", "빠른 컷"] and "내 채널 스타일" in names  # 내 채널 스타일은 처음부터 들어 있고 「쇼츠 만들기」 기본이다
+    house = [x for x in listing["styles"] if x["name"] == "내 채널 스타일"][0]
+    assert listing["default_style_id"] == house["id"] == listing["house_style_id"] and house["status"] == "ready" and house["profile"]["layout"]["mode"] == "color_bg"
 
     # 이 스타일로 쇼츠 만들기
     src = tmp_path / "src.mp4"
@@ -748,7 +752,7 @@ def test_reference_style_learn_and_make_with_style(client, tmp_path):
         client.post(f"/api/studio/{cid}/source", files={"file": ("orig.mp4", f, "video/mp4")})
     assert client.post(f"/api/studio/{cid}/make", data={"hint": "0:10", "style_id": str(s0["id"])}).status_code == 400  # 학습 안 된 스타일
     st = client.post(f"/api/studio/{cid}/make", data={"hint": "0:10", "style_id": str(s1["id"])}).json()
-    assert [x["name"] for x in st["styles"]] == ["주소만", "빠른 컷"]
+    assert [x["name"] for x in st["styles"]][-2:] == ["주소만", "빠른 컷"] and st["default_style_id"] == house["id"]
 
     def wait():
         for _ in range(300):
@@ -796,8 +800,8 @@ def test_interrupted_jobs_are_recovered_on_startup(client):
     assert r["status"] == "failed" and "다시 눌러" in r["error"]
     by = {s["name"]: s for s in client.get("/api/styles").json()["styles"]}
     assert by["학습 중단"]["status"] == "failed" and by["재학습 중단"]["status"] == "ready"
-    for s in by.values():
-        client.delete(f"/api/styles/{s['id']}")
+    for name in ("학습 중단", "재학습 중단"):  # 이 테스트가 만든 것만 지운다(내 채널 스타일은 그대로)
+        client.delete(f"/api/styles/{by[name]['id']}")
 
 
 def test_style_file_import_export_and_backup_keeps_styles(client):
@@ -1068,3 +1072,39 @@ def test_multi_source_mix_brief_and_auto_assets(client, tmp_path, monkeypatch):
     client.post(f"/api/studio/{cid}/rerender", json=edl)
     r3 = wait(r2["id"])
     assert r3["status"] == "done" and 1 not in {x["src"] for x in r3["edl"]["segments"]}
+
+
+def test_default_make_uses_house_style_and_default_can_change(client):
+    """「쇼츠 만들기」 기본 버튼은 내 채널 스타일로 만든다. 기본 스타일은 바꿀 수 있고, 내 채널 스타일을 고치면 업데이트가 덮어쓰지 않는다."""
+    from app.database import SessionLocal
+    from app.models import ReferenceStyle
+    from app.services import house_style as hs
+    from app.services.shorts_maker import start_render
+    listing = client.get("/api/styles").json()
+    hid = listing["house_style_id"]
+    assert hid and listing["default_style_id"] == hid
+    with SessionLocal() as db:
+        assert hs.default_style_id(db) == hid
+        st = db.get(ReferenceStyle, hid)
+        assert st.stats["house"] is True and st.profile["narration"]["enabled"] is True
+        # 내장 값이 새 버전이면 갱신하지만, 사용자가 고친 뒤에는 그대로 둔다
+        st.stats = dict(st.stats, house_version=0)
+        st.profile = dict(st.profile, summary="옛 값")
+        db.commit()
+        assert hs.ensure_house_style(db).profile["summary"] != "옛 값"
+    p = client.get(f"/api/styles/{hid}").json()["profile"]
+    p["summary"] = "내가 고친 값"
+    assert client.patch(f"/api/styles/{hid}", json={"profile": p}).json()["stats"]["user_edited"] is True
+    with SessionLocal() as db:
+        st = db.get(ReferenceStyle, hid)
+        st.stats = dict(st.stats, house_version=0)
+        db.commit()
+        assert hs.ensure_house_style(db).profile["summary"] == "내가 고친 값"
+    # 다른 스타일을 기본으로 지정
+    up = client.post("/api/styles/import", files={"file": ("s.json", json.dumps({"format": "shoppulse-styles", "styles": [{"name": "다른 기본", "profile": {}}]}).encode(), "application/json")}).json()
+    oid = [x for x in up["styles"] if x["name"] == "다른 기본"][0]["id"]
+    assert client.put(f"/api/styles/{oid}/default").json() == {"default_style_id": oid}
+    assert client.get("/api/styles").json()["default_style_id"] == oid
+    client.put(f"/api/styles/{hid}/default")
+    client.delete(f"/api/styles/{oid}")
+    assert client.get("/api/styles").json()["default_style_id"] == hid

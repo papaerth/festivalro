@@ -237,6 +237,7 @@ class EdlClip(BaseModel):
     end: float = Field(..., ge=0)
     caption: str = ""
     src: int = 0  # 원본 번호(0=첫 원본, 1·2=섞어 쓸 원본)
+    focus: str | None = None  # 화면 초점: left / center / right
 
 
 class EdlIn(BaseModel):

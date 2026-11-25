@@ -62,6 +62,8 @@ def init_db() -> None:
             log.info("시드 채널 %d개 적재(모두 '검증 전')", n)
         refresh_data_sources(db)
         _recover_interrupted_jobs(db)
+        from .services.house_style import ensure_house_style
+        ensure_house_style(db)
 
 
 def _recover_interrupted_jobs(db) -> int:

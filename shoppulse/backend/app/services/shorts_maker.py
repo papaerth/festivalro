@@ -205,7 +205,10 @@ def normalize_edl(edl: dict, duration: float, total_target: float | None = None,
         d = durs[src]
         a, b = float(sg.get("start", 0)), float(sg.get("end", 0))
         a = max(0.0, min(a, max(0.0, d - 0.5))); b = max(a + 0.3, min(b, d))
-        return {"src": src, "start": round(a, 2), "end": round(b, 2), "caption": (sg.get("caption") or "").strip()[:40]}
+        out_ = {"src": src, "start": round(a, 2), "end": round(b, 2), "caption": (sg.get("caption") or "").strip()[:40]}
+        if sg.get("focus") in ("left", "right"):  # 가운데는 기본값이라 적지 않는다
+            out_["focus"] = sg["focus"]
+        return out_
 
     used: dict[int, list[tuple[float, float]]] = {k: [] for k in durs}
     hook = clampseg(edl["hook"]) if edl.get("hook") else None
@@ -261,7 +264,7 @@ def normalize_edl(edl: dict, duration: float, total_target: float | None = None,
     seq = ([hook] if hook else []) + merged
     shuffles = sum(1 for x, y in zip(seq, seq[1:]) if y["src"] != x["src"] or y["start"] < x["start"])  # 시간을 거슬러 가거나 원본이 바뀌는 횟수
     out = {"hook": hook, "segments": merged,
-           "title_lines": [str(x).strip()[:20] for x in (edl.get("title_lines") or []) if str(x).strip()][:2],
+           "title_lines": [str(x).strip()[:24] for x in (edl.get("title_lines") or []) if str(x).strip()][:2],
            "credit": (edl.get("credit") or "").strip()[:60], "end_caption": (edl.get("end_caption") or "").strip()[:24],
            "narration": " ".join(str(edl.get("narration") or "").split())[:60],
            "reason": edl.get("reason"), "quote_seen": edl.get("quote_seen"),
@@ -361,10 +364,12 @@ EDL_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "required": ["hook", "segments", "title_lines", "end_caption", "narration", "mid_narrations", "stickers", "pips", "product_popup_segment", "product_shot", "brand_text", "loop_note", "quote_seen", "reason", "cautions"],
     "properties": {
-        "hook": {"type": "object", "additionalProperties": False, "required": ["src", "start", "end", "caption"],
-                 "properties": {"src": {"type": "integer"}, "start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"}}},
-        "segments": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["src", "start", "end", "caption"],
-                                               "properties": {"src": {"type": "integer"}, "start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"}}}},
+        "hook": {"type": "object", "additionalProperties": False, "required": ["src", "start", "end", "caption", "focus"],
+                 "properties": {"src": {"type": "integer"}, "start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"},
+                                "focus": {"type": "string", "enum": ["left", "center", "right"]}}},
+        "segments": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["src", "start", "end", "caption", "focus"],
+                                               "properties": {"src": {"type": "integer"}, "start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"},
+                                                              "focus": {"type": "string", "enum": ["left", "center", "right"]}}}},
         "product_shot": {"type": "object", "additionalProperties": False, "required": ["found", "src", "time", "x", "y", "w", "h"],
                          "properties": {"found": {"type": "boolean"}, "src": {"type": "integer"}, "time": {"type": "number"},
                                         "x": {"type": "number"}, "y": {"type": "number"}, "w": {"type": "number"}, "h": {"type": "number"}}},
@@ -433,7 +438,7 @@ def ai_edit(ff: str, items: list[dict], ctx: dict, workdir: Path, transcript: li
         content += _sheet_content(sheets)
         ranges.append({"src": it["src"], "range": [round(a, 1), round(b, 1)]})
     nseg = int(guide.get("target_segments") or 6)
-    nseg = max(5, min(10, nseg))
+    nseg = max(5, min(12, nseg))
     maxclip = float(guide.get("max_clip_seconds") or 5)
     payload = {"task": "원본 화면만으로 새 쇼핑 쇼츠 편집안을 만든다.", "sources": ranges, **ctx, "style_guide": guide}
     if transcript:
@@ -456,7 +461,8 @@ def ai_edit(ff: str, items: list[dict], ctx: dict, workdir: Path, transcript: li
         "4) 각 컷에 src(원본 번호)를 적는다. 원본이 여러 개면 가능한 한 모든 원본을 한 번 이상 쓰고, 원본을 오갈 때는 같은 상품·같은 화제로 이어지게 한다. 시각은 그 원본에 제공된 칸의 시각 범위 안에서 고른다. "
         "5) caption 은 각 컷의 자막 한 줄(caption_max_chars 이내). 화면 자막·자막 발췌에 실제로 나온 말이나 사실 설명만 쓴다. 연예인 발언을 지어내지 않는다. "
         "'추천'은 실제로 추천한 경우에만. hook.caption 은 12자 이내의 궁금증 문구." + hi_rule + " "
-        "6) title_lines 는 상단 제목 2줄(각 12자 이내, 과장·허위 금지). 제목·자막·내레이션은 원본 화면에서 확인한 내용으로 새로 쓴다: "
+        "각 컷의 focus: 가로 화면의 좌우를 잘라 정사각형에 가깝게 보여 주므로, 그 컷에서 말하는 사람이나 상품이 화면의 left/center/right 중 어디에 있는지 적는다(가운데면 center). "
+        "6) title_lines 는 상단 제목 2줄(각 12자 이내, 과장·허위 금지). 둘째 줄에서 가장 중요한 단어 하나(상품 종류나 핵심 표현)를 *별표*로 감싸면 강조색으로 표시된다. 제목·자막·내레이션은 원본 화면에서 확인한 내용으로 새로 쓴다: "
         "reference_short_* 는 어떤 상품·장면인지 찾는 단서일 뿐이므로 그 제목·문구·표현을 그대로 옮기거나 살짝만 바꿔 쓰지 않는다. "
         "7) quote_seen 에는 화면 자막 등에서 실제로 읽은 핵심 문장을 그대로(없으면 빈 문자열). 확인이 필요한 점(상품 불명확, 광고·협찬 표시가 보임 등)은 cautions 에. "
         "8) style_guide 의 말투·글자 수·후킹 방식·own_twist(우리만의 차별점)를 따른다. 스타일은 '방식'만 참고한다. "
@@ -584,7 +590,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     hi = ca.get("highlight_color", "")
     bounce = (ca.get("bounce_mode") or "line") if ca.get("bounce") else False
     if ti["enabled"] and edl.get("title_lines"):
-        lines = [_ass_text(x) for x in edl["title_lines"]]
+        # 제목 안의 *핵심 단어* 는 keyword_color 로(레퍼런스들의 '둘째 줄 끝 단어만 다른 색' 방식). 줄 색은 1줄 color, 2줄 second_line_color
+        line_cols = [ti["color"], ti.get("second_line_color") or ti["color"]]
+        lines = [_ass_caption(x, ti.get("keyword_color") or "", line_cols[min(k, 1)]) for k, x in enumerate(edl["title_lines"])]
         if len(lines) > 1 and ti.get("second_line_color"):
             lines[1] = "{\\c" + ass_color(ti["second_line_color"])[:2] + ass_color(ti["second_line_color"])[4:] + "&}" + lines[1]
         ev.append(f"Dialogue: 1,{_ass_time(0)},{_ass_time(total)},Title,,0,0,0,," + "\\N".join(lines))
@@ -641,6 +649,7 @@ def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path,
     n = len(clips)
     parts = []
     sw, sh = info["width"] // 2 * 2, info["height"] // 2 * 2
+    cw = (int(sw / zoom) // 2 * 2) if (not fill and zoom > 1.001) else sw  # 확대하면 화면에 남는 가로 폭
     any_audio = any(sc["info"].get("has_audio") for sc in csrc)
     afmt = "aformat=sample_rates=48000:channel_layouts=stereo"
     for i in range(n):
@@ -653,6 +662,9 @@ def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path,
         # 크기·비율이 다른 원본은 첫 원본 화면에 꽉 차게 맞춰 자른다
         fit = f"scale={sw}:{sh}" if same else f"scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh}"
         # setsar 는 맨 끝에: 확대한 컷도 다른 컷과 화소 비율이 같아야 이어 붙일 수 있다
+        if cw < sw:  # 확대 스타일: 컷마다 초점(왼쪽·가운데·오른쪽)에 맞춰 좌우를 잘라 낸다
+            fx = {"left": 0.12, "right": 0.88}.get(clips[i].get("focus"), 0.5)
+            punch += f",crop={cw}:{sh}:{int((sw - cw) * fx) // 2 * 2}:0"
         parts.append(f"[{i}:v]fps={FPS},setpts=PTS-STARTPTS,{fit}{punch},setsar=1[v{i}]")
         if any_audio:
             if ci.get("has_audio"):
@@ -672,8 +684,7 @@ def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path,
             parts.append(f"[bg0]scale={W}:{H},setsar=1,drawbox=x=0:y=0:w=iw:h=ih:color=0x{lay['bg_color'][1:]}:t=fill[bg]")
         else:
             parts.append(f"[bg0]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=24:2,eq=brightness=-0.28:saturation=0.8,setsar=1[bg]")
-        crop = f"crop=trunc(iw/{zoom}/2)*2:ih," if zoom > 1.001 else ""
-        parts.append(f"[fg0]{crop}scale={W}:{fg_h},setsar=1[fg]")
+        parts.append(f"[fg0]scale={W}:{fg_h},setsar=1[fg]")  # 좌우는 컷마다 이미 잘라 냈다
         parts.append(f"[bg][fg]overlay=0:{fg_top}[base]")
     notes = []
     nin = n  # 다음 입력 번호
@@ -1134,7 +1145,8 @@ def run_render(render_id: int, reuse_edl: bool = False) -> None:
                     edl["hook"]["end"] = edl["hook"]["start"] + min(HOOK_MAX, style["hook"]["seconds"])
                 if not edl.get("brand_text") and c.product and c.product.brand:
                     edl["brand_text"] = c.product.brand
-            if ref and style:
+            from .house_style import default_style_id
+            if ref and style and ref.id != default_style_id(db):  # 기본(내 채널) 스타일은 따로 적지 않는다
                 by += f"+style:{ref.name}"
             orig = c.video.original
             ch = (orig.channel.channel_name if orig and orig.channel else (orig.yt_channel_title if orig else None))
@@ -1183,6 +1195,9 @@ def start_render(db, candidate_id: int, edl: dict | None = None, style_id: int |
     running = db.query(ShortsRender).filter(ShortsRender.candidate_id == candidate_id, ShortsRender.status.in_(["queued", "running"])).first()
     if running:
         return running
+    if style_id is None:  # 스타일을 고르지 않으면 내 채널 기본 스타일로
+        from .house_style import default_style_id
+        style_id = default_style_id(db)
     r = ShortsRender(candidate_id=candidate_id, status="queued", step="대기", progress=0, edl=edl, style_id=style_id)
     db.add(r)
     db.commit()

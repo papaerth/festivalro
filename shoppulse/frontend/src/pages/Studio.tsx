@@ -58,6 +58,7 @@ export default function Studio() {
   const allHints = () => Object.fromEntries(s.sources.map((x) => [x.slot, hintOf(x)])) as Record<number, string>
   const canMake = ready && !busy && s.ffmpeg.available
   const usedStyle = latest?.style_id ? s.styles.find((x) => x.id === latest.style_id)?.name : null
+  const defStyle = s.styles.find((x) => x.id === s.default_style_id) || null
   const step = (n: number, done: boolean) => <span className={`mr-2 inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold ${done ? 'bg-emerald-600 text-white' : 'bg-stone-200 text-stone-700 dark:bg-stone-700 dark:text-stone-200'}`}>{done ? '✓' : n}</span>
 
   return (
@@ -160,13 +161,13 @@ export default function Studio() {
       <div className="card p-4">
         <h2 className="section-title mb-2">{step(2, latest?.status === 'done')}쇼츠 만들기</h2>
         <div className="flex flex-wrap items-end gap-3">
-          <button className="btn-primary px-6 py-3 text-base" disabled={!canMake} onClick={() => act(() => api.studioMake(cid, allHints()))}>{busy ? '만드는 중…' : `▶ 쇼츠 만들기 (기본 스타일${nSources > 1 ? ` · 원본 ${nSources}개 섞기` : ''})`}</button>
+          <button className="btn-primary px-6 py-3 text-base" disabled={!canMake} onClick={() => act(() => api.studioMake(cid, allHints()))}>{busy ? '만드는 중…' : `▶ 쇼츠 만들기 (${defStyle ? defStyle.name : '기본 스타일'}${nSources > 1 ? ` · 원본 ${nSources}개 섞기` : ''})`}</button>
           <p className="max-w-xl text-xs muted">{s.ai ? '위치를 적은 원본은 그 주변만, 비운 원본은 전체를 AI 가 훑어 장면을 찾습니다(전체를 훑으면 조금 더 걸리고 비용이 더 듭니다).' : 'AI 키가 없어 원본 1의 대략 위치가 필요합니다. 그 주변을 규칙대로 잘라 만듭니다(자막·내레이션 없음).'} 3초 후킹 → 순서를 섞은 컷 편집 → 20~30초, 같은 장면은 두 번 쓰지 않습니다.</p>
         </div>
         <div className="mt-3 border-t border-stone-100 pt-3 dark:border-stone-800">
-          <div className="mb-2 text-xs font-semibold">레퍼런스 채널처럼 편집하기</div>
+          <div className="mb-2 text-xs font-semibold">다른 스타일로 만들기 <span className="font-normal muted">· 위 버튼은 {defStyle ? `「${defStyle.name}」(레퍼런스 채널들을 분석해 만든 기본 스타일)` : '기본 스타일'}로 만듭니다</span></div>
           <div className="flex flex-wrap gap-2">
-            {s.styles.filter((x) => x.status === 'ready').map((x) => (
+            {s.styles.filter((x) => x.status === 'ready' && x.id !== s.default_style_id).map((x) => (
               <button key={x.id} className="btn-ghost border border-stone-300 px-4 py-2 dark:border-stone-600" disabled={!canMake} title={x.summary || ''} onClick={() => act(() => api.studioMake(cid, allHints(), x.id), `「${x.name}」 스타일로 만드는 중`)}>🎨 「{x.name}」처럼 편집해줘</button>
             ))}
             {s.styles.filter((x) => x.status === 'learning').map((x) => <span key={x.id} className="rounded-xl bg-stone-100 px-3 py-2 text-xs muted dark:bg-stone-800">「{x.name}」 학습 중…</span>)}
@@ -195,8 +196,8 @@ export default function Studio() {
             {edit && (
               <div className="card p-4 text-sm">
                 <div className="mb-2 flex items-center justify-between"><h3 className="font-semibold">편집안 고치기 <span className="muted text-xs font-normal">· AI 호출 없이 다시 렌더링</span></h3><button className="btn-primary" disabled={!!busy} onClick={() => act(() => api.studioRerender(cid, edit), '다시 렌더링 시작')}>이대로 다시 만들기</button></div>
-                <div className="grid gap-2 md:grid-cols-2">{[0, 1].map((i) => <input key={i} className="input" placeholder={`상단 제목 ${i + 1}줄`} value={edit.title_lines[i] || ''} onChange={(e) => { const t = [...edit.title_lines]; t[i] = e.target.value; setEdit({ ...edit, title_lines: t }) }} />)}</div>
-                <table className="mt-2 w-full text-xs"><thead><tr><th className="th">구간(재생 순서)</th><th className="th" /><th className="th">시작</th><th className="th">끝</th><th className="th">자막</th><th className="th" /></tr></thead><tbody>
+                <div className="grid gap-2 md:grid-cols-2">{[0, 1].map((i) => <input key={i} className="input" placeholder={`상단 제목 ${i + 1}줄${i === 1 ? ' (강조할 단어는 *별표*)' : ''}`} value={edit.title_lines[i] || ''} onChange={(e) => { const t = [...edit.title_lines]; t[i] = e.target.value; setEdit({ ...edit, title_lines: t }) }} />)}</div>
+                <table className="mt-2 w-full text-xs"><thead><tr><th className="th">구간(재생 순서)</th><th className="th">화면 초점</th><th className="th">시작</th><th className="th">끝</th><th className="th">자막</th><th className="th" /></tr></thead><tbody>
                   {edit.hook && <ClipRow label="후킹" clip={edit.hook} sources={s.sources} onChange={(h) => setEdit({ ...edit, hook: h })} />}
                   {edit.segments.map((sg, i) => <ClipRow key={i} label={`본편 ${i + 1}`} clip={sg} sources={s.sources} onChange={(n) => setEdit({ ...edit, segments: edit.segments.map((x, j) => (j === i ? n : x)) })} onRemove={edit.segments.length > 1 ? () => setEdit({ ...edit, segments: edit.segments.filter((_, j) => j !== i) }) : undefined}
                     onMove={(d) => { const k = i + d; if (k < 0 || k >= edit.segments.length) return; const arr = [...edit.segments]; [arr[i], arr[k]] = [arr[k], arr[i]]; setEdit({ ...edit, segments: arr }) }} />)}
@@ -259,7 +260,8 @@ function ClipRow({ label, clip, onChange, onRemove, onMove, sources }: { label: 
   return (
     <tr className="border-t border-stone-100 dark:border-stone-800">
       <td className="td whitespace-nowrap font-medium">{onMove && <span className="mr-1"><button className="px-0.5 muted" title="앞으로" onClick={() => onMove(-1)}>▲</button><button className="px-0.5 muted" title="뒤로" onClick={() => onMove(1)}>▼</button></span>}{label} <span className="muted">{(clip.end - clip.start).toFixed(1)}초</span></td>
-      <td className="td">{have.length > 1 ? <select className="input w-24" value={clip.src || 0} onChange={(e) => onChange({ ...clip, src: Number(e.target.value) })}>{have.map((x) => <option key={x.slot} value={x.slot - 1}>원본 {x.slot}</option>)}</select> : null}</td>
+      <td className="td whitespace-nowrap">{have.length > 1 ? <select className="input w-24" value={clip.src || 0} onChange={(e) => onChange({ ...clip, src: Number(e.target.value) })}>{have.map((x) => <option key={x.slot} value={x.slot - 1}>원본 {x.slot}</option>)}</select> : null}
+        <select className="input ml-1 w-20" title="화면을 크게 자를 때 어느 쪽을 보여 줄지" value={clip.focus || 'center'} onChange={(e) => onChange({ ...clip, focus: e.target.value as 'left' | 'center' | 'right' })}><option value="left">왼쪽</option><option value="center">가운데</option><option value="right">오른쪽</option></select></td>
       <td className="td"><input className="input w-20" value={a} onChange={(e) => setA(e.target.value)} onBlur={() => commit(a, b)} /></td>
       <td className="td"><input className="input w-20" value={b} onChange={(e) => setB(e.target.value)} onBlur={() => commit(a, b)} /></td>
       <td className="td w-full"><input className="input w-full min-w-36" value={clip.caption} maxLength={40} onChange={(e) => onChange({ ...clip, caption: e.target.value })} /></td>

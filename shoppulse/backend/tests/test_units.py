@@ -241,7 +241,7 @@ def test_style_profile_normalize_guide_and_ass():
                          "pacing": {"total_seconds": 5, "segments": 50}, "end_question": 1, "kick": ["k"] * 20})
     assert s["layout"] == {"mode": "blur_bg", "bg_color": "#101010", "fg_zoom": 1.8, "fg_position": "center"}
     assert s["title"]["color"] == "#FF0066" and s["title"]["size"] == "medium" and len(s["title"]["patterns"]) <= 6
-    assert s["hook"]["seconds"] <= 5 and 18 <= s["pacing"]["total_seconds"] <= 40 and s["pacing"]["segments"] == 10 and len(s["kick"]) <= 6
+    assert s["hook"]["seconds"] <= 5 and 18 <= s["pacing"]["total_seconds"] <= 40 and s["pacing"]["segments"] == 12 and len(s["kick"]) <= 6
     g = style_guide(s)
     assert isinstance(g, dict) and json_safe(g)
     edl = normalize_edl({"hook": {"start": 40, "end": 43, "caption": "후킹"}, "segments": [{"start": 5, "end": 25, "caption": "본편"}],
@@ -491,3 +491,43 @@ def test_auto_product_card_from_original_frame(tmp_path):
     mine = [{"id": "u1", "kind": "product", "cut_path": "x"}, {"id": "u2", "kind": "logo", "cut_path": "y"}]
     assert [a["id"] for a in shorts_maker.auto_assets(edl, mine, sources, ff, tmp_path, notes)] == ["u1", "u2"]
     assert shorts_maker.auto_assets({"product_shot": {"found": False}, "brand_text": ""}, [], sources, ff, tmp_path, notes) == []
+
+
+def test_reference_top20_findings_applied():
+    """레퍼런스 상위 20개 분석 결과 반영: 정사각형에 가까운 큰 화면(컷마다 초점), 제목 핵심 단어 강조, 본편 12컷까지."""
+    import subprocess
+    from app.services import shorts_maker as sm
+    from app.services.house_style import load_house
+    from app.services.style_profile import normalize_style
+    h = load_house()
+    p = normalize_style(h["profile"])
+    assert h["version"] >= 2 and p == h["profile"]  # 내장 값은 이미 안전 범위로 정리돼 있다
+    assert p["layout"] == {"mode": "color_bg", "bg_color": "#000000", "fg_zoom": 1.7, "fg_position": "center"}
+    assert p["title"]["color"] == "#FFFFFF" and p["title"]["second_line_color"] and p["title"]["keyword_color"]
+    assert p["caption"]["position"] == "over_video" and p["pacing"]["segments"] >= 10 and p["pacing"]["max_clip_seconds"] <= 4
+    assert p["narration"]["enabled"] and p["narration"]["mid_count"] == 1 and p["end_question"] is False
+    assert not any(w in json.dumps(h, ensure_ascii=False) for w in ("youtube.com", "@"))  # 공개 저장소: 채널 이름·주소를 싣지 않는다
+    # 제목의 *핵심 단어* 는 keyword_color, 그 뒤는 그 줄의 색으로 돌아온다
+    e = sm.normalize_edl({"segments": [{"start": 5, "end": 25, "caption": "c", "focus": "left"}, {"start": 30, "end": 34, "caption": "", "focus": "이상"}],
+                          "title_lines": ["첫 줄", "만원대 *주방템*"]}, 100)
+    assert e["segments"][0]["focus"] == "left" and "focus" not in e["segments"][1]
+    title = [ln for ln in sm.build_ass(e, "X", 300, 1300, p).splitlines() if "Title,," in ln][0]
+    kc, lc = p["title"]["keyword_color"], p["title"]["second_line_color"]
+    bgr = lambda c: c[5:7] + c[3:5] + c[1:3]  # noqa: E731
+    assert f"만원대 {{\\c&H{bgr(kc)}&}}주방템{{\\c&H{bgr(lc)}&}}" in title
+    assert "focus" in sm.EDL_SCHEMA["properties"]["hook"]["required"]
+    # 확대 스타일: 컷마다 초점에 맞춰 좌우를 자른다(왼쪽 초점이면 왼쪽에서 자름)
+    caps = sm.capabilities()
+    if caps.get("available"):
+        import tempfile
+        from pathlib import Path
+        d = Path(tempfile.mkdtemp())
+        src = d / "s.mp4"
+        subprocess.run([caps["path"], "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=30",
+                        "-c:v", caps["vcodec"], "-pix_fmt", "yuv420p", str(src)], check=True)
+        info = sm.probe(caps["path"], str(src))
+        edl = sm.normalize_edl({"segments": [{"start": 2, "end": 12, "caption": "", "focus": "left"}, {"start": 14, "end": 24, "caption": "", "focus": "right"}]}, 30)
+        out = sm.render(caps["path"], caps, str(src), info, edl, d / "o.mp4", d, style=p)
+        assert out["width"] == 1080 and out["height"] == 1920 and abs(out["duration"] - edl["total_seconds"]) < 0.6
+        args = (d / "subs.ass").exists()
+        assert args
