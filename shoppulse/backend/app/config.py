@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     coupang_access_key: str = ""
     coupang_secret_key: str = ""
     google_vision_api_key: str = ""  # 캡처로 원본 찾기(Google Cloud Vision Web Detection)
+    google_tts_api_key: str = ""  # AI 음성 내레이션(Google Cloud Text-to-Speech). 비우면 GOOGLE_VISION_API_KEY → Windows 내장 음성 순
+    shoppulse_tts_provider: str = "auto"  # auto / google / windows / off
+    shoppulse_tts_voice: str = ""  # 음성 이름(비우면 Google ko-KR-Neural2-A, Windows 는 한국어 여성 음성 자동 선택)
     shoppulse_ffmpeg: str = ""  # ffmpeg 실행 파일 경로(비우면 PATH → imageio-ffmpeg 내장본 순으로 찾음)
     shoppulse_browser: str = "chrome"  # start.bat 가 여는 브라우저: chrome / edge / default
     shoppulse_auto_sourcing: bool = False
@@ -47,7 +50,7 @@ class Settings(BaseSettings):
     @property
     def media_dir(self) -> Path:
         p = self.data_dir / "media"
-        for sub in ("originals", "renders", "work", "styles"):
+        for sub in ("originals", "renders", "work", "styles", "bgm", "assets"):
             (p / sub).mkdir(parents=True, exist_ok=True)
         return p
 

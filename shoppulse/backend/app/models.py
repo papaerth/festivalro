@@ -490,6 +490,7 @@ class ShortsProject(TimestampMixin, Base):
     source_info: Mapped[dict | None] = mapped_column(JSON)  # {duration,width,height,has_audio,size}
     hint_start: Mapped[int | None] = mapped_column(Integer)  # 사용자가 알려준 대략 위치(초). 있으면 AI 전체 훑기 생략
     hint_end: Mapped[int | None] = mapped_column(Integer)
+    assets: Mapped[list | None] = mapped_column(JSON)  # 영상 위에 띄울 상품 사진·로고 [{id,kind,name,path,cut_path,method}]
 
 
 class ShortsRender(Base):

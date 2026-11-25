@@ -105,9 +105,12 @@ export interface SegmentProposal { status: string; basis?: string; start?: numbe
 export interface VidiqRequest { count: number; video_ids: string[]; prompt: string; note: string }
 
 export interface EdlClip { start: number; end: number; caption: string }
+export interface EdlOverlay { asset_id: string; kind: 'product' | 'logo'; name?: string | null; start: number; duration: number }
+export interface StudioAsset { id: string; kind: 'product' | 'logo'; name: string | null; method: string | null; method_label: string; url: string }
+export interface TtsStatus { available: boolean; provider: string | null; voice?: string; note: string }
 export interface StudioRender { id: number; status: 'queued' | 'running' | 'done' | 'failed'; step: string | null; progress: number; decided_by: string | null; error: string | null; file_url: string | null; notes: string[]; created_at: string; finished_at: string | null;
   style_id: number | null;
-  edl: { hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; end_caption?: string; reason?: string | null; quote_seen?: string | null; total_seconds: number } | null; output_info: { duration: number; width: number; height: number; size: number } | null }
+  edl: { hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; end_caption?: string; narration?: string; overlays?: EdlOverlay[]; audio?: { narration?: string | null; bgm?: string; sfx?: string[] }; reason?: string | null; quote_seen?: string | null; total_seconds: number } | null; output_info: { duration: number; width: number; height: number; size: number } | null }
 export interface StudioState {
   candidate: { id: number; title: string; url: string | null; thumbnail_url: string | null; view_count: number | null; celebrity_name: string | null; channel_category: Category; recommended_slot: Slot | null; product_name: string | null; produced_at: string | null; duration_seconds: number | null }
   original: { id: number; title: string; url: string | null; thumbnail_url: string | null; channel: string | null; duration_seconds: number | null; has_transcript: boolean } | null
@@ -115,6 +118,7 @@ export interface StudioState {
   source: { name: string | null; info: { duration?: number; width?: number; height?: number; size?: number; has_audio?: boolean } | null; exists: boolean; hint_start: number | null; hint_end: number | null } | null
   renders: StudioRender[]; ffmpeg: { available: boolean; reason?: string; version?: string; ass?: boolean }; ai: boolean
   styles: { id: number; name: string; status: string; summary: string | null }[]
+  assets: StudioAsset[]; tts: TtsStatus
   upload_text: { title_suggestion: string; description: string; plan_titles: string[] | null }; notice: string
 }
 
@@ -126,6 +130,8 @@ export interface StyleProfile {
   hook: { seconds: number; pattern: string; zoom_punch: boolean; caption_color: string }
   pacing: { total_seconds: number; segments: number; max_clip_seconds: number; note: string }
   footer: { text: string; color: string }
+  narration: { enabled: boolean; rate: number; pattern: string }; sfx: { enabled: boolean }
+  bgm: { mode: 'none' | 'auto'; volume: number; track: string }; popup: { position: 'top_right' | 'top_left' | 'center'; size: 'small' | 'medium' | 'large' }
   end_question: boolean; kick: string[]
 }
 export interface RefStyle {

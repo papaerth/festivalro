@@ -13,7 +13,7 @@ from .. import schemas, serializers
 from ..config import get_settings
 from ..database import get_db
 from ..models import ReferenceStyle, ShortsProject, ShortsRender, SourcingCandidate, Video, utcnow
-from ..services import shorts_maker
+from ..services import audio_fx, overlay_assets, shorts_maker
 from ..services.audit import log
 from ..services.scoring import get_active_version
 from .common import get_or_404
@@ -40,6 +40,11 @@ def _render(r: ShortsRender) -> dict:
             "output_info": r.output_info, "notes": r.notes or [], "error": r.error, "style_id": r.style_id,
             "file_url": f"/api/studio/renders/{r.id}/file" if r.status == "done" and r.output_path else None,
             "created_at": serializers.iso(r.created_at), "finished_at": serializers.iso(r.finished_at)}
+
+
+def _asset(cid: int, a: dict) -> dict:
+    return {"id": a["id"], "kind": a.get("kind", "product"), "name": a.get("name"), "method": a.get("method"),
+            "method_label": overlay_assets.METHOD_LABEL.get(a.get("method") or "", ""), "url": f"/api/studio/{cid}/assets/{a['id']}/file"}
 
 
 def _state(db: Session, c: SourcingCandidate) -> dict:
@@ -69,6 +74,8 @@ def _state(db: Session, c: SourcingCandidate) -> dict:
         "styles": [{"id": x.id, "name": x.name, "status": x.status, "summary": (x.profile or {}).get("summary")}
                    for x in db.query(ReferenceStyle).order_by(ReferenceStyle.id).all()],
         "ai": bool(get_settings().anthropic_api_key),
+        "assets": [_asset(c.id, x) for x in ((proj.assets if proj else None) or [])],
+        "tts": audio_fx.tts_status(),
         "upload_text": {"title_suggestion": title, "description": desc,
                         "plan_titles": (plan.plan.get("title_candidates") if plan else None)},
         "notice": "원본 mp4 는 직접 준비해 올려 주세요(프로그램은 유튜브 영상을 내려받지 않습니다). 원본 사용 권한·인용 범위는 직접 확인해야 하며, 출처 표기는 자동으로 들어갑니다.",
@@ -199,3 +206,65 @@ def delete_source(cid: int, db: Session = Depends(get_db)):
         Path(proj.source_path).unlink(missing_ok=True)
         proj.source_path = None
         db.commit()
+
+
+MAX_ASSETS, MAX_ASSET_BYTES = 4, 15 * 1024 * 1024
+
+
+@router.post("/{cid}/assets")
+def add_asset(cid: int, file: UploadFile = File(...), kind: str = Form("product"), db: Session = Depends(get_db)):
+    """영상 위에 띄울 상품 사진·로고 올리기. 배경을 지워(누끼) 흰 테두리 스티커로 만들어 둔다."""
+    import uuid
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    if kind not in overlay_assets.KINDS:
+        raise HTTPException(400, "종류는 product(상품 사진) 또는 logo(로고)입니다")
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in overlay_assets.IMAGE_EXT:
+        raise HTTPException(400, "이미지 파일(png, jpg, webp)만 올릴 수 있습니다")
+    proj = db.get(ShortsProject, c.id)
+    if not proj:
+        proj = ShortsProject(candidate_id=c.id)
+        db.add(proj)
+    items = list(proj.assets or [])
+    if len(items) >= MAX_ASSETS:
+        raise HTTPException(400, f"사진·로고는 {MAX_ASSETS}개까지 올릴 수 있습니다. 안 쓰는 것을 지워 주세요")
+    data = file.file.read(MAX_ASSET_BYTES + 1)
+    if len(data) > MAX_ASSET_BYTES:
+        raise HTTPException(400, "이미지가 너무 큽니다(최대 15MB)")
+    aid = uuid.uuid4().hex[:10]
+    folder = get_settings().media_dir / "assets" / f"c{c.id}"
+    folder.mkdir(parents=True, exist_ok=True)
+    raw, cut = folder / f"{aid}{ext}", folder / f"{aid}_cut.png"
+    raw.write_bytes(data)
+    try:
+        info = overlay_assets.prepare_overlay(raw, cut, kind)
+    except Exception as e:
+        raw.unlink(missing_ok=True)
+        raise HTTPException(400, f"이미지를 읽지 못했습니다: {str(e)[:120]}")
+    items.append({"id": aid, "kind": kind, "name": (file.filename or "image")[:120], "path": str(raw), "cut_path": str(cut), "method": info["method"]})
+    proj.assets = items
+    db.commit()
+    return _state(db, c)
+
+
+@router.get("/{cid}/assets/{aid}/file")
+def asset_file(cid: int, aid: str, db: Session = Depends(get_db)):
+    proj = db.get(ShortsProject, cid)
+    a = next((x for x in ((proj.assets if proj else None) or []) if x["id"] == aid), None)
+    if not a or not Path(a["cut_path"]).exists():
+        raise HTTPException(404, "이미지가 없습니다")
+    return FileResponse(a["cut_path"], media_type="image/png")
+
+
+@router.delete("/{cid}/assets/{aid}")
+def delete_asset(cid: int, aid: str, db: Session = Depends(get_db)):
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    proj = db.get(ShortsProject, c.id)
+    items = list((proj.assets if proj else None) or [])
+    for a in [x for x in items if x["id"] == aid]:
+        for k in ("path", "cut_path"):
+            Path(a.get(k) or "_").unlink(missing_ok=True)
+    if proj:
+        proj.assets = [x for x in items if x["id"] != aid]
+        db.commit()
+    return _state(db, c)

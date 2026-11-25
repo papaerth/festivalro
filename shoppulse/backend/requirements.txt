@@ -10,3 +10,4 @@ python-dotenv>=1.0
 pytest>=8
 anthropic>=0.80
 imageio-ffmpeg>=0.5
+Pillow>=10

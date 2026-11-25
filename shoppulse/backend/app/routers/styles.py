@@ -58,6 +58,68 @@ def list_styles(db: Session = Depends(get_db)):
             "note": "스타일은 '편집 방식'만 학습합니다(화면 배치·자막 모양·후킹 방식·컷 속도). 다른 채널의 문구·장면은 복제하지 않습니다."}
 
 
+@router.get("/audio")
+def audio_status():
+    """내레이션 음성 상태와 배경음악 보관함."""
+    from ..services import audio_fx
+    return {"tts": audio_fx.tts_status(), "bgm": audio_fx.bgm_library(),
+            "note": "배경음악은 직접 사용 권한이 있는 곡만 넣어 주세요(예: 유튜브 오디오 보관함). 보관함이 비어 있으면 단순한 내장 합성 반주를 씁니다. 효과음은 프로그램이 직접 합성합니다."}
+
+
+@router.post("/bgm")
+def add_bgm(files: list[UploadFile] = File(...)):
+    from ..services import audio_fx
+    import re as _re
+    if len(audio_fx.bgm_library()) + len(files) > 30:
+        raise HTTPException(400, "배경음악은 30곡까지 보관할 수 있습니다")
+    saved = 0
+    for f in files:
+        ext = Path(f.filename or "").suffix.lower()
+        if ext not in audio_fx.BGM_EXT:
+            raise HTTPException(400, f"{f.filename}: 음악 파일(mp3, m4a, wav 등)만 올릴 수 있습니다")
+        stem = _re.sub(r"[^0-9A-Za-z가-힣 _.()-]", "_", Path(f.filename or "bgm").stem).strip(" ._")[:80] or "bgm"
+        if stem.startswith("_builtin"):
+            stem = "my" + stem
+        data = f.file.read(40 * 1024 * 1024 + 1)
+        if len(data) > 40 * 1024 * 1024:
+            raise HTTPException(400, f"{f.filename}: 40MB 이하 파일만 올릴 수 있습니다")
+        (audio_fx.bgm_dir() / f"{stem}{ext}").write_bytes(data)
+        saved += 1
+    return {"saved": saved, "bgm": audio_fx.bgm_library()}
+
+
+@router.get("/bgm/{name}")
+def get_bgm(name: str):
+    from fastapi.responses import FileResponse
+    from ..services import audio_fx
+    if not any(x["name"] == name for x in audio_fx.bgm_library()):
+        raise HTTPException(404, "그 곡이 없습니다")
+    return FileResponse(audio_fx.bgm_dir() / name)
+
+
+@router.delete("/bgm/{name}")
+def delete_bgm(name: str):
+    from ..services import audio_fx
+    if not any(x["name"] == name for x in audio_fx.bgm_library()):  # 보관함 목록에 있는 이름만(경로 조작 방지)
+        raise HTTPException(404, "그 곡이 없습니다")
+    (audio_fx.bgm_dir() / name).unlink(missing_ok=True)
+    return {"bgm": audio_fx.bgm_library()}
+
+
+@router.post("/tts-test")
+def tts_test(text: str = Form("이 목소리로 첫 장면을 소개합니다")):
+    """내레이션 목소리 미리 듣기."""
+    import uuid
+    from fastapi.responses import FileResponse
+    from ..services import audio_fx
+    out = get_settings().media_dir / "work" / f"tts_test_{uuid.uuid4().hex[:8]}.wav"
+    try:
+        audio_fx.synthesize(text[:80], out)
+    except audio_fx.TTSError as e:
+        raise HTTPException(400, str(e))
+    return FileResponse(out, media_type="audio/wav")
+
+
 @router.get("/export")
 def export_styles(db: Session = Depends(get_db)):
     """학습된 스타일을 파일로 내보내기(다른 PC 로 옮기거나 보관)."""

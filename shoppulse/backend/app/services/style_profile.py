@@ -14,6 +14,10 @@ DEFAULT_STYLE: dict = {
     "pacing": {"total_seconds": 26.0, "segments": 2, "max_clip_seconds": 14.0, "note": ""},
     "credit": {"enabled": True},
     "footer": {"text": "", "color": "#FFFFFF"},
+    "narration": {"enabled": False, "rate": 1.12, "pattern": "첫 장면에 얹는 한 문장: 누가·무엇을 궁금하게 소개"},
+    "sfx": {"enabled": False},
+    "bgm": {"mode": "none", "volume": 0.1, "track": ""},
+    "popup": {"position": "top_right", "size": "medium"},
     "end_question": False,
     "kick": [],
 }
@@ -47,7 +51,8 @@ def normalize_style(raw: dict | None) -> dict:
     """AI·사람이 준 스타일을 렌더러가 안전하게 쓸 수 있는 범위로 정리(없는 값은 기본값)."""
     raw = raw or {}
     d = DEFAULT_STYLE
-    lay, ti, ca, ho, pa, fo = (raw.get(k) or {} for k in ("layout", "title", "caption", "hook", "pacing", "footer"))
+    lay, ti, ca, ho, pa, fo, na, sf, bg, po = (raw.get(k) or {} for k in (
+        "layout", "title", "caption", "hook", "pacing", "footer", "narration", "sfx", "bgm", "popup"))
     return {
         "summary": str(raw.get("summary") or d["summary"])[:400],
         "layout": {"mode": _enum(lay.get("mode"), ("blur_bg", "crop_fill", "color_bg"), "blur_bg"),
@@ -75,6 +80,14 @@ def normalize_style(raw: dict | None) -> dict:
         "credit": {"enabled": True},  # 출처 표기는 스타일과 무관하게 항상 넣는다
         # 하단 고정 문구(채널명·링크 안내 등 내 채널 문구). 비우면 표시하지 않는다
         "footer": {"text": str(fo.get("text") or "").replace("\n", " ").strip()[:40], "color": hex_ok(fo.get("color"), "#FFFFFF")},
+        # 소리·팝업: AI 음성 한 문장, 합성 효과음, 배경음악(auto=내 보관함→내장 반주), 상품 사진·로고가 뜨는 자리
+        "narration": {"enabled": bool(na.get("enabled", False)), "rate": round(_num(na.get("rate"), 0.9, 1.4, 1.12), 2),
+                      "pattern": str(na.get("pattern") or d["narration"]["pattern"])[:200]},
+        "sfx": {"enabled": bool(sf.get("enabled", False))},
+        "bgm": {"mode": _enum(bg.get("mode"), ("none", "auto"), "none"), "volume": round(_num(bg.get("volume"), 0.03, 0.35, 0.1), 2),
+                "track": str(bg.get("track") or "")[:200]},
+        "popup": {"position": _enum(po.get("position"), ("top_right", "top_left", "center"), "top_right"),
+                  "size": _enum(po.get("size"), ("small", "medium", "large"), "medium")},
         "end_question": bool(raw.get("end_question", False)),
         "kick": [str(x)[:120] for x in (raw.get("kick") or [])][:5],
     }
@@ -88,4 +101,5 @@ def style_guide(style: dict) -> dict:
             "target_total_seconds": style["pacing"]["total_seconds"], "target_segments": style["pacing"]["segments"],
             "max_clip_seconds": style["pacing"]["max_clip_seconds"], "pacing_note": style["pacing"]["note"],
             "own_twist": style["kick"], "end_question": style["end_question"],
-            "highlight_keyword": bool(style["caption"]["highlight_color"])}
+            "highlight_keyword": bool(style["caption"]["highlight_color"]),
+            "narration": style["narration"]["enabled"], "narration_pattern": style["narration"]["pattern"]}

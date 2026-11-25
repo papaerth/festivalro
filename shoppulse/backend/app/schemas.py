@@ -244,6 +244,8 @@ class EdlIn(BaseModel):
     title_lines: list[str] = []
     credit: str = ""
     end_caption: str = ""
+    narration: str = ""
+    overlays: list[dict] = []
     style_id: int | None = None
 
 

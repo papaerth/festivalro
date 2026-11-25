@@ -203,8 +203,12 @@ def normalize_edl(edl: dict, duration: float, total_target: float | None = None)
     out = {"hook": hook, "segments": merged,
            "title_lines": [str(x).strip()[:20] for x in (edl.get("title_lines") or []) if str(x).strip()][:2],
            "credit": (edl.get("credit") or "").strip()[:60], "end_caption": (edl.get("end_caption") or "").strip()[:24],
+           "narration": " ".join(str(edl.get("narration") or "").split())[:60],
            "reason": edl.get("reason"), "quote_seen": edl.get("quote_seen"),
            "cautions": edl.get("cautions") or []}
+    for k in ("overlays", "product_popup_segment", "audio"):
+        if edl.get(k) is not None:
+            out[k] = edl[k]
     out["total_seconds"] = round((out["hook"]["end"] - out["hook"]["start"] if out["hook"] else 0) + sum(x["end"] - x["start"] for x in merged), 2)
     return out
 
@@ -221,7 +225,7 @@ def rule_edl(start: float, end: float | None, duration: float, title: str) -> di
 
 EDL_SCHEMA = {
     "type": "object", "additionalProperties": False,
-    "required": ["hook", "segments", "title_lines", "end_caption", "quote_seen", "reason", "cautions"],
+    "required": ["hook", "segments", "title_lines", "end_caption", "narration", "product_popup_segment", "quote_seen", "reason", "cautions"],
     "properties": {
         "hook": {"type": "object", "additionalProperties": False, "required": ["start", "end", "caption"],
                  "properties": {"start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"}}},
@@ -229,6 +233,7 @@ EDL_SCHEMA = {
                                                "properties": {"start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"}}}},
         "title_lines": {"type": "array", "items": {"type": "string"}},
         "end_caption": {"type": "string"},
+        "narration": {"type": "string"}, "product_popup_segment": {"type": "integer"},
         "quote_seen": {"type": "string"}, "reason": {"type": "string"},
         "cautions": {"type": "array", "items": {"type": "string"}},
     },
@@ -296,7 +301,10 @@ def ai_edit(ff: str, src: str, info: dict, ctx: dict, rng: tuple[float, float], 
         "6) 확인이 필요한 점(상품 불명확, 광고·협찬 표시가 보임 등)은 cautions 에 적는다. 시각은 반드시 제공된 칸의 시각 범위 안에서 고른다.\n"
         "7) style_guide 가 있으면 그 편집 스타일을 따른다: 후킹 길이·방식, 구간 수와 한 컷 최대 길이, 총 길이 목표, 제목·자막의 말투와 글자 수. "
         "스타일은 '방식'만 참고하고 다른 채널의 문구를 그대로 쓰지 않는다. own_twist(우리만의 차별점)를 반영해 한 가지 이상 다르게 구성한다. "
-        "end_question 이 true 면 end_caption 에 시청자에게 던지는 짧은 질문(14자 이내)을 쓰고, 아니면 빈 문자열. 위 1~6의 사실 규칙이 항상 우선한다.")
+        "end_question 이 true 면 end_caption 에 시청자에게 던지는 짧은 질문(14자 이내)을 쓰고, 아니면 빈 문자열. 위 1~6의 사실 규칙이 항상 우선한다.\n"
+        "8) narration: style_guide.narration 이 true 면 첫 장면에 AI 음성으로 읽을 한 문장(24자 이내, 3초 안에 읽히게)을 쓴다. narration_pattern 의 방식을 따르되 "
+        "화면·자막에서 확인된 사실만으로 궁금증을 만든다(예: '[인물]이 [기간]째 쓴다는 [상품 종류]가 있다는데'). 인물이 하지 않은 말·효능·가격을 지어내지 않는다. false 면 빈 문자열. "
+        "9) product_popup_segment: 상품이 화면에 가장 또렷하게 보이거나 처음 소개되는 segments 의 번호(0부터). 상품 사진을 그때 띄운다. 모르면 0.")
     return create_json(system=system, max_tokens=2500 if fast else 1500, output_schema=EDL_SCHEMA, messages=[{"role": "user", "content": content}], timeout=300.0)
 
 
@@ -354,6 +362,8 @@ def build_ass(edl: dict, font: str, fg_top: int, fg_bottom: int, style: dict | N
 
     tb, tcol, tw = border(ti["box"], ti["outline_color"], ti["box_color"], 7)
     cb, ccol, cw = border(ca["box"], ca["outline_color"], ca["box_color"], 6)
+    # 후킹 자막 테두리: 흰 글씨일 때만 빨강(기본 스타일), 색 글씨면 검정(색끼리 부딪히지 않게)
+    hook_outline = "&H001A1AE6" if ho["caption_color"].upper() == "#FFFFFF" else "&H00000000"
     head = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {W}
@@ -364,7 +374,7 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Title,{font},{tsize},{ass_color(ti["color"])},&H000000FF,{tcol},&H80000000,1,0,0,0,100,100,0,0,{tb},{tw},{0 if ti["box"] else 2},8,50,50,{title_margin},1
-Style: Hook,{font},{csize + 32},{ass_color(ho["caption_color"])},&H000000FF,&H001A1AE6,&H80000000,1,0,0,0,100,100,0,0,1,8,2,{cap_align},50,50,{cap_margin},1
+Style: Hook,{font},{csize + 32},{ass_color(ho["caption_color"])},&H000000FF,{hook_outline},&H80000000,1,0,0,0,100,100,0,0,1,8,2,{cap_align},50,50,{cap_margin},1
 Style: Cap,{font},{csize},{ass_color(ca["color"])},&H000000FF,{ccol},&H80000000,1,0,0,0,100,100,0,0,{cb},{cw},{0 if ca["box"] else 2},{cap_align},60,60,{cap_margin},1
 Style: Credit,{font},34,&H00DDDDDD,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,0,2,40,40,70,1
 Style: Footer,{font},46,{ass_color((st.get("footer") or {}).get("color", "#FFFFFF"))},&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,4,0,2,40,40,125,1
@@ -403,10 +413,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return head + "\n".join(ev) + "\n"
 
 
+POPUP_W = {"product": {"small": 300, "medium": 400, "large": 520}, "logo": {"small": 170, "medium": 230, "large": 300}}
+
+
 def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path, workdir: Path, font: str | None = None,
-           style: dict | None = None) -> dict:
+           style: dict | None = None, extras: dict | None = None) -> dict:
+    """extras(선택): {"overlays":[{path,kind,start,end}], "narration":{path,duration}, "sfx":[(이름,시각)], "bgm":{path,volume}}"""
+    from .audio_fx import SFX
     from .style_profile import DEFAULT_STYLE
     st = style or DEFAULT_STYLE
+    ex = extras or {}
+    total = edl["total_seconds"]
     lay = st["layout"]
     clips = ([edl["hook"]] if edl.get("hook") else []) + edl["segments"]
     vertical = info["height"] >= info["width"]
@@ -445,16 +462,68 @@ def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path,
         parts.append(f"[fg0]{crop}scale={W}:{fg_h},setsar=1[fg]")
         parts.append(f"[bg][fg]overlay=0:{fg_top}[base]")
     notes = []
+    nin = n  # 다음 입력 번호
+    # 상품 사진·로고 팝업: 살짝 아래에서 올라오며 나타났다가 사라진다(자막보다 아래 층)
+    cur = "base"
+    pop = st.get("popup") or DEFAULT_STYLE["popup"]
+    for i, ov in enumerate(ex.get("overlays") or []):
+        a0, b0 = max(0.0, float(ov["start"])), min(total, float(ov["end"]))
+        if b0 - a0 < 0.6 or not Path(ov["path"]).exists():
+            continue
+        kind = "logo" if ov.get("kind") == "logo" else "product"
+        w = POPUP_W[kind][pop["size"]]
+        top = (330 if fill else fg_top + 36)
+        if kind == "logo":
+            x, y = "40", str(top)
+        elif pop["position"] == "top_left":
+            x, y = "40", str(top)
+        elif pop["position"] == "center":
+            x, y = "(W-w)/2", str((H - w) // 2 if fill else fg_top + max(20, (fg_h - w) // 2))
+        else:
+            x, y = "W-w-40", str(top)
+        args += ["-loop", "1", "-framerate", str(FPS), "-t", f"{total:.2f}", "-i", str(ov["path"])]
+        hmax = int((H * 0.36) if fill else max(240, fg_h * (0.42 if kind == "logo" else 0.72))) // 2 * 2  # 세로로 긴 사진이 화면을 덮지 않게
+        parts.append(f"[{nin}:v]scale={w}:{hmax}:force_original_aspect_ratio=decrease,format=rgba,fade=t=in:st={a0:.2f}:d=0.18:alpha=1,fade=t=out:st={b0 - 0.2:.2f}:d=0.2:alpha=1[ov{i}]")
+        parts.append(f"[{cur}][ov{i}]overlay=x={x}:y='{y}+46*(1-min(1,max(0,(t-{a0:.2f})/0.16)))':enable='between(t,{a0:.2f},{b0:.2f})'[pb{i}]")
+        cur, nin = f"pb{i}", nin + 1
     if caps.get("ass"):
         (workdir / "subs.ass").write_text(build_ass(edl, font or default_font(), fg_top, fg_top + fg_h, st), encoding="utf-8")
-        parts.append("[base]ass=subs.ass,setsar=1[vout]")  # 화소 비율 1:1 고정(아니면 플레이어에서 눌려 보인다)
+        parts.append(f"[{cur}]ass=subs.ass,setsar=1[vout]")  # 화소 비율 1:1 고정(아니면 플레이어에서 눌려 보인다)
     else:
-        parts.append("[base]setsar=1[vout]")
+        parts.append(f"[{cur}]setsar=1[vout]")
         notes.append("이 ffmpeg 에는 자막 굽기(libass)가 없어 제목·자막 없이 렌더링했습니다. winget install Gyan.FFmpeg 로 전체 버전을 설치하면 자막이 들어갑니다.")
     # 필터 그래프는 인자로 직접 넘긴다(-filter_complex_script 는 최신 ffmpeg 에서 제거됨). 경로는 작업 폴더 기준 상대경로라 이스케이프 불필요
+    # 소리 섞기: 원본 소리(내레이션 동안은 작게) + AI 음성 + 효과음 + 배경음악
+    narr, bgm, sfx = ex.get("narration"), ex.get("bgm"), [x for x in (ex.get("sfx") or []) if x[0] in SFX and 0 <= x[1] < total]
+    amap = "[ca]" if info["has_audio"] else None
+    if narr or bgm or sfx:
+        fmt = "aformat=sample_rates=48000:channel_layouts=stereo"
+        if info["has_audio"]:
+            duck = f",volume=volume=0.22:enable='between(t,0,{narr['duration'] + 0.45:.2f})'" if narr else ""
+            parts.append(f"[ca]{fmt}{duck}[a_base]")
+        else:
+            parts.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={total:.2f}[a_base]")
+        mix = ["[a_base]"]
+        if narr:
+            args += ["-i", str(narr["path"])]
+            parts.append(f"[{nin}:a]aresample=48000,{fmt},volume=1.7,adelay=150:all=1[a_narr]")
+            mix.append("[a_narr]"); nin += 1
+        for j, (name, at) in enumerate(sfx):
+            args += ["-f", "lavfi", "-t", str(SFX[name]["dur"]), "-i", SFX[name]["src"]]
+            parts.append(f"[{nin}:a]{fmt},volume={SFX[name]['vol']},adelay={int(at * 1000)}:all=1[a_fx{j}]")
+            mix.append(f"[a_fx{j}]"); nin += 1
+        if bgm:
+            args += ["-stream_loop", "-1", "-i", str(bgm["path"])]
+            fo = max(0.0, total - 1.4)
+            parts.append(f"[{nin}:a]aresample=48000,{fmt},volume={bgm['volume']},atrim=duration={total:.2f},afade=t=in:d=0.6,afade=t=out:st={fo:.2f}:d=1.4[a_bgm]")
+            mix.append("[a_bgm]"); nin += 1
+        parts.append("".join(mix) + f"amix=inputs={len(mix)}:duration=first:dropout_transition=0:normalize=0,alimiter=limit=0.95[aout]")
+        amap = "[aout]"
     args += ["-filter_complex", ";".join(parts), "-map", "[vout]"]
-    if info["has_audio"]:
-        args += ["-map", "[ca]", "-c:a", caps["acodec"], "-b:a", "160k"]
+    if amap:
+        args += ["-map", amap, "-c:a", caps["acodec"], "-b:a", "160k"]
+    if ex:
+        args += ["-t", f"{total:.2f}"]  # 반복 입력(사진·배경음악)이 있어도 영상 길이에서 끝낸다
     if caps["vcodec"] == "libx264":
         args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]
     elif caps["vcodec"] == "h264_mf":
@@ -468,6 +537,84 @@ def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path,
         raise ShortsError("렌더링 실패: " + r.stderr[-600:])
     o = probe(ff, str(out_path))
     return {"duration": o["duration"], "width": o["width"], "height": o["height"], "size": o["size"], "notes": notes}
+
+
+def plan_overlays(edl: dict, assets: list[dict]) -> list[dict]:
+    """상품 사진·로고가 뜨는 시각(완성 영상 기준). 편집안에 적힌 값이 있으면 그대로, 없으면 기본값:
+    로고 = 시작 직후(후킹 동안), 상품 사진 = 상품이 나오는 컷이 시작되고 0.4초 뒤부터 2.8초."""
+    total = edl["total_seconds"]
+    have = {o.get("asset_id"): o for o in (edl.get("overlays") or []) if isinstance(o, dict)}
+    hook_len = (edl["hook"]["end"] - edl["hook"]["start"]) if edl.get("hook") else 0.0
+    starts, t = [], hook_len
+    for sg in edl["segments"]:
+        starts.append(t)
+        t += sg["end"] - sg["start"]
+    try:
+        first = max(0, min(len(starts) - 1, int(edl.get("product_popup_segment") or 0)))
+    except (TypeError, ValueError):
+        first = 0
+    out, nprod = [], 0
+    for a in assets:
+        o = have.get(a["id"])
+        try:
+            start, dur = (float(o.get("start", 0)), float(o.get("duration", 2.8))) if o else (None, None)
+        except (TypeError, ValueError):
+            start, dur = None, None
+        if start is None:
+            if a.get("kind") == "logo":
+                start, dur = 0.3, max(1.5, min(2.6, (hook_len or 2.9) - 0.3))
+            else:
+                start, dur = starts[min(len(starts) - 1, first + nprod)] + 0.4, 2.8
+                nprod += 1
+        start = max(0.0, min(start, max(0.0, total - 1.0)))
+        dur = max(1.0, min(dur, 8.0, total - start))
+        out.append({"asset_id": a["id"], "kind": a.get("kind", "product"), "name": a.get("name"), "start": round(start, 1), "duration": round(dur, 1)})
+    return out
+
+
+def build_extras(edl: dict, assets: list[dict], style: dict | None, ff: str, workdir: Path, seed: int, notes: list[str]) -> dict:
+    """렌더러에 넘길 소리·팝업 재료. 실패한 재료는 빼고 사유를 notes 에 적는다(영상은 계속 만든다)."""
+    from . import audio_fx
+    extras: dict = {}
+    by_id = {a["id"]: a for a in assets}
+    edl["overlays"] = plan_overlays(edl, assets)
+    if edl["overlays"]:
+        extras["overlays"] = [{"path": by_id[o["asset_id"]]["cut_path"], "kind": o["kind"], "start": o["start"], "end": o["start"] + o["duration"]}
+                              for o in edl["overlays"]]
+    audio: dict = {}
+    if edl.get("narration"):
+        try:
+            out = workdir / "narration.wav"
+            got = audio_fx.synthesize(edl["narration"], out, (style or {}).get("narration", {}).get("rate", 1.12))
+            dur = probe_audio(ff, str(out))
+            extras["narration"] = {"path": str(out), "duration": dur}
+            audio["narration"] = f"{got['provider']} · {got['voice']} · {dur:.1f}초"
+        except Exception as e:  # TTSError 포함: 음성이 없어도 영상은 만든다
+            notes.append(f"AI 음성 내레이션을 넣지 못했습니다: {str(e)[:200]}")
+            audio["narration"] = None
+    if style and style["sfx"]["enabled"]:
+        hook_len = (edl["hook"]["end"] - edl["hook"]["start"]) if edl.get("hook") else 0.0
+        fx = [("whoosh", max(0.0, hook_len - 0.25))] if hook_len else []
+        fx += [("pop", o["start"]) for o in edl["overlays"]]
+        if edl.get("end_caption"):
+            fx.append(("ding", max(0.0, edl["total_seconds"] - 1.8)))
+        extras["sfx"], audio["sfx"] = fx, [x[0] for x in fx]
+    if style and style["bgm"]["mode"] == "auto":
+        path, desc = audio_fx.pick_bgm(ff, seed, style["bgm"].get("track") or None)
+        if path:
+            extras["bgm"] = {"path": str(path), "volume": style["bgm"]["volume"]}
+            audio["bgm"] = desc
+        else:
+            notes.append("배경음악을 준비하지 못해 넣지 않았습니다.")
+    edl["audio"] = audio
+    return extras
+
+
+def probe_audio(ff: str, path: str) -> float:
+    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", _run([ff, "-hide_banner", "-i", path], timeout=60).stderr)
+    if not m:
+        raise ShortsError("음성 파일을 읽지 못했습니다.")
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
 
 
 # ---------------------------------------------------------------- 작업 실행
@@ -577,10 +724,13 @@ def run_render(render_id: int, reuse_edl: bool = False) -> None:
                 for sg in edl["segments"]:
                     sg["start"], sg["end"] = snap(sg["start"], sil), snap(sg["end"], sil)
                 edl = normalize_edl(edl, info["duration"], target)
+            _set(db, r, "AI 음성·효과음·상품 사진 준비 중", 66)
+            assets = [x for x in (proj.assets or []) if x.get("cut_path") and Path(x["cut_path"]).exists()]
+            extras = build_extras(edl, assets, style, ff, workdir, r.id, notes)
             r.edl, r.decided_by = edl, by
             _set(db, r, "세로 쇼츠 렌더링 중", 70)
             out = get_settings().media_dir / "renders" / f"shorts_c{c.id}_r{r.id}.mp4"
-            oi = render(ff, caps, proj.source_path, info, edl, out, workdir, style=style)
+            oi = render(ff, caps, proj.source_path, info, edl, out, workdir, style=style, extras=extras)
             notes += oi.pop("notes", [])
             notes += [f"확인 필요: {x}" for x in (edl.get("cautions") or [])]
             r.output_path, r.output_info, r.notes = str(out), oi, notes

@@ -282,3 +282,48 @@ def test_style_fast_cuts_highlight_and_footer():
     # 60초 가까운 레시피형 목표도 허용
     long = normalize_edl({"segments": [{"start": i * 6, "end": i * 6 + 5.5, "caption": ""} for i in range(10)]}, 300, 55)
     assert 49 <= long["total_seconds"] <= 60
+
+
+def test_audio_and_overlay_helpers(tmp_path, monkeypatch):
+    from PIL import Image
+    from app.services import audio_fx
+    from app.services.overlay_assets import prepare_overlay
+    from app.services.shorts_maker import EDL_SCHEMA, normalize_edl, plan_overlays
+    from app.services.style_profile import normalize_style, style_guide
+    st = normalize_style({"narration": {"enabled": 1, "rate": 9}, "sfx": {"enabled": True}, "bgm": {"mode": "이상", "volume": 5}, "popup": {"position": "x", "size": "large"}})
+    assert st["narration"]["rate"] == 1.4 and st["bgm"] == {"mode": "none", "volume": 0.35, "track": ""} and st["popup"] == {"position": "top_right", "size": "large"}
+    assert style_guide(st)["narration"] is True and normalize_style(None)["narration"]["enabled"] is False
+    assert "narration" in EDL_SCHEMA["required"] and "product_popup_segment" in EDL_SCHEMA["required"]
+    edl = normalize_edl({"hook": {"start": 1, "end": 3.5, "caption": ""}, "segments": [{"start": 10 + i * 5, "end": 14 + i * 5, "caption": ""} for i in range(5)],
+                         "narration": "  한 문장   내레이션 ", "product_popup_segment": 2}, 100, 25)
+    assert edl["narration"] == "한 문장 내레이션" and edl["product_popup_segment"] == 2
+    ov = plan_overlays(edl, [{"id": "a", "kind": "product", "name": "p"}, {"id": "b", "kind": "logo", "name": "l"}, {"id": "c", "kind": "product", "name": "p2"}])
+    assert [(o["asset_id"], o["start"]) for o in ov] == [("a", 10.9), ("b", 0.3), ("c", 14.9)]  # 상품 사진은 지정한 컷(2번)부터 차례로
+    # 음성: 키도 Windows 음성도 없으면 사유를 알려 준다. 키가 있으면 Google 을 쓴다(요청 모양 확인)
+    import pytest
+    with pytest.raises(audio_fx.TTSError):
+        audio_fx.synthesize("안녕하세요", tmp_path / "x.wav")
+    sent = {}
+
+    class R:
+        status_code = 200
+        def json(self):
+            import base64
+            return {"audioContent": base64.b64encode(b"RIFFdata").decode()}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        sent.update(url=url, headers=headers, json=json)
+        return R()
+
+    monkeypatch.setattr(audio_fx.httpx, "post", fake_post)
+    monkeypatch.setattr(audio_fx, "_google_key", lambda: "test-key")
+    got = audio_fx.synthesize("*강조* 표시는 읽지 않는다", tmp_path / "g.wav", 1.2)
+    assert got == {"provider": "google", "voice": "ko-KR-Neural2-A"} and (tmp_path / "g.wav").read_bytes() == b"RIFFdata"
+    assert sent["url"].endswith("/v1/text:synthesize") and sent["headers"] == {"X-Goog-Api-Key": "test-key"}
+    assert sent["json"]["input"]["text"] == "강조 표시는 읽지 않는다" and sent["json"]["voice"] == {"languageCode": "ko-KR", "name": "ko-KR-Neural2-A"}
+    assert sent["json"]["audioConfig"]["speakingRate"] == 1.2
+    # 복잡한 배경 사진은 지우지 않고 카드로
+    import random
+    random.seed(3)
+    nz = Image.new("RGB", (200, 120)); nz.putdata([(random.randint(0, 255),) * 3 for _ in range(200 * 120)]); nz.save(tmp_path / "n.png")
+    assert prepare_overlay(tmp_path / "n.png", tmp_path / "n_cut.png")["method"] == "card"

@@ -831,3 +831,92 @@ def test_style_file_import_export_and_backup_keeps_styles(client):
         backup.restore_all(db, old, "replace")
     assert any(x["id"] == st["id"] for x in client.get("/api/styles").json()["styles"])
     client.delete(f"/api/styles/{st['id']}")
+
+
+def test_narration_sfx_bgm_and_popups_end_to_end(client, tmp_path, monkeypatch):
+    """AI 음성 내레이션 + 합성 효과음 + 배경음악 + 상품 사진(누끼)·로고 팝업이 한 영상에 들어간다. 음성이 없으면 정직하게 알리고 계속 만든다."""
+    import subprocess, time
+    from PIL import Image, ImageDraw
+    from app.services import audio_fx, shorts_maker
+    caps = shorts_maker.capabilities()
+    if not caps.get("available"):
+        import pytest; pytest.skip("ffmpeg 없음")
+    ff = caps["path"]
+    # 상태·보관함(이전 실행이 남긴 곡이 있으면 먼저 비운다)
+    for b in client.get("/api/styles/audio").json()["bgm"]:
+        client.delete(f"/api/styles/bgm/{b['name']}")
+    au = client.get("/api/styles/audio").json()
+    assert au["tts"]["available"] is False and au["bgm"] == [] and "권한" in au["note"]
+    assert client.post("/api/styles/tts-test", data={"text": "테스트"}).status_code == 400  # 음성 없음 → 사유 안내
+    tone = tmp_path / "my song.wav"
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-t", "3", "-i", "sine=frequency=330", str(tone)], check=True)
+    with tone.open("rb") as f:
+        assert client.post("/api/styles/bgm", files=[("files", ("my song.wav", f, "audio/wav"))]).json()["bgm"][0]["name"] == "my song.wav"
+    assert client.post("/api/styles/bgm", files=[("files", ("x.txt", b"x", "text/plain"))]).status_code == 400
+    assert client.delete("/api/styles/bgm/..%2F..%2Fshoppulse.db").status_code in (404, 405)
+    # 후보·원본
+    src = tmp_path / "src.mp4"
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=50",
+                    "-f", "lavfi", "-i", "sine=frequency=440:duration=50", "-c:v", caps["vcodec"], "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(src)], check=True)
+    v = client.post("/api/videos", json={"url_or_id": "snd_test_01", "title": "소리 테스트 쇼츠 추천템", "duration_seconds": 30,
+                                        "view_count": 400000, "fetch": False, "source_type": "reedit_shorts"}).json()
+    cid = client.post("/api/candidates", json={"video_id": v["id"], "channel_category": "beauty"}).json()["id"]
+    with src.open("rb") as f:
+        client.post(f"/api/studio/{cid}/source", files={"file": ("orig.mp4", f, "video/mp4")})
+    # 상품 사진(흰 배경 → 누끼)과 로고(투명 PNG)
+    prod = tmp_path / "prod.jpg"
+    im = Image.new("RGB", (600, 600), (253, 253, 252)); ImageDraw.Draw(im).rounded_rectangle([200, 100, 400, 520], radius=30, fill=(200, 40, 60)); im.save(prod)
+    logo = tmp_path / "logo.png"
+    lg = Image.new("RGBA", (300, 150), (0, 0, 0, 0)); ImageDraw.Draw(lg).ellipse([10, 10, 290, 140], fill=(0, 0, 0, 255)); lg.save(logo)
+    with prod.open("rb") as f:
+        st = client.post(f"/api/studio/{cid}/assets", files={"file": ("prod.jpg", f, "image/jpeg")}, data={"kind": "product"}).json()
+    with logo.open("rb") as f:
+        st = client.post(f"/api/studio/{cid}/assets", files={"file": ("logo.png", f, "image/png")}, data={"kind": "logo"}).json()
+    assert [(a["kind"], a["method"]) for a in st["assets"]] == [("product", "flood"), ("logo", "alpha")] and st["tts"]["available"] is False
+    assert client.get(st["assets"][0]["url"]).headers["content-type"] == "image/png"
+    assert client.post(f"/api/studio/{cid}/assets", files={"file": ("a.txt", b"x", "text/plain")}).status_code == 400
+    # 소리가 켜진 스타일
+    up = client.post("/api/styles/import", files={"file": ("s.json", json.dumps({"format": "shoppulse-styles", "styles": [{"name": "소리 스타일", "profile": {
+        "layout": {"mode": "color_bg", "bg_color": "#000000"}, "narration": {"enabled": True}, "sfx": {"enabled": True},
+        "bgm": {"mode": "auto", "volume": 0.12}, "popup": {"position": "top_right", "size": "large"}, "end_question": True}}]}).encode(), "application/json")}).json()
+    sid = [x for x in up["styles"] if x["name"] == "소리 스타일"][0]["id"]
+    prof = client.get(f"/api/styles/{sid}").json()["profile"]
+    assert prof["narration"]["enabled"] and prof["sfx"]["enabled"] and prof["bgm"] == {"mode": "auto", "volume": 0.12, "track": ""}
+
+    def wait():
+        for _ in range(400):
+            r = client.get(f"/api/studio/{cid}").json()["renders"][0]
+            if r["status"] in ("done", "failed"):
+                return r
+            time.sleep(0.2)
+        raise AssertionError("렌더 시간 초과")
+
+    edl = {"hook": {"start": 30, "end": 32.5, "caption": "*이게* 뭐길래?"}, "segments": [{"start": 5 + i * 4, "end": 7.5 + i * 4, "caption": f"컷 {i}"} for i in range(7)],
+           "title_lines": ["테스트 제목", "둘째 줄"], "credit": "출처: 테스트", "end_caption": "여러분이라면?", "narration": "이 배우가 십 년째 쓴다는 물건이 있다는데", "style_id": sid}
+    # 1) 음성이 없는 PC: 내레이션만 빠지고 나머지는 들어간다
+    client.post(f"/api/studio/{cid}/rerender", json=edl)
+    r = wait()
+    assert r["status"] == "done", r
+    assert any("AI 음성 내레이션을 넣지 못했습니다" in n for n in r["notes"]) and r["edl"]["audio"]["narration"] is None
+    assert r["edl"]["audio"]["bgm"] == "내 보관함: my song.wav" and r["edl"]["audio"]["sfx"] == ["whoosh", "pop", "pop", "ding"]
+    ov = {o["kind"]: o for o in r["edl"]["overlays"]}
+    assert ov["logo"]["start"] == 0.3 and ov["product"]["start"] == 2.9 and ov["product"]["duration"] == 2.8
+    # 2) 음성이 있을 때(가짜 음성 2초): 내레이션까지 섞인다. 사진 시각을 직접 고친 값은 유지된다
+    def fake(text, out, rate=1.12):
+        subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-t", "2", "-i", "sine=frequency=700", str(out)], check=True)
+        return {"provider": "test", "voice": "가짜 음성"}
+    monkeypatch.setattr(audio_fx, "synthesize", fake)
+    edl["overlays"] = [{"asset_id": st["assets"][0]["id"], "start": 9, "duration": 3}]
+    client.post(f"/api/studio/{cid}/rerender", json=edl)
+    r2 = wait()
+    assert r2["status"] == "done", r2
+    assert r2["edl"]["audio"]["narration"].startswith("test · 가짜 음성 · 2.0") and r2["edl"]["narration"].startswith("이 배우가")
+    assert {o["kind"]: o["start"] for o in r2["edl"]["overlays"]} == {"product": 9.0, "logo": 0.3}
+    probe = subprocess.run([ff, "-hide_banner", "-i", str(sorted((__import__("app.config", fromlist=["x"]).get_settings().media_dir / "renders").glob(f"shorts_c{cid}_*.mp4"),
+                            key=lambda p: p.stat().st_mtime)[-1])], capture_output=True, text=True).stderr
+    assert "Audio:" in probe and "1080x1920" in probe and abs(r2["output_info"]["duration"] - r2["edl"]["total_seconds"]) < 0.6
+    # 정리
+    st = client.delete(f"/api/studio/{cid}/assets/{st['assets'][0]['id']}").json()
+    assert len(st["assets"]) == 1
+    assert client.delete("/api/styles/bgm/my song.wav").json()["bgm"] == []
+    client.delete(f"/api/styles/{sid}")

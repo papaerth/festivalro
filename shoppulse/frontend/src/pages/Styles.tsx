@@ -19,6 +19,11 @@ export default function Styles() {
   const [sending, setSending] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const importRef = useRef<HTMLInputElement>(null)
+  const bgmRef = useRef<HTMLInputElement>(null)
+  const au = useAsync(() => api.styleAudio(), [])
+  const [voiceUrl, setVoiceUrl] = useState<string | null>(null)
+  const [voiceBusy, setVoiceBusy] = useState(false)
+  const testVoice = async () => { setVoiceBusy(true); try { setVoiceUrl(await api.ttsTest('이 목소리로 첫 장면을 소개합니다')) } catch (e: any) { toast(e.message, 'err') } finally { setVoiceBusy(false) } }
   const learning = q.data?.styles.some((s) => s.status === 'learning')
 
   useEffect(() => {
@@ -70,6 +75,29 @@ export default function Styles() {
         </ul>
       </div>
 
+      {au.data && (
+        <div className="card space-y-3 p-4 text-sm">
+          <h2 className="section-title">소리 재료 <span className="text-xs font-normal muted">· AI 음성 · 효과음 · 배경음악</span></h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <b>🔊 AI 음성 내레이션</b>
+            {au.data.tts.available ? <Badge tone="green">{au.data.tts.provider === 'google' ? 'Google 음성' : 'Windows 내장 음성'} · {au.data.tts.voice}</Badge> : <Badge tone="red">사용 불가</Badge>}
+            <button className="btn-ghost border border-stone-300 text-xs dark:border-stone-600" disabled={voiceBusy || !au.data.tts.available} onClick={testVoice}>{voiceBusy ? '만드는 중…' : '▶ 목소리 미리 듣기'}</button>
+            {voiceUrl && <audio src={voiceUrl} controls autoPlay className="h-8" />}
+            <span className="w-full text-xs muted">{au.data.tts.note}</span>
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <b>🎵 배경음악 보관함</b><span className="text-xs muted">{au.data.bgm.length ? `${au.data.bgm.length}곡 — 만들 때마다 돌아가며 사용` : '비어 있음 — 내장 합성 반주 사용'}</span>
+              <input ref={bgmRef} type="file" multiple accept="audio/*,.mp3,.m4a,.wav" className="hidden" onChange={(e) => { const fs = Array.from(e.target.files || []); e.target.value = ''; if (fs.length) api.bgmAdd(fs).then(() => { toast('배경음악을 넣었습니다'); au.reload() }).catch((er) => toast(er.message, 'err')) }} />
+              <button className="btn-ghost border border-stone-300 text-xs dark:border-stone-600" onClick={() => bgmRef.current?.click()}>+ 음악 파일 넣기</button>
+            </div>
+            {au.data.bgm.length > 0 && <ul className="mt-2 space-y-1 text-xs">{au.data.bgm.map((b) => (
+              <li key={b.name} className="flex flex-wrap items-center gap-2"><span className="min-w-40">{b.name}</span><audio src={`/api/styles/bgm/${encodeURIComponent(b.name)}`} controls preload="none" className="h-7" /><button className="text-red-600 underline" onClick={() => api.bgmDelete(b.name).then(() => au.reload())}>삭제</button></li>))}</ul>}
+            <p className="mt-1 text-xs muted">{au.data.note}</p>
+          </div>
+        </div>
+      )}
+
       {q.data.styles.length === 0 && <div className="card p-6 text-center text-sm muted">아직 등록한 레퍼런스 채널이 없습니다.</div>}
       {q.data.styles.map((s) => <StyleCard key={s.id} s={s} onChange={q.reload} toast={toast} />)}
     </div>
@@ -108,6 +136,7 @@ function StyleCard({ s, onChange, toast }: { s: RefStyle; onChange: () => void; 
             <div><b>자막</b> · {p.caption.enabled ? <>{CAP_POS[p.caption.position]} · {SIZE[p.caption.size]} <Swatch c={p.caption.color} />{p.caption.box ? ' · 박스' : ''} · {p.caption.tone}{p.caption.highlight_color ? <> · 강조 <Swatch c={p.caption.highlight_color} /></> : null}</> : '없음'}</div>
             <div><b>후킹</b> · 처음 {p.hook.seconds}초 · {p.hook.pattern}{p.hook.zoom_punch ? ' · 확대 강조' : ''}</div>
             <div><b>속도</b> · 총 {p.pacing.total_seconds}초 · 본편 {p.pacing.segments}컷 · 컷당 최대 {p.pacing.max_clip_seconds}초{p.pacing.note ? ` · ${p.pacing.note}` : ''}</div>
+            <div><b>소리</b> · 내레이션 {p.narration?.enabled ? '켬' : '끔'} · 효과음 {p.sfx?.enabled ? '켬' : '끔'} · 배경음악 {p.bgm?.mode === 'auto' ? `켬(크기 ${Math.round((p.bgm.volume || 0) * 100)}%)` : '끔'}</div>
             {p.title.patterns.length > 0 && <div><b>제목 구조</b> · {p.title.patterns.join(' / ')}</div>}
           </div>
           <div className="space-y-1">
@@ -136,6 +165,12 @@ function StyleCard({ s, onChange, toast }: { s: RefStyle; onChange: () => void; 
             <label>본편 컷 수<input type="number" min={1} max={10} className="input mt-0.5" value={p.pacing.segments} onChange={(e) => set((d) => { d.pacing.segments = Number(e.target.value) })} /></label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={p.title.box} onChange={(e) => set((d) => { d.title.box = e.target.checked })} /> 제목 박스</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={p.hook.zoom_punch} onChange={(e) => set((d) => { d.hook.zoom_punch = e.target.checked })} /> 후킹 컷 확대 강조</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={!!p.narration?.enabled} onChange={(e) => set((d) => { d.narration = { ...(d.narration || { rate: 1.12, pattern: '' }), enabled: e.target.checked } })} /> AI 음성 내레이션(첫 장면 한 문장)</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={!!p.sfx?.enabled} onChange={(e) => set((d) => { d.sfx = { enabled: e.target.checked } })} /> 효과음(휙·팝·딩)</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={p.bgm?.mode === 'auto'} onChange={(e) => set((d) => { d.bgm = { ...(d.bgm || { volume: 0.1, track: '' }), mode: e.target.checked ? 'auto' : 'none' } })} /> 배경음악</label>
+            <label>배경음악 크기 ({Math.round((p.bgm?.volume ?? 0.1) * 100)}%)<input type="range" min={0.03} max={0.35} step={0.01} className="mt-2 w-full" value={p.bgm?.volume ?? 0.1} onChange={(e) => set((d) => { d.bgm = { ...(d.bgm || { mode: 'none', track: '' }), volume: Number(e.target.value) } })} /></label>
+            <label>상품 사진 위치<select className="input mt-0.5" value={p.popup?.position || 'top_right'} onChange={(e) => set((d) => { d.popup = { ...(d.popup || { size: 'medium' }), position: e.target.value as any } })}><option value="top_right">화면 오른쪽 위</option><option value="top_left">화면 왼쪽 위</option><option value="center">화면 가운데</option></select></label>
+            <label>상품 사진 크기<select className="input mt-0.5" value={p.popup?.size || 'medium'} onChange={(e) => set((d) => { d.popup = { ...(d.popup || { position: 'top_right' }), size: e.target.value as any } })}>{Object.entries(SIZE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={p.end_question} onChange={(e) => set((d) => { d.end_question = e.target.checked })} /> 끝에 질문 자막</label>
           </div>
           <label className="mt-2 block">하단 고정 문구 (선택 · 내 채널 이름이나 「상품 정보는 프로필 링크 12번」 같은 안내)
