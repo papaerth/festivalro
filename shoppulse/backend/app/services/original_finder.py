@@ -27,12 +27,27 @@ _YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?v=|shorts/|live/|embe
 _TOKEN_RE = re.compile(r"[가-힣A-Za-z0-9]{2,}")
 
 
+_HASHTAG_RE = re.compile(r"#([가-힣A-Za-z0-9_]{2,})")
+# 흔한 서술어·조사 꼬리(제목의 동사·형용사 토막을 걸러낸다)
+_VERBISH = re.compile(r"(세요|하세요|습니다|됩니다|된다는|없으면|있으면|한다면|할까요|했어요|해요|이에요|예요|네요|거든요|라고|이라고|처럼|보다|까지|부터|에서|으로|에게|한테|이다|했다|한다)$")
+
+
+def hashtags_of(short: Video) -> list[str]:
+    out = []
+    for h in _HASHTAG_RE.findall(f"{short.title or ''} {short.description or ''}"):
+        if h.lower() not in STOP and h not in out:
+            out.append(h)
+    return out
+
+
 def extract_keywords(short: Video, product_name: str | None = None, celeb_names: list[str] | None = None) -> list[str]:
-    text = f"{short.title or ''} {product_name or ''} {' '.join(short.tags or [])} {(short.description or '')[:300]}"
-    toks = []
-    for t in _TOKEN_RE.findall(text):
+    """검색·일치용 단어. 우선순위: 해시태그 → 상품명 → 제목 명사 → 태그 → 설명 앞부분. 등록된 연예인 이름은 제외(채널로 처리)."""
+    ordered = hashtags_of(short) + _TOKEN_RE.findall(product_name or "") + _TOKEN_RE.findall(short.title or "") \
+        + [t for tag in (short.tags or []) for t in _TOKEN_RE.findall(tag)] + _TOKEN_RE.findall((short.description or "")[:300])
+    toks: list[str] = []
+    for t in ordered:
         tl = t.lower()
-        if tl in STOP or tl.isdigit():
+        if tl in STOP or tl.isdigit() or _VERBISH.search(t) and len(t) > 3:
             continue
         if celeb_names and any(n in t for n in celeb_names):
             continue
@@ -54,16 +69,27 @@ def detect_celebrities(db: Session, short: Video) -> list[Celebrity]:
 
 
 def _score_text(kws: list[str], title: str | None, desc: str | None, tags: list | None) -> tuple[float, list[str]]:
+    score, hits, _ = score_with_snippets(kws, title, desc, tags)
+    return score, hits
+
+
+def score_with_snippets(kws: list[str], title: str | None, desc: str | None, tags: list | None) -> tuple[float, list[str], list[str]]:
+    """단어 일치 점수 + 설명란에서 그 단어가 나온 문장 조각(근거 문장)."""
     t = (title or "").lower()
-    d = ((desc or "")[:2000] + " " + " ".join(tags or [])).lower()
-    hits, score = [], 0.0
+    raw_d = (desc or "")[:2000]
+    d = (raw_d + " " + " ".join(tags or [])).lower()
+    hits, snippets, score = [], [], 0.0
     for k in kws:
         kl = k.lower()
         if kl in t:
             score += 2.0; hits.append(k)
         elif kl in d:
             score += 1.0; hits.append(k)
-    return score, hits
+            i = raw_d.lower().find(kl)
+            if i >= 0 and len(snippets) < 3:
+                a, b = max(0, i - 40), min(len(raw_d), i + len(kl) + 40)
+                snippets.append(("…" if a else "") + raw_d[a:b].replace("\n", " ").strip() + ("…" if b < len(raw_d) else ""))
+    return score, hits, snippets
 
 
 MIN_ORIGINAL_SECONDS = 60  # 쇼츠(60초 이하)는 원본 후보에서 제외 — 원본은 롱폼이어야 한다
@@ -73,7 +99,7 @@ def _is_short(v: Video) -> bool:
     return v.video_format == "short" or (v.duration_seconds is not None and v.duration_seconds <= MIN_ORIGINAL_SECONDS)
 
 
-def _cand(v: Video, score: float, hits: list[str], how: str, short_published: datetime | None = None) -> dict:
+def _cand(v: Video, score: float, hits: list[str], how: str, short_published: datetime | None = None, snippets: list[str] | None = None) -> dict:
     """후보 항목 + 롱폼·채널 검증·게시 시점 가산(근거 기록)."""
     reasons = list(hits)
     bonus = 0.0
@@ -94,7 +120,7 @@ def _cand(v: Video, score: float, hits: list[str], how: str, short_published: da
             "published_at": v.published_at.isoformat() if v.published_at else None, "duration_seconds": v.duration_seconds,
             "channel": v.channel.channel_name if v.channel else v.yt_channel_title, "thumbnail_url": v.thumbnail_url,
             "score": round(score + bonus, 1), "keyword_score": round(score, 1), "hits": hits, "reasons": reasons, "how": how,
-            "is_long": dur >= 240}
+            "is_long": dur >= 240, "snippets": snippets or []}
 
 
 def find_original(db: Session, short: Video, product_name: str | None = None, use_api: bool = False,
@@ -102,8 +128,14 @@ def find_original(db: Session, short: Video, product_name: str | None = None, us
     celebs = detect_celebrities(db, short)
     names = [c.name for c in celebs]
     kws = extract_keywords(short, product_name, names)
-    result = {"checked_at": utcnow().isoformat(), "celebrities": names, "keywords": kws, "candidates": [],
+    tags = hashtags_of(short)
+    result = {"checked_at": utcnow().isoformat(), "celebrities": names, "keywords": kws, "hashtags": tags, "candidates": [],
               "best": None, "confidence": "none", "reason": "", "api_searches": 0, "notes": []}
+    unregistered = [h for h in tags if 2 <= len(h) <= 4 and re.fullmatch(r"[가-힣]+", h) and not any(n in h for n in names)
+                    and h.lower() not in STOP and h not in kws[:0]]
+    if unregistered:
+        result["notes"].append("해시태그 중 등록된 연예인이 아닌 이름일 수 있는 단어: " + ", ".join("#" + h for h in unregistered[:6]) +
+                               " — 함께 출연한 연예인이면 「연예인·채널」에 채널을 등록해야 그 채널도 검색합니다. 등록 전에는 검색어로만 씁니다.")
     now = utcnow()
     before = short.published_at
 
@@ -137,15 +169,16 @@ def find_original(db: Session, short: Video, product_name: str | None = None, us
     q = q.filter((Video.celebrity_id.in_(celeb_ids)) | (Video.channel_id.in_(chan_ids)) if chan_ids else Video.celebrity_id.in_(celeb_ids))
     pool = q.all()
     skipped_shorts = 0
+    result["skipped_shorts_api"] = 0
     for v in pool:
         if before and v.published_at and v.published_at > before:
             continue  # 쇼츠보다 늦게 올라온 영상은 원본일 수 없음
         if _is_short(v):
             skipped_shorts += 1
             continue  # 쇼츠는 원본이 아님
-        sc, hits = _score_text(kws, v.title, v.description, v.tags)
+        sc, hits, snips = score_with_snippets(kws, v.title, v.description, v.tags)
         if sc > 0:
-            result["candidates"].append(_cand(v, sc, hits, "db", before))
+            result["candidates"].append(_cand(v, sc, hits, "db", before, snips))
 
     # 3) 채널 안 API 검색
     if use_api and kws:
@@ -157,39 +190,33 @@ def find_original(db: Session, short: Video, product_name: str | None = None, us
             result["notes"].append(str(e))
         if client:
             try:
-                query = " ".join(kws[:4])
+                tags_q = [h for h in hashtags_of(short) if h in kws][:4]
+                queries = [" ".join(tags_q)] if tags_q else []
+                rest = [k for k in kws if k not in tags_q][:4]
+                if rest:
+                    queries.append(" ".join(rest))
+                queries = [q for q in queries if q] or [" ".join(kws[:4])]
+                result["queries"] = queries
                 for c in celebs:
                     for ch in c.channels:
-                        if not ch.channel_id or result["api_searches"] >= max_searches:
+                        if not ch.channel_id:
                             continue
-                        items = client.search_channel_videos(ch.channel_id, query, max_results=8, published_before=before)
-                        result["api_searches"] += 1
-                        ids = [i["video_id"] for i in items if i["video_id"] != short.youtube_video_id]
-                        if not ids:
-                            continue
-                        full = client.get_videos(ids)
-                        from .collection import parse_iso8601_duration, upsert_video_from_api
-                        for item in full:
-                            d = parse_iso8601_duration(item.get("duration")) or 0
-                            if d <= MIN_ORIGINAL_SECONDS:
-                                skipped_shorts += 1
-                                continue  # 채널의 쇼츠는 원본 후보에서 제외
-                            v, _ = upsert_video_from_api(db, item, ch, now, source_type="original_celebrity")
-                            if v.celebrity_id is None:
-                                v.celebrity_id = c.id
-                            sc, hits = _score_text(kws, v.title, v.description, v.tags)
-                            if not any(x["video_id"] == v.id for x in result["candidates"]):
-                                result["candidates"].append(_cand(v, sc + 0.5, hits + ["채널 내 검색 결과"], "api_channel_search", before))
+                        for query in queries:
+                            if result["api_searches"] >= max_searches:
+                                break
+                            items = client.search_channel_videos(ch.channel_id, query, max_results=8, published_before=before)
+                            result["api_searches"] += 1
+                            _absorb(db, client, ch, c, items, short, kws, before, result, now)
                 db.commit()
             except YouTubeAPIError as e:
                 result["notes"].append(f"YouTube 검색 실패: {e}")
             finally:
                 client.close()
-
     result["candidates"].sort(key=lambda x: (-x["score"], -(x["duration_seconds"] or 0)))
     result["candidates"] = result["candidates"][:8]
     for n, x in enumerate(result["candidates"], 1):
         x["rank"] = n
+    skipped_shorts += result.pop("skipped_shorts_api", 0)
     result["skipped_shorts"] = skipped_shorts
     if skipped_shorts:
         result["notes"].append(f"쇼츠(60초 이하) {skipped_shorts}개는 원본 후보에서 제외했습니다(롱폼만 순위).")
@@ -240,6 +267,24 @@ def find_original(db: Session, short: Video, product_name: str | None = None, us
     return result
 
 
+def _absorb(db, client, ch, c, items, short, kws, before, result, now):
+    ids = [i["video_id"] for i in items if i["video_id"] != short.youtube_video_id]
+    if not ids:
+        return
+    from .collection import parse_iso8601_duration, upsert_video_from_api
+    for item in client.get_videos(ids):
+        d = parse_iso8601_duration(item.get("duration")) or 0
+        if d <= MIN_ORIGINAL_SECONDS:
+            result["skipped_shorts_api"] = result.get("skipped_shorts_api", 0) + 1
+            continue  # 채널의 쇼츠는 원본 후보에서 제외
+        v, _ = upsert_video_from_api(db, item, ch, now, source_type="original_celebrity")
+        if v.celebrity_id is None:
+            v.celebrity_id = c.id
+        sc, hits, snips = score_with_snippets(kws, v.title, v.description, v.tags)
+        if not any(x["video_id"] == v.id for x in result["candidates"]):
+            result["candidates"].append(_cand(v, sc + 0.5, hits + ["채널 내 검색 결과"], "api_channel_search", before, snips))
+
+
 def _apply(db: Session, short: Video, original: Video, result: dict) -> None:
     short.original_video_id = original.id
     if short.celebrity_id is None:
@@ -256,12 +301,13 @@ def _ai_pick(short: Video, candidates: list[dict], names: list[str]) -> dict | N
               "properties": {"video_id": {"type": ["integer", "null"]}, "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
                              "reason": {"type": "string"}}}
     system = ("당신은 유튜브 재편집 쇼츠의 원본 영상을 찾는 조사원이다. 한국어로 답한다. "
-              "쇼츠의 제목·설명과 후보 원본 영상들의 제목·설명을 비교해 쇼츠가 잘라 쓴 원본일 가능성이 가장 높은 하나를 고른다. "
+              "쇼츠의 제목·설명과 후보 원본 영상들의 제목·설명 조각을 비교해 쇼츠가 잘라 쓴 원본일 가능성이 가장 높은 하나를 고른다. "
+              "재편집 쇼츠는 제목에 여러 연예인을 함께 적어도 실제로는 한 연예인의 영상에서 다른 연예인이 '언급'만 된 경우가 많다는 점을 고려한다. "
               "확실하지 않으면 confidence 를 낮추고, 어느 것도 아니면 video_id 를 null 로 한다. 추측으로 단정하지 않는다.")
     payload = {"short": {"title": short.title, "description": (short.description or "")[:800], "published_at": short.published_at.isoformat() if short.published_at else None,
                          "celebrities_mentioned": names},
                "candidates": [{"video_id": c["video_id"], "title": c["title"], "published_at": c["published_at"], "duration_seconds": c["duration_seconds"],
-                               "channel": c["channel"], "hits": c["hits"]} for c in candidates]}
+                               "channel": c["channel"], "hits": c["hits"], "description_snippets": c.get("snippets", [])} for c in candidates]}
     out = create_json(system=system, max_tokens=800, output_schema=schema,
                       messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])
     return out
