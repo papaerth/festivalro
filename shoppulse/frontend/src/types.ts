@@ -89,7 +89,7 @@ export interface Settings {
   user: Record<string, any>; scoring: ScoringConfig; graph_rules: Record<string, any>; metric_bands: Record<string, any>; upload_slots: Record<string, any>
 }
 
-export interface BulkState { running: boolean; task: 'resolve' | 'collect' | 'discover' | 'sourcing' | null; total: number; done: number; current: string | null; started_at: string | null; finished_at: string | null; summary: Record<string, any>; error: string | null }
+export interface BulkState { running: boolean; task: 'resolve' | 'collect' | 'discover' | 'sourcing' | 'plans' | 'auto' | null; total: number; done: number; current: string | null; stage?: string | null; started_at: string | null; finished_at: string | null; summary: Record<string, any>; error: string | null }
 
 export interface Weather { status: 'ok' | 'unavailable'; source: string; region: string; matched_region?: boolean; observed_at?: string; temperature?: number | null; apparent?: number | null; humidity?: number | null; precipitation_mm?: number | null; code?: number | null; label?: string; today_max?: number | null; today_min?: number | null; precip_prob_max?: number | null; is_rain_or_snow?: boolean; note: string }
 export interface OfferSearchItem { seller: string; title: string; url: string | null; price: number | null; image: string | null; brand: string | null; category: string; affiliate_available: boolean | null; affiliate_program: string | null; product_id: string | null }

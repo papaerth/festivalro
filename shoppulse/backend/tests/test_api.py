@@ -602,3 +602,22 @@ def test_find_original_by_image_without_keys_is_honest(client):
     assert any("GOOGLE_VISION_API_KEY" in n for n in m["notes"]) and any("ANTHROPIC_API_KEY" in n for n in m["notes"])
     # 이미지도 썸네일도 없으면 400
     assert client.post(f"/api/candidates/{cid}/find-original-by-image", params={"use_thumbnail": False}).status_code == 400
+
+
+def test_auto_on_open_runs_pipeline_and_respects_interval(client):
+    import time
+    r = client.post("/api/sourcing/auto-on-open").json()
+    assert r["enabled"] is True and r["started"] is True
+    for _ in range(100):
+        st = client.get("/api/channels/bulk/status").json()
+        if not st["running"]:
+            break
+        time.sleep(0.1)
+    assert not st["running"] and st["task"] == "auto" and st["error"] is None, st
+    assert st["summary"]["collect"]["skipped"] and "sourcing" in st["summary"]["stages"]
+    assert st["summary"]["sourcing"]["total_candidates"] >= 1
+    r2 = client.post("/api/sourcing/auto-on-open").json()
+    assert r2["started"] is False and "지나지 않음" in r2["reason"] and r2["last_run"]
+    client.put("/api/settings/user/auto_on_open", json={"value": False})
+    assert client.post("/api/sourcing/auto-on-open").json()["reason"].startswith("접속 자동 작업이 꺼져")
+    client.put("/api/settings/user/auto_on_open", json={"value": True})

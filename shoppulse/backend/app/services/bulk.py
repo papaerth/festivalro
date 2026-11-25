@@ -16,7 +16,7 @@ from .collection import collect_channel_videos, discover_shorts, finish_job, sta
 from .youtube_connector import YouTubeAPIError, YouTubeClient, YouTubeNotConfigured
 
 _lock = threading.Lock()
-BULK_STATE: dict = {"running": False, "task": None, "total": 0, "done": 0, "current": None,
+BULK_STATE: dict = {"running": False, "task": None, "total": 0, "done": 0, "current": None, "stage": None,
                     "started_at": None, "finished_at": None, "summary": {}, "error": None}
 
 
@@ -104,8 +104,8 @@ def _run_resolve(limit: int):
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 
-def _run_collect(max_videos: int, years: int | None, stale_days: int):
-    with SessionLocal() as db:
+def _stage_collect(db, max_videos: int, years: int | None, stale_days: int) -> dict:
+    if True:
         q = db.query(YoutubeChannel).filter(YoutubeChannel.channel_id.isnot(None), YoutubeChannel.is_active.is_(True))
         if stale_days:
             cutoff = utcnow() - timedelta(days=stale_days)
@@ -124,13 +124,36 @@ def _run_collect(max_videos: int, years: int | None, stale_days: int):
                 break
         summary = {"channels": len(results), "success": sum(r["status"] == "success" for r in results),
                    "failed": [r for r in results if r["status"] == "failed"], "quota_used": quota, "results": results}
+        return summary
+
+
+def _run_collect(max_videos: int, years: int | None, stale_days: int):
+    with SessionLocal() as db:
+        summary = _stage_collect(db, max_videos, years, stale_days)
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 
-def _run_discover(limit: int, max_results: int, suffix: str, years: int | None, order: str, shopping_only: bool = True):
-    with SessionLocal() as db:
-        celebs = (db.query(Celebrity).filter(Celebrity.is_demo.is_(False)).join(Celebrity.channels)
-                  .filter(YoutubeChannel.is_active.is_(True)).distinct().order_by(Celebrity.id).limit(limit).all())
+def _stage_discover(db, limit: int, max_results: int, suffix: str, years: int | None, order: str, shopping_only: bool = True,
+                    rotate: bool = False) -> dict:
+    if True:
+        allq = (db.query(Celebrity).filter(Celebrity.is_demo.is_(False)).join(Celebrity.channels)
+                .filter(YoutubeChannel.is_active.is_(True)).distinct().order_by(Celebrity.id))
+        if rotate:
+            # 접속 자동 작업: 연예인을 돌아가며 검색(할당량 보호). 커서는 user_settings.discover_cursor
+            from ..models import UserSetting
+            everyone = allq.all()
+            cur = db.get(UserSetting, "discover_cursor")
+            off = int(cur.value.get("value", 0)) if cur else 0
+            off = off % len(everyone) if everyone else 0
+            celebs = (everyone[off:] + everyone[:off])[:limit]
+            nxt = (off + len(celebs)) % len(everyone) if everyone else 0
+            if cur:
+                cur.value = {"value": nxt}
+            else:
+                db.add(UserSetting(key="discover_cursor", value={"value": nxt}))
+            db.commit()
+        else:
+            celebs = allq.limit(limit).all()
         BULK_STATE.update(total=len(celebs), done=0)
         results, quota = [], 0
         for c in celebs:
@@ -150,15 +173,21 @@ def _run_discover(limit: int, max_results: int, suffix: str, years: int | None, 
                    "skipped_non_shopping": sum(r["skipped_non_shopping"] or 0 for r in results),
                    "failed": [r for r in results if r["status"] == "failed"],
                    "quota_used": quota, "results": results}
+        return summary
+
+
+def _run_discover(limit: int, max_results: int, suffix: str, years: int | None, order: str, shopping_only: bool = True):
+    with SessionLocal() as db:
+        summary = _stage_discover(db, limit, max_results, suffix, years, order, shopping_only)
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 
-def _run_sourcing(report_date, refresh_limit: int, trigger: str = "manual"):
-    """조회수 갱신(진행률 표시) → 일일 소싱 평가. 백그라운드."""
+def _stage_sourcing(db, report_date, refresh_limit: int, trigger: str = "manual") -> dict:
+    """조회수 갱신(진행률 표시) → 일일 소싱 평가."""
     from ..config import get_settings
     from .daily_sourcing import run_daily_sourcing
 
-    with SessionLocal() as db:
+    if True:
         refresh = {"skipped": True, "reason": "YOUTUBE_API_KEY 미설정"}
         if get_settings().youtube_api_key and refresh_limit > 0:
             videos = (db.query(Video).filter(Video.is_demo.is_(False))
@@ -192,18 +221,57 @@ def _run_sourcing(report_date, refresh_limit: int, trigger: str = "manual"):
                 error = str(e); finish_job(job, "failed", error=error)
             db.commit()
             refresh = {"skipped": False, "job_id": job.id, "status": job.status, "updated": updated, "quota_used": job.quota_used, "error": error}
-        BULK_STATE.update(current="후보 자동 발굴·AI 채점·평가", done=0, total=0)
+        BULK_STATE.update(current="후보 자동 발굴·원본 찾기·AI 채점·평가", done=0, total=0)
+        rep = run_daily_sourcing(db, trigger=trigger, report_date=report_date, refresh_limit=0)
+        rep.summary = dict(rep.summary, stats_refresh=refresh)
+        db.commit()
+        return {"report_id": rep.id, "report_date": rep.report_date.isoformat(), "stats_refresh": refresh,
+                "total_candidates": rep.summary["total_candidates"], "total_final": rep.summary["total_final"],
+                "auto_discovery": rep.summary.get("auto_discovery"), "ai_scoring": rep.summary.get("ai_scoring"),
+                "ai_products": rep.summary.get("ai_products"), "ai_plans": rep.summary.get("ai_plans"),
+                "originals": rep.summary.get("originals"), "originals_status": rep.summary.get("originals_status")}
+
+
+def _run_sourcing(report_date, refresh_limit: int, trigger: str = "manual"):
+    with SessionLocal() as db:
         try:
-            rep = run_daily_sourcing(db, trigger=trigger, report_date=report_date, refresh_limit=0)
+            summary = _stage_sourcing(db, report_date, refresh_limit, trigger)
         except Exception as e:  # 배경 스레드 오류를 화면에 남긴다
             BULK_STATE.update(running=False, current=None, error=f"소싱 실행 오류: {e}", finished_at=utcnow().isoformat())
             raise
-        rep.summary = dict(rep.summary, stats_refresh=refresh)
-        db.commit()
-        summary = {"report_id": rep.id, "report_date": rep.report_date.isoformat(), "stats_refresh": refresh,
-                   "total_candidates": rep.summary["total_candidates"], "total_final": rep.summary["total_final"],
-                   "auto_discovery": rep.summary.get("auto_discovery"), "ai_scoring": rep.summary.get("ai_scoring"),
-                   "ai_products": rep.summary.get("ai_products"), "ai_plans": rep.summary.get("ai_plans")}
+        BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
+
+
+def _run_auto(collect_stale_days: int = 1, discover_limit: int = 10, refresh_limit: int = 300, max_videos: int = 200):
+    """접속 자동 작업: 채널 영상 수집(오늘 안 한 채널만) → 재편집 쇼츠 검색(연예인 N명 순환) → 오늘 소싱 실행. 한 번에 순서대로."""
+    from ..models import UserSetting
+    from ..config import get_settings
+
+    with SessionLocal() as db:
+        summary: dict = {"stages": []}
+        try:
+            if get_settings().youtube_api_key:
+                BULK_STATE.update(current="1/3 채널 영상 수집", stage="collect")
+                summary["collect"] = _stage_collect(db, max_videos, None, collect_stale_days)
+                summary["stages"].append("collect")
+                BULK_STATE.update(current="2/3 재편집 쇼츠 검색", stage="discover", done=0, total=0)
+                summary["discover"] = _stage_discover(db, discover_limit, 25, "추천템", None, "relevance", True, rotate=True)
+                summary["stages"].append("discover")
+            else:
+                summary["collect"] = summary["discover"] = {"skipped": True, "reason": "YOUTUBE_API_KEY 미설정"}
+            BULK_STATE.update(current="3/3 오늘 소싱 실행", stage="sourcing", done=0, total=0)
+            summary["sourcing"] = _stage_sourcing(db, None, refresh_limit, trigger="auto_on_open")
+            summary["stages"].append("sourcing")
+            st = db.get(UserSetting, "auto_on_open_last")
+            if st:
+                st.value = {"value": utcnow().isoformat()}
+            else:
+                db.add(UserSetting(key="auto_on_open_last", value={"value": utcnow().isoformat()}))
+            db.commit()
+        except Exception as e:
+            BULK_STATE.update(running=False, current=None, summary=summary, error=f"접속 자동 작업 오류({BULK_STATE.get('stage')}): {e}",
+                              finished_at=utcnow().isoformat())
+            raise
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 
@@ -229,10 +297,10 @@ def start(task: str, **params) -> dict:
     with _lock:
         if BULK_STATE["running"]:
             raise RuntimeError(f"다른 일괄 작업({BULK_STATE['task']})이 실행 중입니다. 완료 후 다시 시도하세요.")
-        BULK_STATE.update(running=True, task=task, total=0, done=0, current=None, started_at=utcnow().isoformat(),
+        BULK_STATE.update(running=True, task=task, total=0, done=0, current=None, stage=None, started_at=utcnow().isoformat(),
                           finished_at=None, summary={}, error=None)
     target = {"resolve": _run_resolve, "collect": _run_collect, "discover": _run_discover, "sourcing": _run_sourcing,
-              "plans": _run_plans}[task]
+              "plans": _run_plans, "auto": _run_auto}[task]
     t = threading.Thread(target=target, kwargs=params, daemon=True, name=f"bulk-{task}")
     t.start()
     return status()

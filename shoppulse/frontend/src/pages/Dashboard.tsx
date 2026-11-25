@@ -22,11 +22,17 @@ export default function Dashboard() {
   const s = stats.data
 
   const [job, setJob] = useState<BulkState | null>(null)
+  const [auto, setAuto] = useState<{ started: boolean; reason: string; enabled: boolean; hours: number; last_run: string | null } | null>(null)
+  useEffect(() => {
+    // 접속 자동 작업: 화면을 열 때 수집 → 쇼츠 검색 → 오늘 소싱을 스스로 시작(설정에서 끄거나 간격 조정)
+    api.autoOnOpen().then((r) => { setAuto(r); if (r.started) { setJob(r.state); toast('접속 자동 작업 시작 — 채널 수집 → 쇼츠 검색 → 오늘 소싱') } }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   useEffect(() => {
     let alive = true, timer: ReturnType<typeof setTimeout> | undefined
     const tick = async () => {
       let running = false
-      try { const st = await api.bulkStatus(); if (alive) { running = st.running; setJob((prev) => { if (prev?.running && !st.running && st.task === 'sourcing') { const sm = st.summary || {}; const rf = sm.stats_refresh; const ad = sm.auto_discovery; const ai = sm.ai_scoring; const ap = sm.ai_products; toast(`소싱 완료 — ${rf?.skipped ? `갱신 건너뜀(${rf.reason})` : `조회수 ${rf?.updated ?? 0}개 갱신`} · 자동 발굴 ${ad ? Object.values(ad.created as Record<string, number>).reduce((a, b) => a + b, 0) : 0}개 · AI 상품 추정 ${ap?.skipped ? '건너뜀' : `${ap?.identified ?? 0}건(연결 ${ap?.linked ?? 0})`} · AI 채점 ${ai?.skipped ? `건너뜀(${ai.reason})` : `${ai?.scored ?? 0}건`} · 기획안 ${sm.ai_plans?.skipped ? '건너뜀' : `${sm.ai_plans?.generated ?? 0}건`} · 후보 ${sm.total_candidates}/27, 추천 ${sm.total_final}/9`); stats.reload(); cands.reload() } return st }) } } catch {}
+      try { const st = await api.bulkStatus(); if (alive) { running = st.running; setJob((prev) => { if (prev?.running && !st.running && st.task === 'auto') { const sm = st.summary || {}; const so = sm.sourcing || {}; toast(st.error ? st.error : `접속 자동 작업 완료 — 수집 ${sm.collect?.skipped ? '건너뜀' : `${sm.collect?.channels ?? 0}채널`} · 쇼츠 검색 ${sm.discover?.skipped ? '건너뜀' : `${sm.discover?.created ?? 0}개 신규`} · 후보 ${so.total_candidates ?? 0}/27, 추천 ${so.total_final ?? 0}/9 · 원본 연결 ${so.originals_status?.linked ?? 0}`, st.error ? 'err' : 'ok'); stats.reload(); cands.reload(); api.autoOnOpen().then(setAuto).catch(() => {}) } else if (prev?.running && !st.running && st.task === 'sourcing') { const sm = st.summary || {}; const rf = sm.stats_refresh; const ad = sm.auto_discovery; const ai = sm.ai_scoring; const ap = sm.ai_products; toast(`소싱 완료 — ${rf?.skipped ? `갱신 건너뜀(${rf.reason})` : `조회수 ${rf?.updated ?? 0}개 갱신`} · 자동 발굴 ${ad ? Object.values(ad.created as Record<string, number>).reduce((a, b) => a + b, 0) : 0}개 · AI 상품 추정 ${ap?.skipped ? '건너뜀' : `${ap?.identified ?? 0}건(연결 ${ap?.linked ?? 0})`} · AI 채점 ${ai?.skipped ? `건너뜀(${ai.reason})` : `${ai?.scored ?? 0}건`} · 기획안 ${sm.ai_plans?.skipped ? '건너뜀' : `${sm.ai_plans?.generated ?? 0}건`} · 후보 ${sm.total_candidates}/27, 추천 ${sm.total_final}/9`); stats.reload(); cands.reload() } return st }) } } catch {}
       if (alive) timer = setTimeout(tick, running ? 2000 : 15000)
     }
     tick()
@@ -54,12 +60,13 @@ export default function Dashboard() {
         <div className="flex gap-2">
           <button className="btn-primary" disabled={running} onClick={run}>{running ? '실행 중…' : '▶ 오늘 소싱 실행 (수동)'}</button>
           <Link to="/data" className="btn-ghost">데이터 수집</Link>
+          {auto && <div className="w-full text-right text-[11px] muted">{auto.enabled ? `접속 시 자동 실행(${auto.hours}시간마다) · 마지막 ${auto.last_run ? fmt.datetime(auto.last_run) : '없음'}${auto.started ? ' · 지금 시작됨' : ` · ${auto.reason}`}` : '접속 자동 실행 꺼짐(설정)'}</div>}
         </div>
       </div>
 
       {job?.running && (
         <div className="card p-3 text-sm">
-          <div className="flex items-center justify-between"><span>{job.task === 'sourcing' ? '오늘 소싱 실행' : job.task === 'collect' ? '영상 일괄 수집' : job.task === 'discover' ? '재편집 쇼츠 일괄 검색' : 'ID 일괄 조회'} <Badge tone="blue">진행 중</Badge> {job.current && <span className="muted">· {job.current}</span>}</span><span className="tabular-nums">{job.done} / {job.total}</span></div>
+          <div className="flex items-center justify-between"><span>{job.task === 'auto' ? '접속 자동 작업' : job.task === 'sourcing' ? '오늘 소싱 실행' : job.task === 'collect' ? '영상 일괄 수집' : job.task === 'discover' ? '재편집 쇼츠 일괄 검색' : job.task === 'plans' ? 'AI 기획안 일괄 생성' : 'ID 일괄 조회'} <Badge tone="blue">진행 중</Badge> {job.current && <span className="muted">· {job.current}</span>}</span><span className="tabular-nums">{job.done} / {job.total}</span></div>
           <div className="mt-2 h-2 w-full overflow-hidden rounded bg-stone-200 dark:bg-stone-700"><div className="h-full bg-stone-900 transition-all dark:bg-stone-100" style={{ width: `${job.total ? (job.done / job.total) * 100 : 0}%` }} /></div>
         </div>
       )}
