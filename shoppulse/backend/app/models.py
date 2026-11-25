@@ -298,6 +298,7 @@ class SourcingCandidate(TimestampMixin, Base):
     content_type: Mapped[str | None] = mapped_column(String(40))
     status: Mapped[str] = mapped_column(String(30), default="candidate", nullable=False, index=True)
     recommended_slot: Mapped[str | None] = mapped_column(String(20))  # morning/afternoon/night
+    slot_reason: Mapped[str | None] = mapped_column(Text)  # '[자동] …' 규칙 근거 또는 '사용자 지정'
     hook_idea: Mapped[str | None] = mapped_column(Text)
     research_todo: Mapped[str | None] = mapped_column(Text)  # 추가 조사할 정보
     notes: Mapped[str | None] = mapped_column(Text)

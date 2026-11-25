@@ -250,4 +250,5 @@ def template_plan_step(db: Session) -> dict:
 
 def prepare_candidates(db: Session) -> dict:
     """후보 전체를 '버튼 누르기 전 상태'로 만든다: 규칙 점수 + 템플릿 기획안."""
-    return {"rule_scores": rule_score_step(db), "template_plans": template_plan_step(db)}
+    from .slot_recommender import slot_step
+    return {"rule_scores": rule_score_step(db), "template_plans": template_plan_step(db), "upload_slots": slot_step(db)}

@@ -541,3 +541,12 @@ def test_prepare_all_and_rank(client):
     assert ranked and ranked[0]["rank"] == 1 and all(i["plan_count"] >= 1 for i in lst["items"] if i["status"] != "rejected")
     scores = [i["score"] for i in ranked]
     assert scores == sorted(scores, reverse=True)
+    # 업로드 시간 자동 추천: 모든 활성 후보에 슬롯 + '[자동]' 근거
+    assert all(i["recommended_slot"] in ("morning", "afternoon", "night") and i["slot_auto"] for i in lst["items"] if i["status"] != "rejected" and i["slot_reason"] != "사용자 지정")
+    cid = lst["items"][0]["id"]
+    d = client.patch(f"/api/candidates/{cid}", json={"recommended_slot": "night"}).json()
+    assert d["recommended_slot"] == "night" and d["slot_reason"] == "사용자 지정" and d["slot_auto"] is False
+    client.post("/api/candidates/prepare-all")  # 사용자 지정은 덮어쓰지 않음
+    assert client.get(f"/api/candidates/{cid}").json()["slot_reason"] == "사용자 지정"
+    d = client.patch(f"/api/candidates/{cid}", json={"recommended_slot": None}).json()
+    assert d["slot_auto"] is True and d["recommended_slot"]

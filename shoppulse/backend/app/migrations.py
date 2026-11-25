@@ -25,6 +25,7 @@ COLUMNS = [
     ("videos", "yt_channel_description", "TEXT"),
     ("sourcing_candidates", "produced_at", "DATETIME"),
     ("sourcing_candidates", "produced_url", "VARCHAR(300)"),
+    ("sourcing_candidates", "slot_reason", "TEXT"),
 ]
 INDEXES = [
     ("ix_videos_original_video_id", "videos", "original_video_id"),

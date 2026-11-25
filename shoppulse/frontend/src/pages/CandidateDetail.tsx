@@ -213,7 +213,7 @@ export default function CandidateDetail() {
           <h2 className="section-title mb-2 mt-5">제작 상태·배정</h2>
           <div className="space-y-2">
             <Field label="제작 상태"><Select value={c.status} onChange={(s) => act(() => api.patchCandidate(c.id, { status: s }), '상태 변경')} options={(meta.data?.statuses || []).map((s) => [s, LABELS.status[s] || s])} /></Field>
-            <Field label="추천 업로드 시간 (운영 가설)"><Select value={c.recommended_slot || ''} onChange={(s) => act(() => api.patchCandidate(c.id, { recommended_slot: s || null }), '저장')} placeholder="미지정" options={Object.entries(LABELS.slot) as [string, string][]} /></Field>
+            <Field label="추천 업로드 시간 (운영 가설)" hint={c.slot_reason ? `${c.slot_reason}${c.slot_auto ? ' · 직접 고르면 사용자 지정으로 바뀌고, 비우면 다시 자동 추천됩니다' : ''}` : undefined}><Select value={c.recommended_slot || ''} onChange={(s) => act(() => api.patchCandidate(c.id, { recommended_slot: s || null }), '저장')} placeholder="미지정(자동 추천으로 되돌림)" options={Object.entries(LABELS.slot) as [string, string][]} /></Field>
             <Field label="쇼츠 후킹 아이디어"><textarea className="input" rows={3} defaultValue={c.hook_idea || ''} onBlur={(e) => e.target.value !== (c.hook_idea || '') && act(() => api.patchCandidate(c.id, { hook_idea: e.target.value }), '저장')} /></Field>
             <Field label="추가 조사할 정보"><textarea className="input" rows={3} defaultValue={c.research_todo || ''} onBlur={(e) => e.target.value !== (c.research_todo || '') && act(() => api.patchCandidate(c.id, { research_todo: e.target.value }), '저장')} /></Field>
           </div>

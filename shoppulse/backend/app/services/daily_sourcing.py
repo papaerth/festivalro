@@ -300,7 +300,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
                 "thumbnail_url": c.video.thumbnail_url, "view_count": c.video.view_count,
                 "score": total, "grade": final.grade_key if final else None, "scorer": final.scorer if final else None,
                 "graph_type": graph["graph_type"], "production_ready": ready, "unresolved": unresolved,
-                "status": c.status,
+                "status": c.status, "recommended_slot": c.recommended_slot, "slot_reason": c.slot_reason,
             })
         # 점수 있는 것 우선, 점수 높은 순. 재상승/뒤늦은 급상승은 동점 시 우선.
         prio = {"resurgence": 2, "late_surge": 2, "spike_plateau": 1}

@@ -157,6 +157,11 @@ def create_candidate(body: schemas.CandidateIn, db: Session = Depends(get_db)):
     try:
         from ..services.rule_scorer import save_rule_score
         from ..services.shorts_planner import generate_plan
+        from ..services.slot_recommender import apply_slot
+        if not c.recommended_slot:
+            apply_slot(c)
+        else:
+            c.slot_reason = "사용자 지정"
         save_rule_score(db, c)
         plan, by = generate_plan(c, 25, provider="template")
         db.add(ShortsPlan(candidate_id=c.id, target_seconds=25, generated_by=by, plan=plan))
@@ -170,7 +175,8 @@ def create_candidate(body: schemas.CandidateIn, db: Session = Depends(get_db)):
 def prepare_all(force: bool = False, db: Session = Depends(get_db)):
     """모든 활성 후보에 규칙 간이 점수(총점·순위)와 템플릿 기획안을 채운다. force=true 면 규칙 점수를 전부 다시 계산."""
     from ..services.rule_scorer import rule_score_step, template_plan_step
-    return {"rule_scores": rule_score_step(db, force=force), "template_plans": template_plan_step(db)}
+    from ..services.slot_recommender import slot_step
+    return {"rule_scores": rule_score_step(db, force=force), "template_plans": template_plan_step(db), "upload_slots": slot_step(db)}
 
 
 @router.post("/plans/generate-all")
@@ -202,6 +208,12 @@ def patch_candidate(cid: int, body: schemas.CandidatePatch, db: Session = Depend
     if data.get("product_id"):
         get_or_404(db, Product, data["product_id"], "상품")
     apply_patch(c, body)
+    if "recommended_slot" in data:
+        if data["recommended_slot"]:
+            c.slot_reason = "사용자 지정"
+        else:
+            from ..services.slot_recommender import apply_slot
+            apply_slot(c)  # 비우면 자동 추천으로 되돌림
     log(db, "candidate", c.id, "update", data)
     db.commit()
     return serializers.candidate_detail(c, get_active_version(db).config)

@@ -38,7 +38,7 @@ export default function CandidateCard({ c, draggable, onDragStart, rank, rankPre
           {c.is_short_candidate ? <ProductStatusBadge status={c.video_product_status} names={c.product_name ? [c.product_name] : undefined} /> : <><Badge tone="gray">{c.product_name || '상품 미확인'}</Badge><Badge tone={toneFor.identification(c.product_identification)}>{LABELS.identification[c.product_identification || 'unidentified']}</Badge></>}
           {c.content_type_label && <Badge tone="blue">{c.content_type_label}</Badge>}
           <Badge tone={toneFor.status(c.status)}>{LABELS.status[c.status] || c.status}</Badge>{c.notes?.includes('[자동 발굴') && <Badge tone="gray" title={c.notes || ''}>자동 발굴</Badge>}{c.score_scorer && <Badge tone={c.score_scorer === 'human' ? 'green' : c.score_scorer === 'ai' ? 'violet' : 'gray'}>{SCORER_LABEL[c.score_scorer] || c.score_scorer}</Badge>}{c.plan_count > 0 && <Badge tone="blue">기획안 {c.latest_plan_by === 'anthropic' ? 'AI' : ''}</Badge>}
-          {c.recommended_slot && <Badge tone="violet">{LABELS.slot[c.recommended_slot]}</Badge>}
+          {c.recommended_slot && <Badge tone="violet" title={c.slot_reason || ''}>⏰ 업로드 {LABELS.slot[c.recommended_slot]}{c.slot_auto ? ' (자동 추천)' : ''}</Badge>}
           {c.production_ready ? <Badge tone="green">제작 준비 완료</Badge> : <Badge tone="amber" title={c.unresolved_critical.join(', ')}>검증 {c.unresolved_critical.length}건 미해결</Badge>}
         </div>
         {showReason && c.reason_summary && <p className="line-clamp-3 rounded-lg bg-stone-50 p-2 text-[11px] text-stone-700 dark:bg-stone-800/60 dark:text-stone-300"><b>선정 이유:</b> {c.reason_summary}</p>}

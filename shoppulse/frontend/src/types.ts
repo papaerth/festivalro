@@ -56,7 +56,7 @@ export interface Plan { id: number; candidate_id: number; target_seconds: number
 
 export interface CandidateSummary {
   id: number; video_id: number; product_id: number | null; segment_id: number | null; celebrity_id: number | null; celebrity_name: string | null;
-  channel_category: Category; content_type: string | null; content_type_label: string | null; status: string; recommended_slot: Slot | null; hook_idea: string | null;
+  channel_category: Category; content_type: string | null; content_type_label: string | null; status: string; recommended_slot: Slot | null; slot_reason?: string | null; slot_auto?: boolean; hook_idea: string | null;
   research_todo: string | null; notes: string | null; is_demo: boolean; last_recommended_date: string | null; recommendation_count: number; duplicate_reason: string | null;
   score: number | null; grade_key: string | null; grade_label: string | null; score_scorer: string | null; ai_score: number | null; human_score: number | null; rule_score?: number | null; rank?: number | null;
   production_ready: boolean; unresolved_critical: string[]; product_name: string | null; product_identification: string | null; offer_status: string | null;
