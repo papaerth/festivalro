@@ -260,14 +260,23 @@ def normalize_edl(edl: dict, duration: float, total_target: float | None = None)
     return out
 
 
-def rule_edl(start: float, end: float | None, duration: float, title: str) -> dict:
+def own_title_lines(c) -> list[str]:
+    """AI 없이 만들 때의 상단 제목. 참고 쇼츠(타인의 재편집물)의 제목은 가져오지 않고, 확인된 사실(연예인·상품 이름)만으로 만든다.
+    둘 다 모르면 비워 두고 사용자가 직접 적게 한다."""
+    name = (c.celebrity.name if getattr(c, "celebrity", None) else "") or ""
+    prod = (c.product.name if getattr(c, "product", None) else "") or ""
+    lines = [x for x in (name.strip()[:20], prod.strip()[:20]) if x]
+    return lines if prod else []  # 연예인 이름만으로는 제목이 되지 않는다
+
+
+def rule_edl(start: float, end: float | None, duration: float, title_lines: list[str] | None = None) -> dict:
     """AI 없이: 알려준 위치에서 25초. 후킹은 구간의 40% 지점 3초(자막 없음)."""
     end = end if end and end > start + 8 else start + 25
     end = min(duration, max(end, start + 20))
     span = min(end - start, 25)
     return {"hook": {"start": start + span * 0.4, "end": start + span * 0.4 + 3, "caption": ""},
             "segments": [{"start": start, "end": start + span, "caption": ""}],
-            "title_lines": split_title(clean_title(title)), "reason": "규칙 편집(AI 미사용): 지정 위치에서 25초, 후킹은 구간 40% 지점 3초"}
+            "title_lines": list(title_lines or []), "reason": "규칙 편집(AI 미사용): 지정 위치에서 25초, 후킹은 구간 40% 지점 3초"}
 
 
 EDL_SCHEMA = {
@@ -351,7 +360,8 @@ def ai_edit(ff: str, src: str, info: dict, ctx: dict, rng: tuple[float, float], 
         "2) " + seg_rule + "상품이 화면에 보이는 장면을 반드시 포함. "
         "3) caption 은 각 구간 하단 자막 한 줄(18자 이내). 화면 자막·자막 발췌에 실제로 나온 말이나 사실 설명만 쓴다. 연예인 발언을 지어내지 않는다. "
         "'추천'은 실제로 추천한 경우에만. hook.caption 은 12자 이내의 궁금증 문구." + hi_rule + " "
-        "4) title_lines 는 상단 제목 2줄(각 12자 이내, 과장·허위 금지). 5) quote_seen 에는 화면 자막 등에서 실제로 읽은 핵심 문장을 그대로(없으면 빈 문자열). "
+        "4) title_lines 는 상단 제목 2줄(각 12자 이내, 과장·허위 금지). 제목·자막·내레이션은 원본 화면에서 확인한 내용으로 새로 쓴다: "
+        "reference_short_* 는 어떤 상품·장면인지 찾는 단서일 뿐이므로 그 제목·문구·표현을 그대로 옮기거나 살짝만 바꿔 쓰지 않는다. 5) quote_seen 에는 화면 자막 등에서 실제로 읽은 핵심 문장을 그대로(없으면 빈 문자열). "
         "6) 확인이 필요한 점(상품 불명확, 광고·협찬 표시가 보임 등)은 cautions 에 적는다. 시각은 반드시 제공된 칸의 시각 범위 안에서 고른다.\n"
         "7) style_guide 가 있으면 그 편집 스타일을 따른다: 후킹 길이·방식, 구간 수와 한 컷 최대 길이, 총 길이 목표, 제목·자막의 말투와 글자 수. "
         "스타일은 '방식'만 참고하고 다른 채널의 문구를 그대로 쓰지 않는다. own_twist(우리만의 차별점)를 반영해 한 가지 이상 다르게 구성한다. "
@@ -386,18 +396,41 @@ _STAR = re.compile(r"\*([^*]{1,20})\*")
 BOUNCE = "{\\fscx62\\fscy62\\t(0,110,\\fscx112\\fscy112)\\t(110,210,\\fscx100\\fscy100)}"  # 작게 → 살짝 크게 → 제자리(0.2초)
 
 
-def _ass_caption(s: str, highlight: str = "", base: str = "", bounce: bool = False) -> str:
-    """자막 한 줄. *단어* 는 강조색으로(강조색이 없는 스타일이면 별표만 지운다). bounce 면 나타날 때 통통 튄다.
+def _ass_caption(s: str, highlight: str = "", base: str = "", bounce: bool | str = False) -> str:
+    """자막 한 줄. *단어* 는 강조색으로(강조색이 없는 스타일이면 별표만 지운다).
+    bounce: False=없음 / True·"line"=한 줄이 통통 / "char"=글자가 하나씩 차례로 튀어 오름.
     강조가 끝나면 원래 글자색(base)으로 되돌린다 — \\r 로 초기화하면 튀는 움직임까지 지워지기 때문."""
     from .style_profile import ass_color
     t = _ass_text(s)
+    if not t:
+        return t
+    hi = ("\\c&H" + ass_color(highlight)[4:] + "&") if highlight else ""
+    back = ("\\c&H" + ass_color(base)[4:] + "&") if base else ""
+    if bounce == "char":
+        # 글자마다 자기 차례가 될 때까지 숨겼다가, 납작한 상태에서 위로 튀어 올랐다 제자리로(세로로만 늘려 옆 글자가 밀리지 않게)
+        chars: list[tuple[str, bool]] = []
+        pos = 0
+        for m in _STAR.finditer(t):
+            chars += [(ch, False) for ch in t[pos:m.start()]] + [(ch, bool(hi)) for ch in m.group(1)]
+            pos = m.end()
+        chars += [(ch, False) for ch in t[pos:]]
+        n = sum(1 for ch, _ in chars if not ch.isspace())
+        step = min(55, 620 // max(1, n))  # 글자 사이 간격(ms). 긴 자막도 0.6초 안에 다 나온다
+        out, k = [], 0
+        for ch, is_hi in chars:
+            if ch.isspace():
+                out.append(ch)
+                continue
+            t0 = k * step
+            out.append("{" + (hi if is_hi else back) + f"\\alpha&HFF&\\fscy35\\t({t0},{t0 + 1},\\alpha&H00&)"
+                       f"\\t({t0},{t0 + 90},\\fscy128)\\t({t0 + 90},{t0 + 190},\\fscy100)" + "}" + ch)
+            k += 1
+        return "".join(out)
     if not highlight:
         t = _STAR.sub(r"\1", t)
     else:
-        c = ass_color(highlight)
-        back = ("{\\c&H" + ass_color(base)[4:] + "&}") if base else "{\\r}"
-        t = _STAR.sub(lambda m: "{\\c&H" + c[4:] + "&}" + m.group(1) + back, t)
-    return (BOUNCE + t) if bounce and t else t
+        t = _STAR.sub(lambda m: "{" + hi + "}" + m.group(1) + ("{" + back + "}" if back else "{\\r}"), t)
+    return (BOUNCE + t) if bounce else t
 
 
 def default_font() -> str:
@@ -452,7 +485,8 @@ Style: Footer,{font},46,{ass_color((st.get("footer") or {}).get("color", "#FFFFF
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     ev = []
-    hi, bounce = ca.get("highlight_color", ""), bool(ca.get("bounce", False))
+    hi = ca.get("highlight_color", "")
+    bounce = (ca.get("bounce_mode") or "line") if ca.get("bounce") else False
     if ti["enabled"] and edl.get("title_lines"):
         lines = [_ass_text(x) for x in edl["title_lines"]]
         if len(lines) > 1 and ti.get("second_line_color"):
@@ -813,7 +847,7 @@ def _context(c: SourcingCandidate) -> dict:
             "product": ({"name": c.product.name, "brand": c.product.brand} if c.product else None),
             "celebrity": c.celebrity.name if c.celebrity else None,
             "original_title": orig.title if orig else None,
-            "note": "참고 쇼츠는 타인이 만든 재편집물이다. 그 자막을 베끼지 말고 원본 화면에 근거해 새로 구성한다."}
+            "note": "참고 쇼츠는 타인이 만든 재편집물이다. 어떤 상품·장면인지 찾는 단서로만 쓰고, 그 제목·자막·구성을 따라 하지 말고 원본 화면에 근거해 새로 구성한다."}
 
 
 def decide_edl(db, c: SourcingCandidate, proj: ShortsProject, r: ShortsRender, ff: str, info: dict, workdir: Path,
@@ -831,12 +865,14 @@ def decide_edl(db, c: SourcingCandidate, proj: ShortsProject, r: ShortsRender, f
         src_name = "입력한 위치" if basis == "manual_range" else "저장된 장면 위치"
         raise ShortsError(f"{src_name}({int(rng[0])}초)가 올린 영상 길이({int(info['duration'])}초)를 넘습니다. 올린 파일이 원본 전체가 맞는지 확인하거나 '대략 위치'를 다시 적어 주세요.")
     has_ai = bool(get_settings().anthropic_api_key)
-    title = c.video.title or ""
     if not has_ai:
         if rng is None:
             raise ShortsError("AI 키가 없으면 '대략 위치(분:초)'를 입력해야 합니다. 원본에서 상품이 나오는 시각을 적고 다시 눌러 주세요.")
         notes.append("AI 키가 없어 규칙으로 잘랐습니다(자막 문구 없음). 아래 편집안에서 시간을 고쳐 다시 렌더링할 수 있습니다.")
-        return rule_edl(rng[0], rng[1], info["duration"], title), basis + "+rule", notes
+        own = own_title_lines(c)
+        if not own:
+            notes.append("상단 제목은 비워 두었습니다(참고 쇼츠의 제목은 가져오지 않습니다). 편집안에서 직접 적어 주세요.")
+        return rule_edl(rng[0], rng[1], info["duration"], own), basis + "+rule", notes
     ctx = _context(c)
     if rng is None:
         if info["duration"] <= 200:
@@ -897,8 +933,8 @@ def run_render(render_id: int, reuse_edl: bool = False) -> None:
             edl.setdefault("credit", "")
             if not edl.get("credit"):
                 edl["credit"] = f"출처: {ch or '원본 채널'} 유튜브" if orig or ch else "출처: 원본 유튜브 영상"
-            if not edl.get("title_lines"):
-                edl["title_lines"] = split_title(clean_title(c.video.title))
+            if not edl.get("title_lines") and not reuse_edl:
+                edl["title_lines"] = own_title_lines(c)
             edl = normalize_edl(edl, info["duration"], target)
             if not reuse_edl and info["has_audio"]:
                 _set(db, r, "말 사이 무음에 컷 맞추는 중", 60)

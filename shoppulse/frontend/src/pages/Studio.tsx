@@ -92,6 +92,7 @@ export default function Studio() {
           {ready && s.source?.info && <span className="muted">{s.source.name} · {fmt.duration(Math.round(s.source.info.duration || 0))} · {s.source.info.width}×{s.source.info.height} · {((s.source.info.size || 0) / 1024 / 1024).toFixed(0)}MB</span>}
           {ready && <button className="text-xs underline muted" onClick={() => act(async () => { await api.studioDeleteSource(cid); return api.studio(cid) }, '원본 파일 삭제(디스크 정리)')}>원본 파일 지우기</button>}
         </div>
+        {ready && s.source?.warning && <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">⚠ {s.source.warning}</div>}
         {upPct !== null && <div className="mt-2 h-2 w-full overflow-hidden rounded bg-stone-200 dark:bg-stone-700"><div className="h-full bg-stone-900 transition-all dark:bg-stone-100" style={{ width: `${upPct}%` }} /></div>}
       </div>
 
@@ -193,7 +194,7 @@ export default function Studio() {
             )}
             <div className="card p-4 text-sm">
               <h3 className="mb-2 font-semibold">업로드용 글</h3>
-              <div className="flex items-center gap-2"><input className="input flex-1" readOnly value={s.upload_text.title_suggestion} /><button className="btn-ghost" onClick={() => copy(s.upload_text.title_suggestion, '제목')}>제목 복사</button></div>
+              <div className="flex items-center gap-2"><input className="input flex-1" readOnly placeholder="영상을 만들면 우리가 쓴 제목이 여기에 나옵니다(참고 쇼츠 제목은 쓰지 않습니다)" value={s.upload_text.title_suggestion} /><button className="btn-ghost" onClick={() => copy(s.upload_text.title_suggestion, '제목')}>제목 복사</button></div>
               <textarea className="input mt-2 text-xs" rows={4} readOnly value={s.upload_text.description} />
               <button className="btn-ghost mt-1" onClick={() => copy(s.upload_text.description, '설명')}>설명 복사</button>
             </div>

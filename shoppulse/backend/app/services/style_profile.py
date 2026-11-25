@@ -9,7 +9,7 @@ DEFAULT_STYLE: dict = {
     "title": {"enabled": True, "size": "medium", "color": "#FFF000", "second_line_color": "", "outline_color": "#000000",
               "box": False, "box_color": "#000000", "tone": "궁금증을 일으키는 짧은 문장", "patterns": []},
     "caption": {"enabled": True, "position": "below_video", "size": "medium", "color": "#FFFFFF", "outline_color": "#000000",
-                "box": False, "box_color": "#000000", "tone": "사실 설명형 한 줄", "max_chars": 18, "emoji": False, "highlight_color": "", "bounce": False},
+                "box": False, "box_color": "#000000", "tone": "사실 설명형 한 줄", "max_chars": 18, "emoji": False, "highlight_color": "", "bounce": False, "bounce_mode": "line"},
     "hook": {"seconds": 3.0, "pattern": "상품이 처음 드러나거나 반응이 큰 순간을 먼저 보여 준다", "zoom_punch": False, "caption_color": "#FFFFFF"},
     "pacing": {"total_seconds": 26.0, "segments": 2, "max_clip_seconds": 14.0, "note": ""},
     "credit": {"enabled": True},
@@ -75,7 +75,8 @@ def normalize_style(raw: dict | None) -> dict:
                     "tone": str(ca.get("tone") or d["caption"]["tone"])[:200],
                     "max_chars": int(_num(ca.get("max_chars"), 8, 28, 18)), "emoji": bool(ca.get("emoji", False)),
                     "highlight_color": hex_ok(ca.get("highlight_color"), "") if ca.get("highlight_color") else "",
-                    "bounce": bool(ca.get("bounce", False))},  # 자막이 나타날 때 통통 튀는 효과
+                    "bounce": bool(ca.get("bounce", False)),  # 자막이 나타날 때 통통 튀는 효과
+                    "bounce_mode": _enum(ca.get("bounce_mode"), ("line", "char"), "line")},  # line=한 줄이 함께 / char=글자가 하나씩 차례로
         "hook": {"seconds": round(_num(ho.get("seconds"), 1.5, 3.5, 3.0), 1), "pattern": str(ho.get("pattern") or d["hook"]["pattern"])[:200],
                  "zoom_punch": bool(ho.get("zoom_punch", False)), "caption_color": hex_ok(ho.get("caption_color"), "#FFFFFF")},
         "pacing": {"total_seconds": round(_num(pa.get("total_seconds"), 18, 60, 26), 1), "segments": int(_num(pa.get("segments"), 1, 10, 2)),

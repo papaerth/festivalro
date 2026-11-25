@@ -935,3 +935,55 @@ def test_narration_sfx_bgm_and_popups_end_to_end(client, tmp_path, monkeypatch):
     assert len(st["assets"]) == 2
     assert client.delete("/api/styles/bgm/my song.wav").json()["bgm"] == []
     client.delete(f"/api/styles/{sid}")
+
+
+def test_new_short_is_made_from_original_not_from_reference_short(client, tmp_path):
+    """참고 쇼츠는 단서일 뿐: 제목 문구를 가져오지 않고, 올린 파일이 쇼츠처럼 보이면 알려 준다."""
+    import subprocess, time
+    from app.services import shorts_maker
+    caps = shorts_maker.capabilities()
+    if not caps.get("available"):
+        import pytest; pytest.skip("ffmpeg 없음")
+    ff = caps["path"]
+    ref_title = "남이 만든 쇼츠의 기막힌 제목 #남의태그"
+    v = client.post("/api/videos", json={"url_or_id": "ref_short_1", "title": ref_title, "duration_seconds": 28,
+                                        "view_count": 900000, "fetch": False, "source_type": "reedit_shorts"}).json()
+    cid = client.post("/api/candidates", json={"video_id": v["id"], "channel_category": "living"}).json()["id"]
+    st = client.get(f"/api/studio/{cid}").json()
+    assert "새로 만듭니다" in st["notice"] and "단서로만" in st["notice"]
+    assert st["upload_text"]["title_suggestion"] == ""  # 참고 쇼츠 제목을 업로드 제목으로 제안하지 않는다
+
+    def make(name, size, dur):
+        p = tmp_path / name
+        subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=size={size}:rate=30:duration={dur}",
+                        "-f", "lavfi", "-i", f"sine=frequency=440:duration={dur}", "-c:v", caps["vcodec"], "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(p)], check=True)
+        return p
+
+    # 참고 쇼츠와 길이가 같은 세로 파일 → 원본이 아닌 것 같다고 알림(막지는 않음)
+    with make("short.mp4", "360x640", 28).open("rb") as f:
+        st = client.post(f"/api/studio/{cid}/source", files={"file": ("short.mp4", f, "video/mp4")}).json()
+    assert "참고 쇼츠와 같습니다" in st["source"]["warning"]
+    with make("vertical.mp4", "360x640", 40).open("rb") as f:
+        st = client.post(f"/api/studio/{cid}/source", files={"file": ("v.mp4", f, "video/mp4")}).json()
+    assert "세로형 짧은 영상" in st["source"]["warning"]
+    with make("orig.mp4", "640x360", 60).open("rb") as f:
+        st = client.post(f"/api/studio/{cid}/source", files={"file": ("orig.mp4", f, "video/mp4")}).json()
+    assert st["source"]["warning"] is None
+    client.post(f"/api/studio/{cid}/make", data={"hint": "0:10"})
+    for _ in range(400):
+        r = client.get(f"/api/studio/{cid}").json()["renders"][0]
+        if r["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    assert r["status"] == "done", r
+    assert r["edl"]["title_lines"] == [] and any("참고 쇼츠의 제목은 가져오지 않습니다" in n for n in r["notes"])
+    assert "남이 만든" not in json.dumps(r["edl"], ensure_ascii=False)
+    assert client.get(f"/api/studio/{cid}").json()["upload_text"]["title_suggestion"] == ""
+    # 사람이 제목을 적어 다시 만들면 그 제목이 업로드 제목 제안이 된다
+    client.post(f"/api/studio/{cid}/rerender", json={"hook": None, "segments": r["edl"]["segments"], "title_lines": ["우리가 새로 쓴", "제목"], "credit": r["edl"]["credit"]})
+    for _ in range(400):
+        r2 = client.get(f"/api/studio/{cid}").json()["renders"][0]
+        if r2["id"] != r["id"] and r2["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    assert r2["status"] == "done" and client.get(f"/api/studio/{cid}").json()["upload_text"]["title_suggestion"] == "우리가 새로 쓴 제목"

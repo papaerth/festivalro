@@ -216,7 +216,8 @@ def test_shorts_maker_edl_normalize_and_ass():
     assert [s["caption"] for s in edl["segments"]][0] == "a" and edl["total_seconds"] <= 32 and len(edl["title_lines"]) == 2
     short = normalize_edl({"segments": [{"start": 5, "end": 10, "caption": ""}]}, 100)
     assert short["total_seconds"] >= 18 and short["hook"] is None
-    r = normalize_edl(rule_edl(30, None, 90, "제목 #태그"), 90)
+    r = normalize_edl(rule_edl(30, None, 90, ["연예인", "상품 이름"]), 90)
+    assert r["title_lines"] == ["연예인", "상품 이름"] and normalize_edl(rule_edl(30, None, 90), 90)["title_lines"] == []
     assert 18 <= r["total_seconds"] <= 32
     assert snap(10.0, [(10.3, 10.5), (12, 12.4)]) == 10.4 and snap(10.0, [(11.5, 11.7)]) == 10.0
     ass = build_ass(edl | {"credit": "출처: 채널"}, "Malgun Gothic", 600, 1200)
@@ -410,3 +411,26 @@ def test_bouncy_captions_and_pip_normalize(tmp_path):
     m, r = Image.open(mask), Image.open(ring)
     assert m.size == (300, 300) and m.getpixel((150, 150)) == 255 and m.getpixel((2, 2)) == 0
     assert r.size == (316, 316) and r.getpixel((158, 158))[3] == 0 and r.getpixel((158, 4))[3] == 255
+
+
+def test_per_character_bounce_caption():
+    """글자가 하나씩 차례로 튀는 자막: 글자마다 자기 차례까지 숨겼다가 튀어 오르고, 강조색은 글자별로 유지된다."""
+    import re
+    from app.services.shorts_maker import BOUNCE, _ass_caption, build_ass, normalize_edl
+    from app.services.style_profile import normalize_style
+    t = _ass_caption("*3천원대* 립밤", "#FFD400", "#FFFFFF", "char")
+    blocks = re.findall(r"\{([^}]*)\}(.)", t)
+    assert [ch for _, ch in blocks] == list("3천원대립밤") and "대 {" in t  # 공백은 그대로, 글자마다 한 덩어리
+    starts = [int(re.search(r"\\t\((\d+),", b).group(1)) for b, _ in blocks]
+    assert starts == [0, 55, 110, 165, 220, 275]  # 차례로 등장
+    assert all("\\alpha&HFF&" in b and "\\fscy35" in b and "\\fscy128" in b and "\\fscy100" in b for b, _ in blocks)
+    assert [("00D4FF" in b) for b, _ in blocks] == [True] * 4 + [False] * 2 and all("FFFFFF" in b for b, _ in blocks[4:])
+    long = _ass_caption("가나다라마바사아자차카타파하가나다라마바", "", "#FFFFFF", "char")
+    assert max(int(x) for x in re.findall(r"\\t\((\d+),\d+,\\alpha", long)) <= 620  # 긴 자막도 0.6초 안에 다 나온다
+    assert _ass_caption("", "", "", "char") == "" and "{" not in _ass_caption("그냥", "", "", False)
+    st = normalize_style({"caption": {"bounce": True, "bounce_mode": "char", "highlight_color": "#FFD400"}})
+    assert st["caption"]["bounce_mode"] == "char" and normalize_style({"caption": {"bounce_mode": "이상"}})["caption"]["bounce_mode"] == "line"
+    edl = normalize_edl({"segments": [{"start": 10, "end": 30, "caption": "글자가 *하나씩*"}], "title_lines": ["제목"]}, 100)
+    ev = build_ass(edl, "Malgun Gothic", 300, 1300, st).split("[Events]")[1]
+    assert "\\alpha&HFF&" in ev and BOUNCE not in ev and "Title,,0,0,0,,제목" in ev  # 제목에는 효과를 주지 않는다
+    assert BOUNCE in build_ass(edl, "Malgun Gothic", 300, 1300, normalize_style({"caption": {"bounce": True}}))

@@ -42,6 +42,19 @@ def _render(r: ShortsRender) -> dict:
             "created_at": serializers.iso(r.created_at), "finished_at": serializers.iso(r.finished_at)}
 
 
+def _source_warning(proj: ShortsProject, short: Video) -> str | None:
+    """올린 파일이 원본(롱폼)이 아니라 쇼츠처럼 보이면 알려 준다(막지는 않는다). 참고 쇼츠를 다시 가공하는 프로그램이 아니기 때문."""
+    info = proj.source_info or {}
+    dur, w, h = info.get("duration"), info.get("width") or 0, info.get("height") or 0
+    if not dur or not proj.source_path:
+        return None
+    if short.duration_seconds and abs(dur - short.duration_seconds) <= 2 and dur <= 185:
+        return "올린 파일의 길이가 참고 쇼츠와 같습니다. 참고 쇼츠 파일이 아니라, 그 장면이 들어 있는 원본(롱폼) 영상을 올려 주세요."
+    if dur <= 90 and h > w:
+        return "올린 파일이 세로형 짧은 영상입니다. 다른 사람이 만든 쇼츠가 아니라 연예인 채널의 원본 영상이 맞는지 확인해 주세요."
+    return None
+
+
 def _asset(cid: int, a: dict) -> dict:
     return {"id": a["id"], "kind": a.get("kind", "product"), "name": a.get("name"), "method": a.get("method"),
             "method_label": overlay_assets.METHOD_LABEL.get(a.get("method") or "", ""), "url": f"/api/studio/{cid}/assets/{a['id']}/file"}
@@ -52,7 +65,9 @@ def _state(db: Session, c: SourcingCandidate) -> dict:
     renders = db.query(ShortsRender).filter(ShortsRender.candidate_id == c.id).order_by(ShortsRender.id.desc()).limit(10).all()
     v, orig = c.video, c.video.original
     plan = max(c.plans, key=lambda p: p.created_at) if c.plans else None
-    title = shorts_maker.clean_title(v.title)
+    # 업로드용 제목 제안: 우리가 만든 편집안의 제목 → 확인된 연예인·상품 이름. 참고 쇼츠(타인의 재편집물) 제목은 제안하지 않는다
+    done = next((r for r in renders if r.status == "done" and r.edl and r.edl.get("title_lines")), None)
+    title = " ".join(done.edl["title_lines"]) if done else " ".join(shorts_maker.own_title_lines(c))
     desc = "\n".join(x for x in [
         f"원본: {(orig.channel.channel_name if orig and orig.channel else (orig.yt_channel_title if orig else '')) or ''} - {orig.title if orig else ''}".strip(" -"),
         orig.url if orig else None,
@@ -68,7 +83,8 @@ def _state(db: Session, c: SourcingCandidate) -> dict:
                       "duration_seconds": orig.duration_seconds, "has_transcript": bool(orig.transcript)} if orig else None),
         "segment": serializers.segment(c.segment) if c.segment else None,
         "source": ({"name": proj.source_name, "info": proj.source_info, "exists": bool(proj.source_path and Path(proj.source_path).exists()),
-                    "hint_start": proj.hint_start, "hint_end": proj.hint_end} if proj else None),
+                    "hint_start": proj.hint_start, "hint_end": proj.hint_end,
+                    "warning": _source_warning(proj, v)} if proj else None),
         "renders": [_render(r) for r in renders],
         "ffmpeg": shorts_maker.capabilities(),
         "styles": [{"id": x.id, "name": x.name, "status": x.status, "summary": (x.profile or {}).get("summary")}
@@ -78,7 +94,7 @@ def _state(db: Session, c: SourcingCandidate) -> dict:
         "tts": audio_fx.tts_status(),
         "upload_text": {"title_suggestion": title, "description": desc,
                         "plan_titles": (plan.plan.get("title_candidates") if plan else None)},
-        "notice": "원본 mp4 는 직접 준비해 올려 주세요(프로그램은 유튜브 영상을 내려받지 않습니다). 원본 사용 권한·인용 범위는 직접 확인해야 하며, 출처 표기는 자동으로 들어갑니다.",
+        "notice": "찾아 주신 원본 영상으로 쇼츠를 새로 만듭니다. 참고 쇼츠는 어떤 상품·장면인지 찾는 단서로만 쓰고, 그 화면·제목·자막은 가져오지 않습니다. 원본 mp4 는 직접 준비해 올려 주세요(프로그램은 유튜브 영상을 내려받지 않습니다). 원본 사용 권한·인용 범위는 직접 확인해야 하며, 출처 표기는 자동으로 들어갑니다.",
     }
 
 
