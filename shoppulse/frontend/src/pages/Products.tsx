@@ -5,6 +5,7 @@ import { useAsync } from '../hooks'
 import { Badge, Confirm, ErrorBox, Field, Modal, Select, Spinner, toneFor, useToast } from '../components/ui'
 import type { Product } from '../types'
 import OfferSearchModal from '../components/OfferSearch'
+import CaptureInvestigateModal from '../components/CaptureInvestigate'
 
 export default function Products() {
   const [f, setF] = useState<Record<string, string>>({})
@@ -13,6 +14,7 @@ export default function Products() {
   const [edit, setEdit] = useState<Partial<Product> | null>(null)
   const [offerFor, setOfferFor] = useState<Product | null>(null)
   const [searchFor, setSearchFor] = useState<Product | null>(null)
+  const [capture, setCapture] = useState(false)
   const [offer, setOffer] = useState<Record<string, any>>({ seller: '쿠팡', stock_status: 'unknown', currency: 'KRW' })
   const act = async (fn: () => Promise<any>, ok: string) => { try { await fn(); toast(ok); q.reload() } catch (e: any) { toast(e.message, 'err') } }
 
@@ -21,7 +23,7 @@ export default function Products() {
       {node}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div><h1 className="text-2xl font-bold tracking-tight">상품</h1><p className="text-sm muted">상품명이 모호하면 유사 제품을 동일 제품으로 확정하지 마세요. 가격·재고는 확인 시점 기준입니다. 「판매처 조회」는 네이버 쇼핑·쿠팡 파트너스 공식 API(키 필요)를 사용합니다.</p></div>
-        <button className="btn-primary" onClick={() => setEdit({ name: '', category: 'food', identification_status: 'unidentified' })}>+ 상품 등록</button>
+        <div className="flex gap-2"><button className="btn-ghost" onClick={() => setCapture(true)}>캡처로 상품 조사(AI)</button><button className="btn-primary" onClick={() => setEdit({ name: '', category: 'food', identification_status: 'unidentified' })}>+ 상품 등록</button></div>
       </div>
       <div className="card grid gap-3 p-4 md:grid-cols-4">
         <Field label="검색"><input className="input" value={f.q || ''} onChange={(e) => setF({ ...f, q: e.target.value })} /></Field>
@@ -62,6 +64,7 @@ export default function Products() {
           <div className="col-span-2 flex justify-end gap-2"><button className="btn-ghost" onClick={() => setEdit(null)}>취소</button><button className="btn-primary" onClick={() => { const b: any = { ...edit }; delete b.id; delete b.offers; delete b.mention_count; delete b.updated_at; act(() => (edit.id ? api.patchProduct(edit.id, b) : api.createProduct(b)), '상품 저장').then(() => setEdit(null)) }}>저장</button></div>
         </div>}
       </Modal>
+      <CaptureInvestigateModal open={capture} onClose={() => setCapture(false)} onAdopt={async (it, cat) => { await api.createProduct({ name: it.name, brand: it.brand || null, category: cat, subcategory: it.model_or_option || null, identification_status: 'similar_candidate', features: it.features || null, notes: `[AI 캡처 조사] 근거: ${it.evidence}` }); q.reload() }} />
       {searchFor && <OfferSearchModal open={!!searchFor} onClose={() => setSearchFor(null)} productId={searchFor.id} initialQuery={`${searchFor.brand || ''} ${searchFor.name}`.trim()} onAdded={() => q.reload()} />}
       <Modal open={!!offerFor} onClose={() => setOfferFor(null)} title={`판매처 추가 — ${offerFor?.name}`}>
         <div className="grid grid-cols-2 gap-3">

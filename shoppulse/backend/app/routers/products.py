@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from ..models import utcnow
@@ -37,6 +37,40 @@ def search_offers(q: str, limit: int = 10):
     if not q.strip():
         raise HTTPException(400, "검색어를 입력하세요")
     return _search(q.strip(), limit)
+
+
+@router.post("/investigate")
+async def investigate(files: list[UploadFile] = File(...), hint: str | None = Form(None), video_id: int | None = Form(None),
+                      db: Session = Depends(get_db)):
+    """캡처 이미지로 상품을 AI 조사하고 쿠팡·네이버 검색 링크(+네이버 API 결과)를 돌려준다."""
+    from ..services.commerce import naver_status, search_naver
+    from ..services.product_identifier import AINotConfigured, investigate_capture
+    images = []
+    for f in files[:4]:
+        data = await f.read()
+        if not (f.content_type or "").startswith("image/") or len(data) > 8 * 1024 * 1024:
+            raise HTTPException(400, f"이미지 파일만 8MB 이하로 올려주세요: {f.filename}")
+        images.append((data, f.content_type))
+    ctx = None
+    if video_id:
+        v = db.get(Video, video_id)
+        if v:
+            ctx = {"title": v.title, "celebrity": v.celebrity.name if v.celebrity else None,
+                   "description": (v.description or "")[:800]}
+    try:
+        result = investigate_capture(images, hint=hint, context=ctx)
+    except AINotConfigured as e:
+        raise HTTPException(503, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"AI 조사 실패: {e}")
+    if naver_status() == "configured":
+        for it in result.get("items", []):
+            q = (it.get("search_queries") or [it.get("name")])[0]
+            it["naver_results"] = search_naver(q, 5).get("items", [])[:5] if q else []
+    result["naver_api"] = naver_status()
+    return result
 
 
 @router.post("", status_code=201)

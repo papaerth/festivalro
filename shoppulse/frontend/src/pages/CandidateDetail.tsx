@@ -5,6 +5,7 @@ import { useAsync } from '../hooks'
 import { Badge, Confirm, ErrorBox, Field, MetricPill, ProductStatusBadge, Select, Spinner, toneFor, useToast } from '../components/ui'
 import ViewGraph from '../components/ViewGraph'
 import OfferSearchModal from '../components/OfferSearch'
+import CaptureInvestigateModal from '../components/CaptureInvestigate'
 import type { CandidateDetail as CD, Score } from '../types'
 
 export default function CandidateDetail() {
@@ -24,6 +25,7 @@ export default function CandidateDetail() {
   const [target, setTarget] = useState(25)
   const [aiBusy, setAiBusy] = useState(false)
   const [offerSearch, setOfferSearch] = useState(false)
+  const [capture, setCapture] = useState(false)
   const [prodUrl, setProdUrl] = useState('')
 
   useEffect(() => {
@@ -141,7 +143,8 @@ export default function CandidateDetail() {
             ) : <p className="text-sm muted">상품이 연결되지 않았습니다.</p>}
             <div className="mt-2 flex flex-wrap gap-1">
               <button className="btn-primary px-2 py-1 text-xs" disabled={aiBusy} onClick={async () => { setAiBusy(true); try { const r = await api.identifyProduct(v.id, [], true); toast(r.suggestions.length ? `AI 추정 ${r.suggestions.length}건 — 아래에서 등록·연결하세요` : 'AI: 상품을 특정하지 못함'); q.reload() } catch (e: any) { toast(e.message, 'err') } finally { setAiBusy(false) } }}>{aiBusy ? '추정 중…' : 'AI로 상품 찾기(썸네일·설명)'}</button>
-              <Link to={`/videos/${v.id}`} className="btn-ghost px-2 py-1 text-xs">캡처 이미지로 추정·수동 연결 →</Link>
+              <button className="btn-ghost px-2 py-1 text-xs" onClick={() => setCapture(true)}>캡처로 상품 조사(쿠팡·네이버 검색)</button>
+              <Link to={`/videos/${v.id}`} className="btn-ghost px-2 py-1 text-xs">쇼츠 상세 →</Link>
               {c.original_detail && c.original_detail.products.length > 0 && <button className="btn-ghost px-2 py-1 text-xs" onClick={() => act(() => api.copyOriginalProducts(v.id), '원본 상품 연결')}>원본의 상품 가져오기</button>}
             </div>
             <div className="mt-2"><Field label="등록된 상품 바로 연결"><Select value="" onChange={(pid) => pid && act(() => api.addMention({ video_id: v.id, product_id: Number(pid) }).then(() => api.patchCandidate(c.id, { product_id: Number(pid) })), '상품 연결')} placeholder="선택" options={(products.data || []).map((p) => [String(p.id), `${p.brand || ''} ${p.name} (${LABELS.identification[p.identification_status]})`])} /></Field></div>
@@ -215,6 +218,7 @@ export default function CandidateDetail() {
         </div>
       </div>
 
+      <CaptureInvestigateModal open={capture} onClose={() => setCapture(false)} videoId={v.id} hintDefault={c.celebrity_name ? `${c.celebrity_name} 영상 속 상품` : ''} onAdopt={async (it, cat) => { const p = await api.adoptSuggestion(v.id, { name: it.name, brand: it.brand || null, category: cat, subcategory: it.model_or_option || null, evidence: it.evidence }); await api.patchCandidate(c.id, { product_id: p.id }); q.reload() }} />
       {c.product && <OfferSearchModal open={offerSearch} onClose={() => setOfferSearch(false)} productId={c.product.id} initialQuery={`${c.product.brand || ''} ${c.product.name}`.trim()} onAdded={() => q.reload()} />}
       <div className="card p-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

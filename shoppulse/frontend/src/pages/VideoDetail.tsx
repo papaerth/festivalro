@@ -5,6 +5,7 @@ import { useAsync } from '../hooks'
 import { Badge, Confirm, ErrorBox, Field, MetricPill, Modal, ProductStatusBadge, Select, Spinner, toneFor, useToast } from '../components/ui'
 import type { AISuggestion } from '../types'
 import ViewGraph from '../components/ViewGraph'
+import CaptureInvestigateModal from '../components/CaptureInvestigate'
 
 const CT: [string, string][] = [['direct_recommend', '직접 추천형'], ['sponsored', '광고·협찬형'], ['long_term_love', '애정템형'], ['natural_use', '자연 사용형'], ['experience', '경험담형'], ['comparison', '비교형'], ['taste_reveal', '취향 공개형'], ['value_find', '가성비 발견형'], ['premium_taste', '프리미엄 취향형'], ['regret', '실패·후회형'], ['life_tip', '생활 노하우형'], ['curiosity_debate', '호기심·논쟁형'], ['accidental_find', '우연한 발견형'], ['repeat_buy', '반복 구매형'], ['gift', '선물 추천형']]
 const toSec = (s: string) => { if (!s) return null; const p = s.split(':').map(Number); if (p.some(isNaN)) return null; return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p.length === 2 ? p[0] * 60 + p[1] : p[0] }
@@ -21,6 +22,7 @@ export default function VideoDetail() {
   const [modal, setModal] = useState<null | 'snapshot' | 'metric' | 'segment' | 'candidate' | 'product'>(null)
   const [aiBusy, setAiBusy] = useState(false)
   const capRef = useRef<HTMLInputElement>(null)
+  const [capture, setCapture] = useState(false)
   const [form, setForm] = useState<Record<string, any>>({})
   const v = q.data
   const act = async (fn: () => Promise<any>, ok: string) => { try { await fn(); toast(ok); setModal(null); setForm({}); q.reload() } catch (e: any) { toast(e.detail?.message || e.message, 'err') } }
@@ -141,6 +143,7 @@ export default function VideoDetail() {
                 <button className="btn-ghost px-2 py-1" disabled={aiBusy} onClick={async () => { setAiBusy(true); try { const r = await api.identifyProduct(v.id, [], true); toast(r.suggestions.length ? `AI 추정 ${r.suggestions.length}건` : 'AI: 상품을 특정하지 못함'); q.reload() } catch (e: any) { toast(e.message, 'err') } finally { setAiBusy(false) } }}>{aiBusy ? '추정 중…' : '썸네일로 추정'}</button>
                 <input ref={capRef} type="file" accept="image/*" multiple className="hidden" onChange={async (e) => { const files = Array.from(e.target.files || []); e.target.value = ''; if (!files.length) return; setAiBusy(true); try { const r = await api.identifyProduct(v.id, files, true); toast(r.suggestions.length ? `AI 추정 ${r.suggestions.length}건` : 'AI: 상품을 특정하지 못함'); q.reload() } catch (e2: any) { toast(e2.message, 'err') } finally { setAiBusy(false) } }} />
                 <button className="btn-primary px-2 py-1" disabled={aiBusy} onClick={() => capRef.current?.click()}>캡처 이미지 올려 추정</button>
+                <button className="btn-ghost px-2 py-1" onClick={() => setCapture(true)}>캡처로 상품 조사(검색 링크)</button>
               </div></div>
             <p className="muted">영상을 보다가 제품이 나오는 장면을 <b>캡처(Win+Shift+S)</b>해 올리면 그 화면으로 추정합니다. 결과는 추정일 뿐이며 '유사 상품 후보'로 등록되고, 사람이 확인해 상태를 바꿔야 '확인됨'이 됩니다. Claude API 키가 필요합니다.</p>
             {v.ai_product_suggestions && (
@@ -169,6 +172,7 @@ export default function VideoDetail() {
         </div>
       </div>
 
+      <CaptureInvestigateModal open={capture} onClose={() => setCapture(false)} videoId={v.id} onAdopt={async (it, cat) => { await api.adoptSuggestion(v.id, { name: it.name, brand: it.brand || null, category: cat, subcategory: it.model_or_option || null, evidence: it.evidence }); q.reload() }} />
       <Modal open={modal === 'snapshot'} onClose={() => setModal(null)} title="조회수 관측 입력">
         <div className="space-y-3">
           <Field label="관측 시각" hint="과거 그래프를 추측해 채우지 마세요. 실제로 확인한 시각과 조회수만 입력합니다."><input type="datetime-local" className="input" value={form.observed_at || ''} onChange={(e) => setForm({ ...form, observed_at: e.target.value })} /></Field>

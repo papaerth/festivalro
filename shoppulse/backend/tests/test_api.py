@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 from datetime import datetime, timedelta
@@ -462,3 +463,12 @@ def test_search_offers_without_keys_reports_not_configured(client):
 def test_weather_in_stats_is_structured(client):
     w = client.get("/api/dashboard/stats").json()["season"]["weather"]
     assert w["status"] in ("ok", "unavailable") and w["region"]
+
+
+def test_investigate_requires_ai_key(client):
+    import io
+    png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+    r = client.post("/api/products/investigate", files={"files": ("cap.png", io.BytesIO(png), "image/png")}, data={"hint": "쿠팡 상품"})
+    assert r.status_code == 503 and "ANTHROPIC_API_KEY" in r.json()["detail"]
+    r = client.post("/api/products/investigate", files={"files": ("x.txt", io.BytesIO(b"hi"), "text/plain")})
+    assert r.status_code == 400

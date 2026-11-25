@@ -110,3 +110,74 @@ def identify(video, extra_images: list[tuple[bytes, str]] | None = None, use_thu
     data["image_sources"] = image_sources
     data["disclaimer"] = "AI 추정입니다. '유사 상품 후보'로 등록되며 사람이 확인해야 '확인됨'이 됩니다."
     return data
+
+
+INVESTIGATE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["items", "notes"],
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["name", "brand", "model_or_option", "visible_price", "category", "features", "confidence", "evidence", "search_queries"],
+                "properties": {
+                    "name": {"type": "string"}, "brand": {"type": "string"}, "model_or_option": {"type": "string"},
+                    "visible_price": {"type": "string"},
+                    "category": {"type": "string", "enum": ["beauty", "living", "food", "unknown"]},
+                    "features": {"type": "string"},
+                    "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+                    "evidence": {"type": "string"},
+                    "search_queries": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
+                },
+            },
+        },
+        "notes": {"type": "string"},
+    },
+}
+
+
+def investigate_capture(images: list[tuple[bytes, str]], hint: str | None = None, context: dict | None = None) -> dict:
+    """사용자가 올린 캡처(영상 장면·쿠팡/네이버 상품 페이지 등)에서 상품 정보를 읽어내고 검색어·검색 링크를 만든다."""
+    from urllib.parse import quote
+
+    s = get_settings()
+    if not s.anthropic_api_key:
+        raise AINotConfigured("ANTHROPIC_API_KEY 가 설정되지 않았습니다. .env 에 키를 넣으면 캡처 조사 기능을 쓸 수 있습니다.")
+    if not images:
+        raise ValueError("이미지가 필요합니다")
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=s.anthropic_api_key)
+    model = s.anthropic_model or "claude-opus-5-5"
+    content: list[dict] = [{"type": "image", "source": {"type": "base64", "media_type": mt, "data": base64.standard_b64encode(data).decode()}}
+                           for data, mt in images[:4]]
+    content.append({"type": "text", "text": (
+        "이미지는 사용자가 캡처한 화면입니다(유튜브 영상 장면, 또는 쿠팡·네이버 상품 페이지 등). 화면에 보이는 상품을 조사해 주세요.\n"
+        "규칙: 1) 보이는 글자(상품명·브랜드·로고·패키지·가격·옵션)와 형태를 근거로만 판단하고 evidence 에 근거를 적습니다. "
+        "2) 확신이 없으면 confidence=low, brand 는 빈 문자열. 지어내지 않습니다. 3) 가격은 화면에 보일 때만 visible_price 에 숫자+단위로 적고 없으면 빈 문자열. "
+        "4) 상품마다 쿠팡·네이버쇼핑에서 찾기 좋은 한국어 검색어를 1~3개 만듭니다(브랜드+상품명+용량/모델 순, 불필요한 수식어 제외). "
+        "5) category 는 beauty/living/food/unknown. 6) 여러 상품이면 최대 5개. 한국어로 답합니다.\n"
+        + (f"사용자 힌트: {hint}\n" if hint else "") + (f"영상 정보: {json.dumps(context, ensure_ascii=False)}" if context else "")
+    )})
+    resp = client.messages.create(
+        model=model, max_tokens=4096,
+        system="당신은 한국 온라인 쇼핑 상품 식별 전문가입니다. 보이는 근거로만 판단하고 근거 없는 상품명을 만들지 않습니다.",
+        messages=[{"role": "user", "content": content}],
+        output_config={"format": {"type": "json_schema", "schema": INVESTIGATE_SCHEMA}},
+    )
+    if resp.stop_reason == "refusal":
+        raise RuntimeError("AI 가 응답을 거부했습니다.")
+    data = json.loads(next((b.text for b in resp.content if b.type == "text"), "{}"))
+    for it in data.get("items", []):
+        q = (it.get("search_queries") or [f"{it.get('brand', '')} {it.get('name', '')}".strip()])[0]
+        it["links"] = {
+            "coupang": f"https://www.coupang.com/np/search?q={quote(q)}",
+            "naver_shopping": f"https://search.shopping.naver.com/search/all?query={quote(q)}",
+            "google": f"https://www.google.com/search?q={quote(q)}",
+        }
+    data["model"] = model
+    data["disclaimer"] = "AI 추정입니다. 링크로 직접 확인한 뒤 등록하세요. 등록 시 '유사 상품 후보' 상태로 저장됩니다."
+    return data

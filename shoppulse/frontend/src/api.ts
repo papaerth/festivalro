@@ -93,6 +93,7 @@ export const api = {
   suggestScore: (id: number) => req<T.CandidateDetail>('POST', `/api/candidates/${id}/scores/suggest`),
   setVerification: (id: number, b: { item: string; status: string; note?: string | null }) => req<T.CandidateDetail>('PUT', `/api/candidates/${id}/verification`, b),
   setProduced: (id: number, b: { produced: boolean; produced_url?: string | null }) => req<T.CandidateDetail>('PUT', `/api/candidates/${id}/produced`, b),
+  investigate: (files: File[], hint?: string, video_id?: number) => { const fd = new FormData(); files.forEach((f) => fd.append('files', f)); if (hint) fd.append('hint', hint); if (video_id) fd.append('video_id', String(video_id)); return req<T.InvestigateResult>('POST', '/api/products/investigate', fd, true) },
   searchOffers: (q: string, limit = 10) => req<T.OfferSearch>('GET', `/api/products/search-offers${qs({ q, limit })}`),
   createPlan: (id: number, b: { target_seconds: number; provider: 'auto' | 'template' }) => req<T.Plan>('POST', `/api/candidates/${id}/plans`, b),
 
