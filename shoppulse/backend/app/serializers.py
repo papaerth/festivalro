@@ -302,6 +302,10 @@ def candidate_summary(c: SourcingCandidate, config: dict | None = None) -> dict:
         "reason_summary": _reason_summary(c, ls),
         "original_video": (video_summary(c.video.original, with_graph=False) if c.video.original else None),
         "original_match": _match_brief(c.video.original_match),
+        "original_status": ("n/a" if c.video.source_type not in ("reedit_shorts", "competitor") else
+                            "linked" if c.video.original_video_id else
+                            "needs_review" if (c.video.original_match or {}).get("candidates") else
+                            "searched" if (c.video.original_match or {}).get("checked_at") else "none"),
         "original_has_transcript": bool(c.video.original and c.video.original.transcript),
         "video_product_status": product_status(c.video),
         "evidence": evidence_summary(c.video.original) if c.video.original else evidence_summary(c.video),

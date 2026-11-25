@@ -27,7 +27,7 @@ export default function CandidateCard({ c, draggable, onDragStart, rank, rankPre
           {c.is_short_candidate ? <Badge tone="amber">재편집 쇼츠</Badge> : <Badge tone={toneFor.verification(v?.channel_verification || null)}>{LABELS.verification[v?.channel_verification || 'unverified']}</Badge>}
         </div>
         <Link to={`/candidates/${c.id}`} className="line-clamp-2 text-sm font-semibold leading-snug hover:underline">{v?.title}</Link>
-        {c.is_short_candidate && <div className="text-[11px] muted">{c.original_video ? <>원본: <span className="text-stone-700 dark:text-stone-300">{c.original_video.title.slice(0, 40)}</span></> : <span className="text-amber-700 dark:text-amber-300">원본 영상 미연결</span>}</div>}
+        {c.is_short_candidate && <div className="text-[11px] muted">{c.original_video ? <>원본: <span className="text-stone-700 dark:text-stone-300">{c.original_video.title.slice(0, 40)}</span>{c.original_video.url && <> <a className="underline" href={c.original_video.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗</a></>}</> : c.original_status === 'needs_review' ? <span className="text-amber-700 dark:text-amber-300">원본 후보 {c.original_match?.candidates.length}개 — 상세에서 확인</span> : c.original_status === 'searched' ? <span className="text-amber-700 dark:text-amber-300">원본 자동 탐색: 미발견</span> : <span className="text-amber-700 dark:text-amber-300">원본 영상 미연결</span>}</div>}
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] muted">
           <span>{fmt.date(v?.published_at)}</span><span>조회 {fmt.compact(v?.view_count)}</span>
           <span>VPH {v?.vph === null || v?.vph === undefined ? '미확인' : v.vph.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}</span>

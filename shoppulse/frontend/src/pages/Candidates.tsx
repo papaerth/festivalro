@@ -10,7 +10,7 @@ const FORMATS = Object.entries(LABELS.format) as [string, string][]
 
 export default function Candidates() {
   const [sp] = useSearchParams()
-  const [f, setF] = useState<Record<string, string>>({ sort: 'score', ...(sp.get('produced') ? { produced: sp.get('produced')!, status: 'published,analyzing' } : {}) })
+  const [f, setF] = useState<Record<string, string>>({ sort: 'score', ...(sp.get('produced') ? { produced: sp.get('produced')!, status: 'published,analyzing' } : {}), ...(sp.get('original_status') ? { original_status: sp.get('original_status')! } : {}) })
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }))
   const meta = useAsync(() => api.candidateMeta())
   const celebs = useAsync(() => api.celebrities())
@@ -44,6 +44,7 @@ export default function Candidates() {
         <Field label="조회수 최소"><input className="input" placeholder="예: 100000" value={f.min_views || ''} onChange={(e) => set('min_views', e.target.value)} /></Field>
         <div className="md:col-span-2"><Field label="게시 기간"><div className="flex gap-1 md:col-span-2"><input type="date" className="input" value={f.published_from || ''} onChange={(e) => set('published_from', e.target.value)} /><input type="date" className="input" value={f.published_to || ''} onChange={(e) => set('published_to', e.target.value)} /></div></Field></div>
         <Field label="제작 준비"><Select value={f.production_ready || ''} onChange={(v) => set('production_ready', v)} placeholder="전체" options={[['true', '준비 완료만'], ['false', '미해결만']]} /></Field>
+        <Field label="원본 연결"><Select value={f.original_status || ''} onChange={(v) => set('original_status', v)} placeholder="전체" options={[['linked', '연결됨'], ['needs_review', '확인 필요(후보 제시)'], ['searched', '찾았지만 미발견'], ['none', '아직 안 찾음']]} /></Field>
         <Field label="제작 여부(내 체크)"><Select value={f.produced || ''} onChange={(v) => set('produced', v)} placeholder="전체" options={[['yes', '제작함'], ['no', '아직 안 만듦']]} /></Field>
         <Field label="정렬 (저장 데이터)"><Select value={f.sort} onChange={(v) => set('sort', v)} options={Object.entries(m?.sorts || {})} /></Field>
         <div className="flex items-end gap-2"><label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={f.include_demo === 'true'} onChange={(e) => set('include_demo', e.target.checked ? 'true' : '')} /> DEMO</label><label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={f.include_rejected === 'true'} onChange={(e) => set('include_rejected', e.target.checked ? 'true' : '')} /> 제외됨 포함</label><button className="btn-ghost w-full" onClick={() => setF({ sort: 'score' })}>필터 초기화</button></div>

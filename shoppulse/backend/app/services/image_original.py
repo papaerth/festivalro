@@ -73,7 +73,8 @@ def claude_read_frame(images: list[tuple[bytes, str]], short: Video, known_names
 
 
 def find_original_by_image(db: Session, short: Video, images: list[tuple[bytes, str]], use_thumbnail: bool = True,
-                           product_name: str | None = None, max_searches: int = 3) -> dict:
+                           product_name: str | None = None, max_searches: int = 3, seed: dict | None = None) -> dict:
+    """seed: 앞서 한 제목·해시태그 기반 탐색 결과(original_match). 그 후보들을 합쳐서 함께 순위 매긴다."""
     from .product_identifier import fetch_image
     from .collection import parse_iso8601_duration, upsert_video_from_api
     from .youtube_connector import YouTubeAPIError, YouTubeClient, YouTubeNotConfigured
@@ -91,9 +92,10 @@ def find_original_by_image(db: Session, short: Video, images: list[tuple[bytes, 
     celebs = detect_celebrities(db, short)
     names = [c.name for c in celebs]
     kws = extract_keywords(short, product_name, names)
-    result = {"checked_at": now.isoformat(), "method": "image", "celebrities": names, "keywords": kws, "candidates": [],
+    result = {"checked_at": now.isoformat(), "method": "image" if not seed else "text+image", "celebrities": names, "keywords": kws,
+              "candidates": [dict(c, how=c.get("how", "db")) for c in (seed or {}).get("candidates", [])],
               "best": None, "confidence": "none", "reason": "", "api_searches": 0, "notes": [], "image_analysis": {},
-              "images_used": len(imgs)}
+              "images_used": len(imgs), "hashtags": (seed or {}).get("hashtags"), "text_queries": (seed or {}).get("queries")}
     client = None
     try:
         client = YouTubeClient()
@@ -185,6 +187,7 @@ def find_original_by_image(db: Session, short: Video, images: list[tuple[bytes, 
         result["notes"].append("ANTHROPIC_API_KEY 가 없어 화면 읽기를 할 수 없습니다.")
     if client:
         client.close()
+    result["api_searches"] += (seed or {}).get("api_searches", 0)
 
     result["candidates"].sort(key=lambda x: (-x["score"], -(x["duration_seconds"] or 0)))
     result["candidates"] = result["candidates"][:8]

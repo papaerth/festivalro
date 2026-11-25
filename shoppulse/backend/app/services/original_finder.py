@@ -321,11 +321,24 @@ def _ai_pick(short: Video, candidates: list[dict], names: list[str]) -> dict | N
     return out
 
 
-def link_originals_step(db: Session, use_api: bool = False, max_searches_total: int = 10) -> dict:
-    """원본이 없는 활성 후보 쇼츠에 자동 탐색을 돌린다. API 검색은 총 max_searches_total 번까지(할당량 100/회)."""
+def link_originals_step(db: Session, use_api: bool = False, max_searches_total: int = 10, use_image: bool | None = None) -> dict:
+    """원본이 없는 활성 후보 쇼츠에 자동 탐색을 돌린다(버튼 없이).
+
+    1) 제목·해시태그·연예인 채널 수집 영상으로 찾고, use_api 면 채널 안 YouTube 검색까지(할당량 100/회, 총 max_searches_total 회)
+    2) 그래도 확신이 낮으면 **쇼츠 썸네일(공식 API 이미지)로 이미지 검색**: Google Vision 키가 있으면 같은 장면을 쓴 유튜브 페이지를,
+       없으면 AI 가 화면을 읽어 검색어를 만들고 YouTube 에서 찾는다. 사람이 캡처해 구글에 붙여넣는 일을 프로그램이 대신한다.
+    결과는 후보마다 '연결됨 / 확인 필요(후보 목록) / 미발견' 으로 남고, 추측으로 단정하지 않는다.
+    """
+    from ..config import get_settings
+    from ..models import UserSetting
+    s = get_settings()
+    if use_image is None:
+        st = db.get(UserSetting, "auto_image_original")
+        use_image = bool(st.value.get("value", True)) if st else True
+    image_possible = use_image and (s.google_vision_api_key or s.anthropic_api_key)
     cands = (db.query(SourcingCandidate)
              .filter(SourcingCandidate.is_demo.is_(False), SourcingCandidate.status.notin_(["rejected", "published", "analyzing"])).all())
-    linked, tried, searches = 0, 0, 0
+    linked, tried, searches, image_tried, needs_review, unresolved = 0, 0, 0, 0, 0, 0
     for c in cands:
         v = c.video
         if v.source_type not in DERIVED or v.original_video_id:
@@ -335,13 +348,37 @@ def link_originals_step(db: Session, use_api: bool = False, max_searches_total: 
         if om.get("checked_at") and not use_api:
             try:
                 if (utcnow() - datetime.fromisoformat(om["checked_at"])).total_seconds() < 86400:
+                    if om.get("candidates"):
+                        needs_review += 1
+                    else:
+                        unresolved += 1
                     continue
             except Exception:
                 pass
         allow_api = use_api and searches < max_searches_total
-        r = find_original(db, v, c.product.name if c.product else None, use_api=allow_api, max_searches=2)
+        pname = c.product.name if c.product else None
+        r = find_original(db, v, pname, use_api=allow_api, max_searches=2)
         tried += 1
         searches += r.get("api_searches", 0)
+        if not r.get("linked") and image_possible and use_api and searches < max_searches_total and v.thumbnail_url \
+                and not (om.get("image_analysis") and om.get("method") in ("image", "text+image")):
+            try:
+                from .image_original import find_original_by_image
+                r2 = find_original_by_image(db, v, [], use_thumbnail=True, product_name=pname,
+                                            max_searches=min(3, max_searches_total - searches), seed=r)
+                image_tried += 1
+                searches += r2.get("api_searches", 0) - r.get("api_searches", 0)
+                r = r2
+            except Exception as e:  # 이미지 검색 실패는 기록만
+                r.setdefault("notes", []).append(f"썸네일 이미지 검색 실패: {str(e)[:120]}")
+                v.original_match = r
+                db.commit()
         if r.get("linked"):
             linked += 1
-    return {"tried": tried, "linked": linked, "api_searches": searches}
+        elif r.get("candidates"):
+            needs_review += 1
+        else:
+            unresolved += 1
+    return {"tried": tried, "linked": linked, "needs_review": needs_review, "unresolved": unresolved,
+            "image_searched": image_tried, "api_searches": searches,
+            "note": ("이미지 검색: " + ("Google Vision + AI" if s.google_vision_api_key else "AI 화면 읽기(썸네일)") if image_possible else "이미지 검색 비활성(키 없음)")}

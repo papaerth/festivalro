@@ -265,6 +265,21 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
     originals_api = link_originals_step(db, use_api=True, max_searches_total=int(lim.value.get("value", 10)) if lim else 10)
     prepared = prepare_candidates(db)
     prepared["originals_api"] = originals_api
+    # 보고서용 원본 연결 현황(활성 쇼츠 후보 기준)
+    from ..serializers import candidate_summary as _cs  # noqa
+    st = {"linked": 0, "needs_review": 0, "unresolved": 0}
+    for c in db.query(SourcingCandidate).filter(SourcingCandidate.is_demo.is_(False),
+                                                SourcingCandidate.status.notin_(["rejected", "published", "analyzing"])).all():
+        v = c.video
+        if v.source_type not in ("reedit_shorts", "competitor"):
+            continue
+        if v.original_video_id:
+            st["linked"] += 1
+        elif (v.original_match or {}).get("candidates"):
+            st["needs_review"] += 1
+        else:
+            st["unresolved"] += 1
+    prepared["originals_status"] = st
     ai = ai_score_step(db) if ai_score else {"skipped": True, "reason": "비활성", "scored": 0}
     yesterday = report_date - timedelta(days=1)
     prev = (
@@ -281,6 +296,8 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
     summary = {"graph_types": {}, "total_candidates": 0, "total_final": 0, "stats_refresh": refresh,
                "auto_discovery": discovery, "ai_scoring": ai, "ai_products": ai_products, "computed_outliers": outliers,
                "rule_scores": prepared["rule_scores"], "template_plans": prepared["template_plans"],
+               "originals": prepared.get("originals_api"), "originals_status": prepared.get("originals_status"),
+               "segments": prepared.get("segments"),
                "targets": {"candidates_per_category": TARGET_CANDIDATES, "final_per_category": TARGET_FINAL}}
 
     for cat in CATEGORIES:

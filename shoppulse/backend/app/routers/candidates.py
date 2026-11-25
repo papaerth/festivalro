@@ -42,7 +42,7 @@ def list_candidates(
     video_format: str | None = None, sponsorship: str | None = None, production_ready: bool | None = None,
     min_outlier: float | None = None, min_vph: float | None = None, min_views: int | None = None,
     published_from: datetime | None = None, published_to: datetime | None = None,
-    include_demo: bool = False, include_rejected: bool = False, produced: str | None = None,
+    include_demo: bool = False, include_rejected: bool = False, produced: str | None = None, original_status: str | None = None,
     sort: str = "score", limit: int = Query(60, le=500), offset: int = 0,
     db: Session = Depends(get_db),
 ):
@@ -89,6 +89,8 @@ def list_candidates(
 
     def keep(i):
         if grade and i["grade_key"] != grade:
+            return False
+        if original_status and i.get("original_status") != original_status:
             return False
         if min_score is not None and (i["score"] is None or i["score"] < min_score):
             return False
