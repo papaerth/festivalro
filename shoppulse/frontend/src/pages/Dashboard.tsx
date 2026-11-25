@@ -90,9 +90,6 @@ export default function Dashboard() {
               <div className="mt-1 text-[11px]">키 인증 실패면 .env 의 ANTHROPIC_API_KEY 를, "DLL" 이나 "import" 오류면 update.bat 로 최신 버전(직접 HTTP 호출 대체) 적용 후 다시 실행하세요.</div>
             </div>
           )}
-          {false && (
-            <p>
-          )}
           {!rep ? <p className="text-sm muted">아직 소싱을 실행하지 않았습니다. 「오늘 소싱 실행」을 눌러 저장된 후보를 평가하세요.</p> : (
             <div className="grid gap-3 md:grid-cols-3">
               {rep.categories.map((c: any) => (
