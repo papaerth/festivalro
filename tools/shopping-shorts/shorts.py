@@ -175,9 +175,8 @@ def stage_design(ep: Episode, max_rounds: int = 3):
         product = ep.info["product"] or f"{an['pick'].get('brand', '')} {an['pick']['name']}".strip()
         if not prev_plan or prev_plan.get("product") != product:
             prev_plan = prev_copy = None      # 제품이 바뀌었으면 이전 설계는 참고하지 않는다
-    from pipeline.build import people_images
     content = brain.design_request(metas, an, zoom_asr, sheets, ep.info, yt, images, crop_default, ep.vidiq,
-                                   feedback, prev_plan, prev_copy, list(people_images(ep.inp)))
+                                   feedback, prev_plan, prev_copy)
     channels = [y.get("channel", "") for y in yts]
     history, plan, copy, res = None, None, None, None
     for rnd in range(1, max_rounds + 2):
@@ -214,9 +213,6 @@ def stage_design(ep: Episode, max_rounds: int = 3):
     plan, notes = checks.tighten(plan, asrs)
     for n in notes:
         log(f"[다듬음] {n}")
-    from pipeline.build import add_tts_stills
-    plan = add_tts_stills({**plan, "tts_stills": int(util.settings().get("tts_stills") or 4)})   # TTS 구간에 지나갈 장면들
-    plan.pop("tts_stills", None)
     util.write_json(ep.w("plan.json"), plan)
     copy["warnings"] = checks.validate(load_plan(ep.w("plan.json")), metas, ep.inp, asrs)["warnings"]
     util.write_json(ep.w("copy.json"), copy)
@@ -376,18 +372,6 @@ def stage_copy(ep: Episode) -> Path:
             if k not in used:
                 checks_.append(f"영상 {'AB'[k]}({ep.sources[k].name})에서는 이 제품이 나오는 쓸 만한 장면을 찾지 못해 "
                                f"영상 {'AB'[1 - k]}의 장면만 썼습니다")
-    done = util.read_json(ep.out / "_plan_resolved.json", {}) or {}
-    bgs = [x.get("bg", "") for x in done.get("segments", []) if x.get("type") == "tts"]
-    if bgs and not any("사용자" in b for b in bgs):       # TTS 구간에 무엇을 깔았는지와, 직접 사진을 넣으려면 몇 장이 필요한지
-        checks_.append(f"나레이션(TTS) {len(bgs)}곳의 화면: {' / '.join(bgs)}. 직접 고른 사진을 쓰려면 한 곳에 4~5장씩, "
-                       f"모두 {len(bgs) * 4}~{len(bgs) * 5}장을 [추가 설정 → TTS 사진]에 넣고 다시 만드세요")
-    from pipeline.build import people_hits, people_images
-    people = people_images(ep.inp)
-    shown = {n for _, _, n in people_hits(plan, people)}
-    for n in people:
-        if n not in shown:
-            checks_.append(f"인물 사진 '{n}'을(를) 넣었지만, 고른 장면의 자막에 그 이름이 나오지 않아 띄우지 못했습니다 "
-                           "(수정 요청에 \"" + n + " 이야기하는 장면 넣어줘\"라고 적어 보세요)")
     pol_must, pol_warn = checks.policy_problems(plan, copy)        # 유튜브 정책(자해·섭식 장애)에 걸리기 쉬운 표현
     checks_ += [f"[검수] 유튜브 정책 주의 — {m}" for m in pol_must + pol_warn]
     checks_ += [f"[검수] {i}" for i in q.get("issues", [])] + list(q.get("notes", []))

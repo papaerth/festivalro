@@ -144,11 +144,6 @@ def center_plan(plan: dict, src) -> list[str]:
             fix(s, [a + (b - a) * (k + 0.5) / n for k in range(n)], f"{i + 1}번 장면")
         elif s.get("type") == "tts" and not s.get("image") and s.get("still_t") is not None:
             fix(s, [float(s["still_t"])], f"{i + 1}번 장면(정지 화면)")
-            for n, st in enumerate(s.get("stills") or []):      # TTS 구간에 지나가는 다른 장면들
-                if n == 0:
-                    st["x0"] = int(s.get("x0", st.get("x0", 0)))
-                else:
-                    fix(st, [float(st["t"])], f"{i + 1}번 장면(정지 화면 {n + 1})")
     th = plan.get("thumbnail")
     if isinstance(th, dict) and th.get("t") is not None:
         fix(th, [float(th["t"])], "썸네일")

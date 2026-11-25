@@ -11,9 +11,7 @@
 - 원본 영상 파일 (필수). 같은 제품을 다룬 영상 둘을 섞으려면 둘을 넣는다(아래 "두 영상 섞기")
 - `info.json` — `{"url": 유튜브 링크, "inpock": 인포크 번호, "product": 제품명, "channel": 채널명}` (모두 선택. `python shorts.py new <편> --url …` 로 만든다).
   두 영상이면 `"url2"`(둘째 링크)와 `"videos": [첫 영상 파일, 둘째 영상 파일]`
-- `img1.jpg`, `img2.jpg` … — TTS 구간에 쓸 이미지 (선택. 여러 장이면 TTS 구간마다 나눠 차례로 지나간다 `build.user_slides`.
-  없으면 원본 영상의 다른 장면을 자동으로 골라 지나가게 한다 `build.add_tts_stills` → 구간의 `stills: [{"t","x0"}, …]`)
-- `인물_<이름>.jpg` — 언급 인물 사진 (선택. 자막에 그 이름이 나오는 순간 영상 아래쪽 모서리에 동그랗게 띄운다. `build.people_hits`·`pip_image`)
+- `img1.jpg`, `img2.jpg` — TTS 구간에 쓸 이미지 (선택. 없으면 원본 영상의 정지 화면)
 - `tts1.mp3`, `tts2.mp3` — 일레븐랩스 키가 없을 때 직접 넣는 TTS 음성 (선택)
 - `comments.json` — 댓글을 직접 줄 때 (선택. 형식은 아래)
 - `vidiq.txt` — vidIQ 분석 결과를 붙여 넣은 글 (선택. 자동 실행의 제품 선정·컷 설계가 함께 읽는다)
@@ -77,8 +75,6 @@ python shorts.py auto <편>        # 또는 --all
   스키마를 키우지 않으려는 방법이다),
   TTS는 `{"type":"tts","text","audio":"tts1.mp3","image" 또는 "still_t"+"x0","sfx"}`.
 - `crop`: `size`(1:1 한 변, 1080p 기본 840), `y0`(기본 0), `x_min`/`x_max`(크롭이 들어가도 되는 원본 x 범위).
-- 자막 항목의 `other: true` 는 주인공이 아닌 다른 사람의 말(다른 색·위쪽·강조선. 모델은 text 맨 앞에 `^`로 표시).
-- 구간의 `blur: true` 는 그 구간의 `erase` 사각형을 지우는 대신 흐리게 덮는다(깔끔히 지워지지 않을 때).
 - 원본 글씨: plan 맨 위 `erase`(영상 내내 같은 자리의 글씨)와 구간의 `erase`는 원본 좌표 사각형 `[[x,y,w,h], …]`을 주변 화소로 메운다.
   구간에 `"mirror": false`를 주면 그 구간만 거울반전을 하지 않는다. 우선순위는 RULES.md(피하기 → 지우기 → 반전 풀기).
 - `cards`: `seg`(뜨기 시작하는 timeline 순번), `offset`, `dur`, `text`(원문 그대로), `likes`, `heart`.
@@ -88,7 +84,7 @@ python shorts.py auto <편>        # 또는 --all
   실제 캡처 이미지를 쓰려면 `image`(파일명)와 `mosaic`([[x,y,w,h], …] 가릴 영역)를 준다.
 - `ranges`: 고른 제품이 나오는 원본 구간 `[[시작, 끝], …]`(analysis의 `pick.ranges`에서 옴). 있으면 규칙 검사가
   모든 컷·정지 화면·썸네일이 이 안에 있는지 본다. 제품과 무관한 장면은 넣지 않는다.
-- `title`: 화면 상단 두 줄(= 썸네일 문구). `title_keys`: 줄마다 색을 줄 낱말(빨간 띠 모양에서 쓴다). `thumbnail`: `{"t","x0"}`. 구간의 `note`는 그 장면에 무엇이 보이는지(보고의 장면 구성에 나온다).
+- `title`: 화면 상단 두 줄(= 썸네일 문구). `thumbnail`: `{"t","x0"}`. 구간의 `note`는 그 장면에 무엇이 보이는지(보고의 장면 구성에 나온다).
 - `sfx_files`: `{"ding": "파일.wav", …}` 로 실제 효과음 파일을 쓸 수 있다(없으면 합성음). 컷 전환 소리(`whoosh`)는 렌더링에서 뺀다(`sfx_off`).
 - 화면 배치·속도 등 고정값은 `pipeline/build.py`의 `DEFAULTS`. plan의 `layout`으로 편마다 덮어쓸 수 있다.
 
@@ -100,8 +96,7 @@ python shorts.py auto <편>        # 또는 --all
 - `preview_gui.py` 미리보기 창(글자체·크기 고르기, 앱별 화면 요소 덧그리기). 고른 값은 `settings.json`(깃 제외)에 저장되고
   `build.apply_defaults`가 읽는다(`font_title`, `font_sub`, `title_size`, `sub_size`, `title_bold`, `sub_bold`,
   `music_file`, `music_volume`, 자막 변화 `font_em`·`em_scale`·`sub_vary`·`sub_colors`(cycle|yellow)·`sub_anim`(pop|rise|none).
-  plan에 직접 적은 값이 우선). `sub_sticker`(포인트 스티커), `tts_bg`(stills|clip|one)·`tts_stills`(장 수), 제목·출처 모양 `title_style`(plain|band)·`source_format`(plain|bar)·`source_size`·`source_y`·`source_alpha`(%)·`pip_pos`(left|right),
-  `inpock_url`(내 인포크 링크 주소. 본 창의 추가 설정에서 적고, 설명의 번호 줄 아래에 들어간다)도 여기에 있다. `music_file`이 있으면 `<제품명>_음악.mp4`도 만든다.
+  plan에 직접 적은 값이 우선). `inpock_url`(내 인포크 링크 주소. 본 창의 추가 설정에서 적고, 설명의 번호 줄 아래에 들어간다)도 여기에 있다. `music_file`이 있으면 `<제품명>_음악.mp4`도 만든다.
   `pipeline/fonts.py` 한글 글자체 목록(윈도우 글자체 + `fonts/` 폴더, 깃 제외)과 추천 무료 글자체 내려받기(`RECOMMENDED`) · `pipeline/platforms.py` 쇼츠·틱톡·릴스 화면 요소
 - `pipeline/asr_words.py` 음성 인식(어절별 시각) · `pipeline/sheets.py` 프레임 시트 · `pipeline/build.py` 렌더링
 - `pipeline/checks.py` 규칙 검사·쉼 제거 · `pipeline/qa.py` 완성본 검수
