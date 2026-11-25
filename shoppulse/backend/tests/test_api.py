@@ -734,7 +734,7 @@ def test_reference_style_learn_and_make_with_style(client, tmp_path):
     prof = s1["profile"] | {"layout": {"mode": "color_bg", "fg_zoom": 9}, "hook": {"seconds": 2.0, "zoom_punch": True, "pattern": "p"},
                             "title": s1["profile"]["title"] | {"color": "#00E5FF", "box": True}, "end_question": True, "kick": ["끝 질문 자막"]}
     p1 = client.patch(f"/api/styles/{s1['id']}", json={"name": "빠른 컷", "profile": prof}).json()
-    assert p1["name"] == "빠른 컷" and p1["profile"]["layout"]["fg_zoom"] == 1.45 and p1["profile"]["title"]["color"] == "#00E5FF"
+    assert p1["name"] == "빠른 컷" and p1["profile"]["layout"]["fg_zoom"] == 1.8 and p1["profile"]["title"]["color"] == "#00E5FF"
     assert [x["name"] for x in client.get("/api/styles").json()["styles"]] == ["주소만", "빠른 컷"]
 
     # 이 스타일로 쇼츠 만들기
@@ -798,3 +798,36 @@ def test_interrupted_jobs_are_recovered_on_startup(client):
     assert by["학습 중단"]["status"] == "failed" and by["재학습 중단"]["status"] == "ready"
     for s in by.values():
         client.delete(f"/api/styles/{s['id']}")
+
+
+def test_style_file_import_export_and_backup_keeps_styles(client):
+    """분석해 둔 스타일 파일(.json) 가져오기·내보내기. 예전 백업을 복원해도 스타일은 지워지지 않는다."""
+    payload = {"format": "shoppulse-styles", "version": 1, "styles": [
+        {"name": "검은 배경 빠른 컷", "channel_url": "https://www.youtube.com/@ref_a/shorts", "yt_channel_id": "UCaaaaaaaaaaaaaaaaaaaaaa", "channel_title": "ref_a",
+         "profile": {"summary": "s", "layout": {"mode": "color_bg", "bg_color": "#000000", "fg_zoom": 99}, "pacing": {"segments": 9, "total_seconds": 25},
+                     "caption": {"highlight_color": "#FFD400"}, "footer": {"text": "내 채널"}},
+         "stats": {"sources": ["영상 분석"], "avg_shot_seconds_est": 2.0}},
+        {"name": "", "profile": {}}, {"name": "프로필 없음"}]}
+    up = lambda body: client.post("/api/styles/import", files={"file": ("styles.json", json.dumps(body, ensure_ascii=False).encode("utf-8"), "application/json")})
+    assert up({"format": "other"}).status_code == 400
+    assert client.post("/api/styles/import", files={"file": ("x.json", b"not json", "application/json")}).status_code == 400
+    r = up(payload).json()
+    assert r["created"] == 1 and r["updated"] == 0
+    st = [x for x in r["styles"] if x["name"] == "검은 배경 빠른 컷"][0]
+    assert st["status"] == "ready" and st["profile"]["layout"]["fg_zoom"] == 1.8 and st["profile"]["pacing"]["segments"] == 9
+    assert st["profile"]["footer"]["text"] == "내 채널" and st["stats"]["avg_shot_seconds_est"] == 2.0
+    payload["styles"][0]["name"] = "이름만 바꿈"
+    r2 = up(payload).json()  # 같은 채널이면 새로 만들지 않고 갱신
+    assert r2["created"] == 0 and r2["updated"] == 1 and [x["name"] for x in r2["styles"] if x["id"] == st["id"]] == ["이름만 바꿈"]
+    ex = client.get("/api/styles/export").json()
+    assert ex["format"] == "shoppulse-styles" and any(x["yt_channel_id"] == "UCaaaaaaaaaaaaaaaaaaaaaa" for x in ex["styles"])
+    # 백업에 스타일이 들어가고, 스타일 표가 없는 예전 백업을 복원해도 스타일은 남는다
+    from app.database import SessionLocal
+    from app.services import backup
+    with SessionLocal() as db:
+        full = backup.export_all(db)
+        assert any(x["name"] == "이름만 바꿈" for x in full["tables"]["reference_styles"])
+        old = {"format": "shoppulse-backup", "version": 1, "tables": {k: v for k, v in full["tables"].items() if k != "reference_styles"}}
+        backup.restore_all(db, old, "replace")
+    assert any(x["id"] == st["id"] for x in client.get("/api/styles").json()["styles"])
+    client.delete(f"/api/styles/{st['id']}")

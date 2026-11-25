@@ -20,7 +20,7 @@ TABLE_ORDER = [
     "celebrities", "youtube_channels", "videos", "video_metrics", "view_snapshots", "video_segments",
     "products", "product_mentions", "product_offers", "scoring_versions", "sourcing_candidates",
     "sourcing_scores", "verification_records", "shorts_plans", "daily_reports", "upload_schedule",
-    "production_tasks", "data_sources", "collection_jobs", "audit_logs", "user_settings",
+    "production_tasks", "data_sources", "collection_jobs", "audit_logs", "user_settings", "reference_styles",
 ]
 
 
@@ -79,6 +79,8 @@ def restore_all(db: Session, payload: dict, mode: str = "replace") -> dict:
     try:
         if mode == "replace":
             for name in reversed(TABLE_ORDER):
+                if name not in tables:  # 예전 백업에 없는 표(나중에 추가된 것)는 지우지 않고 그대로 둔다
+                    continue
                 db.execute(_table(name).delete())
         for name in TABLE_ORDER:
             rows = tables.get(name) or []

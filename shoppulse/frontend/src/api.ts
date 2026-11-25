@@ -131,6 +131,7 @@ export const api = {
   styleCreate: (name: string, channel_url: string, files: File[]) => { const fd = new FormData(); fd.append('name', name); fd.append('channel_url', channel_url); files.forEach((f) => fd.append('files', f)); return req<T.RefStyle>('POST', '/api/styles', fd, true) },
   styleRelearn: (id: number, files: File[]) => { const fd = new FormData(); files.forEach((f) => fd.append('files', f)); return req<T.RefStyle>('POST', `/api/styles/${id}/relearn`, fd, true) },
   stylePatch: (id: number, body: { name?: string; profile?: T.StyleProfile }) => req<T.RefStyle>('PATCH', `/api/styles/${id}`, body),
+  stylesImport: (file: File) => { const fd = new FormData(); fd.append('file', file); return req<{ created: number; updated: number; styles: T.RefStyle[] }>('POST', '/api/styles/import', fd, true) },
   styleDelete: (id: number) => req<void>('DELETE', `/api/styles/${id}`),
   studioDeleteSource: (id: number) => req<void>('DELETE', `/api/studio/${id}/source`),
   studioUpload: (id: number, file: File, onProgress: (pct: number) => void) => new Promise<T.StudioState>((resolve, reject) => {

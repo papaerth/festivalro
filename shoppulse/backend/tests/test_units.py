@@ -237,9 +237,9 @@ def test_style_profile_normalize_guide_and_ass():
     s = normalize_style({"layout": {"mode": "이상한값", "fg_zoom": 5, "bg_color": "red"}, "title": {"color": "ff0066", "size": "huge", "patterns": ["a"] * 20},
                          "caption": {"position": "bottom", "max_chars": 500}, "hook": {"seconds": 99, "zoom_punch": 1},
                          "pacing": {"total_seconds": 5, "segments": 50}, "end_question": 1, "kick": ["k"] * 20})
-    assert s["layout"] == {"mode": "blur_bg", "bg_color": "#101010", "fg_zoom": 1.45, "fg_position": "center"}
+    assert s["layout"] == {"mode": "blur_bg", "bg_color": "#101010", "fg_zoom": 1.8, "fg_position": "center"}
     assert s["title"]["color"] == "#FF0066" and s["title"]["size"] == "medium" and len(s["title"]["patterns"]) <= 6
-    assert s["hook"]["seconds"] <= 5 and 18 <= s["pacing"]["total_seconds"] <= 40 and s["pacing"]["segments"] <= 6 and len(s["kick"]) <= 6
+    assert s["hook"]["seconds"] <= 5 and 18 <= s["pacing"]["total_seconds"] <= 40 and s["pacing"]["segments"] == 10 and len(s["kick"]) <= 6
     g = style_guide(s)
     assert isinstance(g, dict) and json_safe(g)
     edl = normalize_edl({"hook": {"start": 40, "end": 43, "caption": "후킹"}, "segments": [{"start": 5, "end": 25, "caption": "본편"}],
@@ -258,3 +258,27 @@ def test_style_profile_normalize_guide_and_ass():
 def json_safe(o) -> bool:
     json.dumps(o, ensure_ascii=False)
     return True
+
+
+def test_style_fast_cuts_highlight_and_footer():
+    """레퍼런스 채널들의 공통 요소: 2초 안팎의 빠른 컷, 자막 핵심 단어 강조색, 하단 고정 문구."""
+    from app.services.shorts_maker import _ass_caption, build_ass, normalize_edl
+    from app.services.style_profile import normalize_style, style_guide
+    assert _ass_caption("*3천원대* 립밤", "#FFD400") == "{\\c&H00D4FF&}3천원대{\\r} 립밤"
+    assert _ass_caption("*3천원대* 립밤") == "3천원대 립밤" and _ass_caption("별표 * 하나", "#FFD400") == "별표 * 하나"
+    st = normalize_style({"layout": {"mode": "color_bg", "bg_color": "#000000", "fg_zoom": 1.6}, "caption": {"highlight_color": "#FFD400", "position": "over_video"},
+                          "footer": {"text": "상품 정보는 프로필 링크 12번\n둘째줄", "color": "nope"}, "pacing": {"segments": 9, "total_seconds": 55, "max_clip_seconds": 1}})
+    assert st["layout"]["fg_zoom"] == 1.6 and st["pacing"] == {"total_seconds": 55.0, "segments": 9, "max_clip_seconds": 2.0, "note": ""}
+    assert st["footer"] == {"text": "상품 정보는 프로필 링크 12번 둘째줄", "color": "#FFFFFF"}
+    g = style_guide(st)
+    assert g["highlight_keyword"] is True and g["target_segments"] == 9 and style_guide(normalize_style(None))["highlight_keyword"] is False
+    # 2초짜리 컷 9개가 그대로 유지된다(예전에는 4개·3초 이상만 가능)
+    edl = normalize_edl({"hook": {"start": 1, "end": 3.5, "caption": "*이게* 뭐길래"},
+                         "segments": [{"start": 5 + i * 4, "end": 7 + i * 4, "caption": f"컷 *{i}*"} for i in range(9)], "title_lines": ["가", "나"]}, 100, 25)
+    assert len(edl["segments"]) == 9 and 19 <= edl["total_seconds"] <= 30
+    ass = build_ass(edl | {"credit": "출처: 채널"}, "Malgun Gothic", 300, 1300, st)
+    assert ass.count("{\\c&H00D4FF&}") == 10 and "Footer,,0,0,0,,상품 정보는 프로필 링크 12번 둘째줄" in ass
+    assert "Footer,," not in build_ass(edl, "Malgun Gothic", 300, 1300, normalize_style(None))  # 문구가 없으면 표시하지 않는다
+    # 60초 가까운 레시피형 목표도 허용
+    long = normalize_edl({"segments": [{"start": i * 6, "end": i * 6 + 5.5, "caption": ""} for i in range(10)]}, 300, 55)
+    assert 49 <= long["total_seconds"] <= 60

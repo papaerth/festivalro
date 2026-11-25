@@ -122,13 +122,14 @@ export interface StyleProfile {
   summary: string
   layout: { mode: 'blur_bg' | 'crop_fill' | 'color_bg'; bg_color: string; fg_zoom: number; fg_position: 'center' | 'upper' }
   title: { enabled: boolean; size: 'small' | 'medium' | 'large'; color: string; second_line_color: string; outline_color: string; box: boolean; box_color: string; tone: string; patterns: string[] }
-  caption: { enabled: boolean; position: 'below_video' | 'bottom' | 'over_video'; size: 'small' | 'medium' | 'large'; color: string; outline_color: string; box: boolean; box_color: string; tone: string; max_chars: number; emoji: boolean }
+  caption: { enabled: boolean; position: 'below_video' | 'bottom' | 'over_video'; size: 'small' | 'medium' | 'large'; color: string; outline_color: string; box: boolean; box_color: string; tone: string; max_chars: number; emoji: boolean; highlight_color: string }
   hook: { seconds: number; pattern: string; zoom_punch: boolean; caption_color: string }
   pacing: { total_seconds: number; segments: number; max_clip_seconds: number; note: string }
+  footer: { text: string; color: string }
   end_question: boolean; kick: string[]
 }
 export interface RefStyle {
   id: number; name: string; channel_url: string | null; channel_title: string | null; status: 'learning' | 'ready' | 'failed'; step: string | null
   profile: StyleProfile | null; error: string | null; created_at: string; updated_at: string
-  stats: { sources?: string[]; notes?: string[]; evidence?: string[]; confidence?: string; shorts_analyzed?: number; avg_seconds?: number | null; avg_title_chars?: number | null; avg_hashtags?: number | null; sample_videos?: number; avg_shot_seconds?: number; cuts_per_10s?: number } | null
+  stats: { sources?: string[]; notes?: string[]; evidence?: string[]; confidence?: string; shorts_analyzed?: number; avg_seconds?: number | null; avg_title_chars?: number | null; avg_hashtags?: number | null; sample_videos?: number; avg_shot_seconds?: number; cuts_per_10s?: number; avg_shot_seconds_est?: number; learned_by?: string } | null
 }

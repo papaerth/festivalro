@@ -58,6 +58,55 @@ def list_styles(db: Session = Depends(get_db)):
             "note": "스타일은 '편집 방식'만 학습합니다(화면 배치·자막 모양·후킹 방식·컷 속도). 다른 채널의 문구·장면은 복제하지 않습니다."}
 
 
+@router.get("/export")
+def export_styles(db: Session = Depends(get_db)):
+    """학습된 스타일을 파일로 내보내기(다른 PC 로 옮기거나 보관)."""
+    return {"format": "shoppulse-styles", "version": 1,
+            "styles": [{"name": s.name, "channel_url": s.channel_url, "yt_channel_id": s.yt_channel_id, "channel_title": s.channel_title,
+                        "profile": s.profile, "stats": s.stats}
+                       for s in db.query(ReferenceStyle).filter(ReferenceStyle.status == "ready").order_by(ReferenceStyle.id).all()]}
+
+
+@router.post("/import")
+async def import_styles(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """스타일 파일(.json) 가져오기. 같은 채널(또는 같은 이름)이 이미 있으면 그 스타일을 새 값으로 바꾼다."""
+    import json
+    try:
+        payload = json.loads((await file.read()).decode("utf-8-sig"))
+    except Exception:
+        raise HTTPException(400, "스타일 파일(.json)을 읽을 수 없습니다")
+    if not isinstance(payload, dict) or payload.get("format") != "shoppulse-styles" or not isinstance(payload.get("styles"), list):
+        raise HTTPException(400, "SHOPPULSE 스타일 파일이 아닙니다")
+    created = updated = 0
+    for it in payload["styles"][:MAX_STYLES]:
+        if not isinstance(it, dict) or not isinstance(it.get("profile"), dict) or not str(it.get("name") or "").strip():
+            continue
+        name = str(it["name"]).strip()[:100]
+        st = None
+        if it.get("yt_channel_id"):
+            st = db.query(ReferenceStyle).filter(ReferenceStyle.yt_channel_id == str(it["yt_channel_id"])).first()
+        st = st or db.query(ReferenceStyle).filter(ReferenceStyle.name == name).first()
+        if st and st.status == "learning":
+            continue
+        if not st:
+            if db.query(ReferenceStyle).count() >= MAX_STYLES:
+                break
+            st = ReferenceStyle(name=name)
+            db.add(st)
+            created += 1
+        else:
+            updated += 1
+        st.name = name
+        st.channel_url = (str(it.get("channel_url") or "").strip() or None)
+        st.yt_channel_id = (str(it.get("yt_channel_id") or "").strip() or None)
+        st.channel_title = (str(it.get("channel_title") or "").strip()[:200] or None)
+        st.profile = normalize_style(it["profile"])  # 값은 항상 안전 범위로 정리
+        st.stats = it.get("stats") if isinstance(it.get("stats"), dict) else None
+        st.status, st.step, st.error = "ready", "완료", None
+    db.commit()
+    return {"created": created, "updated": updated, "styles": [_ser(s) for s in db.query(ReferenceStyle).order_by(ReferenceStyle.id).all()]}
+
+
 @router.post("", status_code=201)
 def create_style(name: str = Form(""), channel_url: str = Form(""), files: list[UploadFile] = File(default=[]),
                  db: Session = Depends(get_db)):

@@ -163,7 +163,7 @@ def split_title(text: str, max_len: int = 13) -> list[str]:
 
 def normalize_edl(edl: dict, duration: float, total_target: float | None = None) -> dict:
     """AI·사람이 준 편집안을 안전한 범위로 정리: 범위 클램프, 후킹 1.5~3.5초, 본편 시간순·겹침 제거, 총 길이(기본 18~32초, 스타일 목표 ±5초)."""
-    tmin, tmax = (TOTAL_MIN, TOTAL_MAX) if not total_target else (max(15.0, total_target - 6), min(45.0, total_target + 5))
+    tmin, tmax = (TOTAL_MIN, TOTAL_MAX) if not total_target else (max(15.0, total_target - 6), min(65.0, total_target + 5))
     def clampseg(sg):
         a, b = float(sg.get("start", 0)), float(sg.get("end", 0))
         a = max(0.0, min(a, max(0.0, duration - 0.5))); b = max(a + 0.3, min(b, duration))
@@ -276,6 +276,11 @@ def ai_edit(ff: str, src: str, info: dict, ctx: dict, rng: tuple[float, float], 
     sheets = contact_sheets(ff, src, a, b, step, 2, 2, 780, workdir, "fine")[:20]
     content = _sheet_content(sheets)
     payload = {"task": "이 구간에서 20~30초 쇼츠 편집안을 만든다.", "range": [round(a, 1), round(b, 1)], **ctx}
+    fast = bool(guide and guide.get("target_segments", 0) > 4)  # 레퍼런스가 빠른 컷이면 짧은 컷을 여러 개 허용
+    seg_rule = (f"segments 는 시간순 {max(3, guide['target_segments'] - 2)}~{guide['target_segments']}개, 한 컷 1.5~{guide['max_clip_seconds']}초로 짧게 끊되 "
+                f"말이 중간에 잘리지 않는 지점에서 자른다(합계는 target_total_seconds 에 맞춘다). 같은 장면을 길게 두지 말고 반응·상품 클로즈업·사용 장면을 번갈아 고른다. "
+                if fast else "segments 는 시간순 1~4개, 합계 18~27초, 말이 끊기지 않게 한 구간은 3초 이상. ")
+    hi_rule = (" caption 안에서 가장 중요한 단어 하나를 *별표*로 감싼다(예: *3천원대* 립밤). 그 단어는 강조색으로 표시된다." if guide and guide.get("highlight_keyword") else "")
     if guide:
         payload["style_guide"] = guide
     if transcript:
@@ -284,15 +289,15 @@ def ai_edit(ff: str, src: str, info: dict, ctx: dict, rng: tuple[float, float], 
     system = (
         "쇼핑 쇼츠 편집자. 한국어. 원본 영상 구간의 장면 모음 이미지(각 칸 시각 제공)와 자막 발췌(있으면)를 보고 편집안을 만든다.\n"
         "규칙: 1) hook 은 가장 궁금증을 일으키는 2~3초(상품이 처음 드러나거나 반응이 큰 순간). 본편과 겹쳐도 된다. "
-        "2) segments 는 시간순 1~4개, 합계 18~27초, 말이 끊기지 않게 한 구간은 3초 이상. 상품이 화면에 보이는 장면을 반드시 포함. "
+        "2) " + seg_rule + "상품이 화면에 보이는 장면을 반드시 포함. "
         "3) caption 은 각 구간 하단 자막 한 줄(18자 이내). 화면 자막·자막 발췌에 실제로 나온 말이나 사실 설명만 쓴다. 연예인 발언을 지어내지 않는다. "
-        "'추천'은 실제로 추천한 경우에만. hook.caption 은 12자 이내의 궁금증 문구. "
+        "'추천'은 실제로 추천한 경우에만. hook.caption 은 12자 이내의 궁금증 문구." + hi_rule + " "
         "4) title_lines 는 상단 제목 2줄(각 12자 이내, 과장·허위 금지). 5) quote_seen 에는 화면 자막 등에서 실제로 읽은 핵심 문장을 그대로(없으면 빈 문자열). "
         "6) 확인이 필요한 점(상품 불명확, 광고·협찬 표시가 보임 등)은 cautions 에 적는다. 시각은 반드시 제공된 칸의 시각 범위 안에서 고른다.\n"
         "7) style_guide 가 있으면 그 편집 스타일을 따른다: 후킹 길이·방식, 구간 수와 한 컷 최대 길이, 총 길이 목표, 제목·자막의 말투와 글자 수. "
         "스타일은 '방식'만 참고하고 다른 채널의 문구를 그대로 쓰지 않는다. own_twist(우리만의 차별점)를 반영해 한 가지 이상 다르게 구성한다. "
         "end_question 이 true 면 end_caption 에 시청자에게 던지는 짧은 질문(14자 이내)을 쓰고, 아니면 빈 문자열. 위 1~6의 사실 규칙이 항상 우선한다.")
-    return create_json(system=system, max_tokens=1500, output_schema=EDL_SCHEMA, messages=[{"role": "user", "content": content}], timeout=300.0)
+    return create_json(system=system, max_tokens=2500 if fast else 1500, output_schema=EDL_SCHEMA, messages=[{"role": "user", "content": content}], timeout=300.0)
 
 
 # ---------------------------------------------------------------- 자막(ASS)·렌더링
@@ -303,6 +308,19 @@ def _ass_time(t: float) -> str:
 
 def _ass_text(s: str) -> str:
     return (s or "").replace("\\", "").replace("{", "(").replace("}", ")").replace("\n", " ").strip()
+
+
+_STAR = re.compile(r"\*([^*]{1,20})\*")
+
+
+def _ass_caption(s: str, highlight: str = "") -> str:
+    """자막 한 줄. *단어* 는 강조색으로(강조색이 없는 스타일이면 별표만 지운다)."""
+    from .style_profile import ass_color
+    t = _ass_text(s)
+    if not highlight:
+        return _STAR.sub(r"\1", t)
+    c = ass_color(highlight)
+    return _STAR.sub(lambda m: "{\\c&H" + c[4:] + "&}" + m.group(1) + "{\\r}", t)
 
 
 def default_font() -> str:
@@ -349,6 +367,7 @@ Style: Title,{font},{tsize},{ass_color(ti["color"])},&H000000FF,{tcol},&H8000000
 Style: Hook,{font},{csize + 32},{ass_color(ho["caption_color"])},&H000000FF,&H001A1AE6,&H80000000,1,0,0,0,100,100,0,0,1,8,2,{cap_align},50,50,{cap_margin},1
 Style: Cap,{font},{csize},{ass_color(ca["color"])},&H000000FF,{ccol},&H80000000,1,0,0,0,100,100,0,0,{cb},{cw},{0 if ca["box"] else 2},{cap_align},60,60,{cap_margin},1
 Style: Credit,{font},34,&H00DDDDDD,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,0,2,40,40,70,1
+Style: Footer,{font},46,{ass_color((st.get("footer") or {}).get("color", "#FFFFFF"))},&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,4,0,2,40,40,125,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -363,7 +382,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if edl.get("hook"):
         hl = edl["hook"]["end"] - edl["hook"]["start"]
         if edl["hook"].get("caption"):
-            ev.append(f"Dialogue: 2,{_ass_time(0)},{_ass_time(hl)},Hook,,0,0,0,,{_ass_text(edl['hook']['caption'])}")
+            ev.append(f"Dialogue: 2,{_ass_time(0)},{_ass_time(hl)},Hook,,0,0,0,,{_ass_caption(edl['hook']['caption'], ca.get('highlight_color', ''))}")
         t = hl
     end_cap = edl.get("end_caption") or ""
     end_from = total - 1.8 if end_cap else total
@@ -372,10 +391,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if ca["enabled"] and sg.get("caption"):
             a, b = t + 0.05, min(t + ln - 0.05, end_from)
             if b - a > 0.4:
-                ev.append(f"Dialogue: 2,{_ass_time(a)},{_ass_time(b)},Cap,,0,0,0,,{_ass_text(sg['caption'])}")
+                ev.append(f"Dialogue: 2,{_ass_time(a)},{_ass_time(b)},Cap,,0,0,0,,{_ass_caption(sg['caption'], ca.get('highlight_color', ''))}")
         t += ln
     if end_cap:
         ev.append(f"Dialogue: 3,{_ass_time(end_from)},{_ass_time(total)},Hook,,0,0,0,,{_ass_text(end_cap)}")
+    footer = (st.get("footer") or {}).get("text") or ""
+    if footer and not full:
+        ev.append(f"Dialogue: 0,{_ass_time(0)},{_ass_time(total)},Footer,,0,0,0,,{_ass_text(footer)}")
     if edl.get("credit"):
         ev.append(f"Dialogue: 0,{_ass_time(0)},{_ass_time(total)},Credit,,0,0,0,,{_ass_text(edl['credit'])}")
     return head + "\n".join(ev) + "\n"

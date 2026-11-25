@@ -18,6 +18,7 @@ export default function Styles() {
   const [files, setFiles] = useState<File[]>([])
   const [sending, setSending] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const importRef = useRef<HTMLInputElement>(null)
   const learning = q.data?.styles.some((s) => s.status === 'learning')
 
   useEffect(() => {
@@ -43,6 +44,12 @@ export default function Styles() {
         <p className="mt-1 text-sm muted">참고하고 싶은 쇼츠 채널을 3~4개 등록하면 편집 방식을 학습합니다. 제작실에서 「○○처럼 편집해줘」 버튼을 누르면 그 방식으로 쇼츠를 만듭니다.</p>
       </div>
       <p className="rounded-xl bg-stone-50 p-3 text-xs muted dark:bg-stone-800/60">{q.data.note} 똑같이 복제하지 않고, 스타일마다 「우리만의 킥」을 함께 적용합니다.</p>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) api.stylesImport(f).then((r) => { toast(`스타일 ${r.created}개 추가, ${r.updated}개 갱신`); q.reload() }).catch((er) => toast(er.message, 'err')) }} />
+        <button className="btn-primary" onClick={() => importRef.current?.click()}>📂 스타일 파일 가져오기</button>
+        <a className="btn-ghost" href="/api/styles/export" download="shoppulse_styles.json">내 스타일 내보내기</a>
+        <span className="text-xs muted">이미 분석해 둔 스타일 파일(.json)이 있으면 여기로 한 번에 넣을 수 있습니다.</span>
+      </div>
 
       <div className="card space-y-3 p-4">
         <h2 className="section-title">레퍼런스 채널 추가</h2>
@@ -98,14 +105,14 @@ function StyleCard({ s, onChange, toast }: { s: RefStyle; onChange: () => void; 
           <div className="space-y-1">
             <div><b>화면 배치</b> · {LAYOUT[p.layout.mode]}{p.layout.fg_zoom > 1 ? ` · ${p.layout.fg_zoom}배 확대` : ''}</div>
             <div><b>상단 제목</b> · {p.title.enabled ? <>{SIZE[p.title.size]} <Swatch c={p.title.color} /> <Swatch c={p.title.second_line_color} />{p.title.box ? ' · 박스' : ''} · {p.title.tone}</> : '없음'}</div>
-            <div><b>자막</b> · {p.caption.enabled ? <>{CAP_POS[p.caption.position]} · {SIZE[p.caption.size]} <Swatch c={p.caption.color} />{p.caption.box ? ' · 박스' : ''} · {p.caption.tone}</> : '없음'}</div>
+            <div><b>자막</b> · {p.caption.enabled ? <>{CAP_POS[p.caption.position]} · {SIZE[p.caption.size]} <Swatch c={p.caption.color} />{p.caption.box ? ' · 박스' : ''} · {p.caption.tone}{p.caption.highlight_color ? <> · 강조 <Swatch c={p.caption.highlight_color} /></> : null}</> : '없음'}</div>
             <div><b>후킹</b> · 처음 {p.hook.seconds}초 · {p.hook.pattern}{p.hook.zoom_punch ? ' · 확대 강조' : ''}</div>
             <div><b>속도</b> · 총 {p.pacing.total_seconds}초 · 본편 {p.pacing.segments}컷 · 컷당 최대 {p.pacing.max_clip_seconds}초{p.pacing.note ? ` · ${p.pacing.note}` : ''}</div>
             {p.title.patterns.length > 0 && <div><b>제목 구조</b> · {p.title.patterns.join(' / ')}</div>}
           </div>
           <div className="space-y-1">
             <div className="rounded-xl bg-amber-50 p-2 dark:bg-amber-950/40"><b>우리만의 킥</b>{p.kick.length ? <ul className="mt-0.5 list-disc pl-4">{p.kick.map((k, i) => <li key={i}>{k}</li>)}</ul> : <span className="muted"> · 없음</span>}</div>
-            <div className="muted"><b>배운 재료</b> · {(st.sources || []).join(', ') || '없음'}{st.avg_seconds ? ` · 평균 ${st.avg_seconds}초` : ''}{st.avg_shot_seconds ? ` · 컷 간격 평균 ${st.avg_shot_seconds}초(실측)` : ''}</div>
+            <div className="muted"><b>배운 재료</b> · {(st.sources || []).join(', ') || '없음'}{st.avg_seconds ? ` · 평균 ${st.avg_seconds}초` : ''}{st.avg_shot_seconds ? ` · 컷 간격 평균 ${st.avg_shot_seconds}초(실측)` : ''}{st.avg_shot_seconds_est ? ` · 컷 간격 약 ${st.avg_shot_seconds_est}초(영상 분석)` : ''}{st.learned_by ? ` · ${st.learned_by}` : ''}</div>
             {(st.notes || []).map((n, i) => <div key={i} className="text-amber-700 dark:text-amber-300">※ {n}</div>)}
             {st.evidence && st.evidence.length > 0 && <details><summary className="cursor-pointer muted">판단 근거 보기</summary><ul className="mt-1 list-disc pl-4 muted">{st.evidence.map((e, i) => <li key={i}>{e}</li>)}</ul></details>}
           </div>
@@ -114,7 +121,7 @@ function StyleCard({ s, onChange, toast }: { s: RefStyle; onChange: () => void; 
           <summary className="cursor-pointer font-semibold">직접 고치기 (마음에 안 드는 부분만)</summary>
           <div className="mt-2 grid gap-2 md:grid-cols-3">
             <label>화면 배치<select className="input mt-0.5" value={p.layout.mode} onChange={(e) => set((d) => { d.layout.mode = e.target.value as any })}>{Object.entries(LAYOUT).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-            <label>화면 확대 ({p.layout.fg_zoom}배)<input type="range" min={1} max={1.45} step={0.05} className="mt-2 w-full" value={p.layout.fg_zoom} onChange={(e) => set((d) => { d.layout.fg_zoom = Number(e.target.value) })} /></label>
+            <label>화면 확대 ({p.layout.fg_zoom}배)<input type="range" min={1} max={1.8} step={0.05} className="mt-2 w-full" value={p.layout.fg_zoom} onChange={(e) => set((d) => { d.layout.fg_zoom = Number(e.target.value) })} /></label>
             <label>자막 위치<select className="input mt-0.5" value={p.caption.position} onChange={(e) => set((d) => { d.caption.position = e.target.value as any })}>{Object.entries(CAP_POS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
             <label>제목 크기<select className="input mt-0.5" value={p.title.size} onChange={(e) => set((d) => { d.title.size = e.target.value as any })}>{Object.entries(SIZE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
             <label>자막 크기<select className="input mt-0.5" value={p.caption.size} onChange={(e) => set((d) => { d.caption.size = e.target.value as any })}>{Object.entries(SIZE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
@@ -122,14 +129,18 @@ function StyleCard({ s, onChange, toast }: { s: RefStyle; onChange: () => void; 
               <label>제목색<input type="color" className="mt-0.5 block h-9 w-12" value={p.title.color} onChange={(e) => set((d) => { d.title.color = e.target.value })} /></label>
               <label>둘째 줄<input type="color" className="mt-0.5 block h-9 w-12" value={p.title.second_line_color || p.title.color} onChange={(e) => set((d) => { d.title.second_line_color = e.target.value })} /></label>
               <label>자막색<input type="color" className="mt-0.5 block h-9 w-12" value={p.caption.color} onChange={(e) => set((d) => { d.caption.color = e.target.value })} /></label>
+              <label>강조색<input type="color" className="mt-0.5 block h-9 w-12" value={p.caption.highlight_color || '#FFD400'} onChange={(e) => set((d) => { d.caption.highlight_color = e.target.value })} /></label>
             </div>
             <label>후킹 길이(초)<input type="number" step={0.5} min={1.5} max={5} className="input mt-0.5" value={p.hook.seconds} onChange={(e) => set((d) => { d.hook.seconds = Number(e.target.value) })} /></label>
-            <label>총 길이(초)<input type="number" min={18} max={40} className="input mt-0.5" value={p.pacing.total_seconds} onChange={(e) => set((d) => { d.pacing.total_seconds = Number(e.target.value) })} /></label>
-            <label>본편 컷 수<input type="number" min={1} max={6} className="input mt-0.5" value={p.pacing.segments} onChange={(e) => set((d) => { d.pacing.segments = Number(e.target.value) })} /></label>
+            <label>총 길이(초)<input type="number" min={18} max={60} className="input mt-0.5" value={p.pacing.total_seconds} onChange={(e) => set((d) => { d.pacing.total_seconds = Number(e.target.value) })} /></label>
+            <label>본편 컷 수<input type="number" min={1} max={10} className="input mt-0.5" value={p.pacing.segments} onChange={(e) => set((d) => { d.pacing.segments = Number(e.target.value) })} /></label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={p.title.box} onChange={(e) => set((d) => { d.title.box = e.target.checked })} /> 제목 박스</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={p.hook.zoom_punch} onChange={(e) => set((d) => { d.hook.zoom_punch = e.target.checked })} /> 후킹 컷 확대 강조</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={p.end_question} onChange={(e) => set((d) => { d.end_question = e.target.checked })} /> 끝에 질문 자막</label>
           </div>
+          <label className="mt-2 block">하단 고정 문구 (선택 · 내 채널 이름이나 「상품 정보는 프로필 링크 12번」 같은 안내)
+            <input className="input mt-0.5" maxLength={40} placeholder="비워 두면 표시하지 않습니다" value={p.footer?.text || ''} onChange={(e) => set((d) => { d.footer = { text: e.target.value, color: d.footer?.color || '#FFFFFF' } })} />
+          </label>
           <button className="btn-primary mt-3" disabled={!dirty} onClick={() => run(() => api.stylePatch(s.id, { profile: p }), '스타일 저장됨')}>고친 내용 저장</button>
         </details>
       </>)}

@@ -137,7 +137,7 @@ export default function Studio() {
                 </tbody></table>
                 <div className="mt-2 flex items-center gap-2"><button className="btn-ghost px-2 py-1 text-xs" onClick={() => { const last = edit.segments[edit.segments.length - 1]; setEdit({ ...edit, segments: [...edit.segments, { start: last.end + 1, end: last.end + 6, caption: '' }] }) }}>+ 구간 추가</button><input className="input flex-1 text-xs" placeholder="출처 표기" value={edit.credit} onChange={(e) => setEdit({ ...edit, credit: e.target.value })} /></div>
                 <input className="input mt-2 text-xs" placeholder="끝 질문 자막 (선택, 마지막 1.8초에 표시 · 예: 여러분이라면 살까요?)" maxLength={24} value={edit.end_caption} onChange={(e) => setEdit({ ...edit, end_caption: e.target.value })} />
-                <p className="mt-1 text-[11px] muted">시간은 원본 영상 기준 분:초(소수 가능, 예 12:31.5). 총 길이는 18~32초로 자동 조정됩니다.</p>
+                <p className="mt-1 text-[11px] muted">시간은 원본 영상 기준 분:초(소수 가능, 예 12:31.5). 총 길이는 스타일 목표에 맞춰 자동 조정됩니다(기본 18~32초). 자막에서 강조할 단어는 *별표*로 감싸면 스타일의 강조색으로 표시됩니다.</p>
               </div>
             )}
             <div className="card p-4 text-sm">
