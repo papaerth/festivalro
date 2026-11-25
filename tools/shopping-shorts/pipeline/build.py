@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import random  # numpy.random 은 일부 윈도우 PC의 보안 정책(스마트 앱 컨트롤)에 막혀 쓰지 않는다
 import re
 import subprocess
@@ -35,6 +36,8 @@ SUB_COLORS = [(255, 230, 0), (110, 240, 200), (255, 150, 195)]
 POP, POP_EM = [0.80, 0.97, 1.08, 1.03], [0.70, 0.95, 1.15, 1.07, 1.02]
 RISE = [(26, 0.35), (14, 0.7), (6, 0.92), (2, 1.0)]     # 아래에서 올라오기: (아래로 밀린 픽셀, 불투명도)
 
+OTHER_COLOR = (255, 214, 72)      # 주인공이 아닌 다른 사람이 한 말의 자막 색
+OTHER_UP = 150                    # 다른 사람의 말은 보통 자막보다 이만큼 위에 띄운다
 RED_BAND, CYAN = (232, 38, 30), (70, 222, 255)      # 제목 '빨간 띠' 모양의 띠 색과 윗줄 강조 색
 PEOPLE_PREFIX = "인물_"                               # input/<편>/인물_<이름>.jpg — 그 이름이 언급될 때 띄울 사진
 
@@ -48,6 +51,9 @@ DEFAULTS = {
     "sub_vary": True,          # 강조 낱말·강조 자막을 크게, 다른 색, 다른 글자체로
     "sub_colors": "cycle",     # 강조 색: cycle(노랑·민트·분홍 번갈아) · yellow(노랑만)
     "em_scale": 125,           # 강조 글자 크기(%)
+    "sub_sticker": True,       # 강조 자막·다른 사람의 말에 포인트 스티커(반짝이·강조선)를 붙일지
+    "tts_bg": "stills",        # TTS 구간의 화면: stills(원본의 여러 장면이 지나간다) · clip(원본의 움직이는 장면) · one(한 장)
+    "tts_stills": 4,           # stills 일 때 한 TTS 에 지나가는 장면 수(최대)
     "title_style": "plain",    # 상단 제목 모양: plain(윗줄 흰색·아랫줄 노랑) · band(윗줄 빨간 띠, 낱말마다 색)
     "source_format": "plain",  # 출처 문구: plain(출처 : 유튜브 '채널') · bar(출처 | 채널)
     "source_alpha": 84,        # 출처 문구 불투명도(%)
@@ -88,7 +94,7 @@ def apply_defaults(plan: dict, settings: dict | None = None) -> dict:
         if st.get(key) and not plan.get(key):
             plan[key] = st[key]
     for key in ("title_bold", "sub_bold", "music_file", "music_volume", "sub_anim", "sub_vary", "sub_colors", "em_scale",
-                "title_style", "source_format", "source_alpha", "pip_pos"):
+                "title_style", "source_format", "source_alpha", "pip_pos", "sub_sticker", "tts_bg", "tts_stills"):
         if key in st and key not in own:
             plan[key] = st[key]
     return plan
@@ -298,14 +304,56 @@ def rich_image(words: list[tuple], stroke_w: int, max_w: int, line_gap: int = 8)
     return im
 
 
-def sub_image(text: str, em: bool, plan: dict, key: str = "", n: int = 0):
+def _stroke_line(d, pts, color, width):
+    """검은 테두리가 있는 굵은 선."""
+    d.line(pts, fill=BLACK + (255,), width=width + 8, joint="curve")
+    for x, y in pts:
+        r = (width + 8) / 2
+        d.ellipse([x - r, y - r, x + r, y + r], fill=BLACK + (255,))
+    d.line(pts, fill=tuple(color) + (255,), width=width, joint="curve")
+    for x, y in pts:
+        r = width / 2
+        d.ellipse([x - r, y - r, x + r, y + r], fill=tuple(color) + (255,))
+
+
+def add_sticker(im, kind: str, color):
+    """자막 그림에 포인트 스티커를 붙인다. burst: 오른쪽 위로 뻗는 강조선 세 줄 · sparkle: 오른쪽 위 반짝이 별.
+    글자가 가운데 그대로 있도록 양옆을 같은 폭만큼 넓힌다."""
+    from PIL import Image, ImageDraw
+    side, top = 70, 34
+    out = Image.new("RGBA", (im.width + 2 * side, im.height + top), (0, 0, 0, 0))
+    out.alpha_composite(im, (side, top))
+    d = ImageDraw.Draw(out)
+    ox, oy = side + im.width - 14, top + 26          # 글자 오른쪽 위 모서리 근처
+    if kind == "burst":
+        for ang, ln in ((-18, 40), (-48, 46), (-78, 40)):
+            ca, sa = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+            _stroke_line(d, [(ox + 16 * ca, oy + 16 * sa), (ox + (16 + ln) * ca, oy + (16 + ln) * sa)], WHITE, 8)
+    else:
+        for cx, cy, r in ((ox + 34, oy - 6, 26), (ox + 8, oy - 30, 13)):      # 큰 별 하나, 작은 별 하나
+            pts = []
+            for k in range(8):
+                rr = r if k % 2 == 0 else r * 0.32
+                a_ = math.radians(k * 45 - 90)
+                pts.append((cx + rr * math.cos(a_), cy + rr * math.sin(a_)))
+            d.polygon(pts, fill=tuple(color) + (255,), outline=BLACK + (255,), width=4)
+    return out
+
+
+def sub_image(text: str, em: bool, plan: dict, key: str = "", n: int = 0, other: bool = False):
     """자막 한 덩이 이미지(흰색·검은 테두리).
 
     변화 주기(sub_vary)가 켜져 있으면 강조 덩이(em)는 통째로, 강조 낱말(key)은 그 낱말만 크게·색 있게·강조 글자체로 그린다.
-    n 은 강조 순번(색을 번갈아 쓴다). 꺼져 있으면 예전처럼 강조 덩이만 노란색."""
+    n 은 강조 순번(색을 번갈아 쓴다). 꺼져 있으면 예전처럼 강조 덩이만 노란색.
+    other 는 주인공이 아닌 다른 사람이 한 말: 다른 색·강조 글자체로 그리고(위치는 sub_center), 강조선 스티커를 붙인다."""
     size = plan["layout"]["sub_size"]
     base = util.font(size, True, plan.get("font_sub") or plan.get("font_bold"))
     bd = bold_px(base.size, bool(plan.get("sub_bold")))
+    stick = bool(plan.get("sub_sticker"))
+    if other:
+        of = util.font(size, True, plan.get("font_em") or plan.get("font_sub") or plan.get("font_bold"))
+        im = text_image(text, of, OTHER_COLOR, stroke_w=6, max_w=CW - 200, bold=bold_px(of.size, bool(plan.get("sub_bold"))))
+        return add_sticker(im, "burst", OTHER_COLOR) if stick else im
     keys = set(str(key or "").split())
     if not plan.get("sub_vary") or not (em or keys):
         return text_image(text, base, YELLOW if em else WHITE, stroke_w=6, max_w=CW - 60, bold=bd)
@@ -315,7 +363,15 @@ def sub_image(text: str, em: bool, plan: dict, key: str = "", n: int = 0):
     color = sub_color(plan, n)
     words = [(w, emf, color, ebd) if (em or any(k in w for k in keys)) else (w, base, WHITE, bd)
              for w in text.split()]      # 강조 낱말이 든 어절을 통째로 강조한다
-    return rich_image(words, 6, CW - 60)
+    im = rich_image(words, 6, CW - (200 if em and stick else 60))
+    return add_sticker(im, "sparkle", color) if em and stick else im
+
+
+def sub_center(plan: dict, sub: dict, im) -> tuple[float, float]:
+    """자막 그림의 가운데 좌표. 다른 사람의 말은 보통 자막보다 위에 띄운다."""
+    y = plan["layout"]["sub_y"] - (OTHER_UP if sub.get("other") else 0)
+    stickered = bool(plan.get("sub_sticker")) and (bool(sub.get("other")) or (bool(sub.get("em")) and bool(plan.get("sub_vary"))))
+    return CW / 2, y - (17 if stickered else 0)      # 스티커 자리만큼 위가 늘어난 그림에서 글자가 제자리에 오게
 
 
 def src_list(src) -> list[Path]:
@@ -644,16 +700,24 @@ def seg_filters(seg: dict, size: int, y0: int, plan: dict, meta: dict | None = N
     """한 구간의 영상 필터: 원본 글씨 지우기 → 1:1 크롭 → 거울반전(구간별로 끌 수 있다) → 크기 → 색보정.
 
     글씨 지우기(erase)는 원본 좌표의 사각형 [x, y, w, h] 를 주변 화소로 메운다(작고 단순한 배경일 때만 깔끔하다).
+    구간에 "blur": true 를 주면 그 구간의 erase 사각형을 지우는 대신 흐리게 덮는다(배경이 복잡하거나 글씨가 클 때).
     구간에 "mirror": false 를 주면 그 구간만 거울반전을 하지 않는다(읽히는 글씨가 화면에 남을 때)."""
     vf = []
     W, H = (meta or {}).get("width"), (meta or {}).get("height")
     static = plan.get("erase_b" if int(seg.get("src", 0) or 0) else "erase") or []
-    for r in list(static) + list(seg.get("erase") or []):
+    rects = [(r, False) for r in static] + [(r, bool(seg.get("blur"))) for r in seg.get("erase") or []]
+    for n, (r, blur) in enumerate(rects):
         x, y, w, h = _rect(r)
         if W and H:      # delogo 는 화면 가장자리에 닿으면 안 된다
             x, y = max(1, min(x, W - 3)), max(1, min(y, H - 3))
             w, h = max(1, min(w, W - 1 - x)), max(1, min(h, H - 1 - y))
-        if w > 1 and h > 1:
+        if w <= 1 or h <= 1:
+            continue
+        if blur and w >= 8 and h >= 8:      # 깔끔히 지워지지 않는 글씨는 읽을 수 없게 흐리게 덮는다
+            w, h = w // 2 * 2, h // 2 * 2
+            sig = max(14, min(60, int(min(w, h) * 0.45)))
+            vf.append(f"split[m{n}][t{n}];[t{n}]crop={w}:{h}:{x}:{y},gblur=sigma={sig}:steps=2[b{n}];[m{n}][b{n}]overlay={x}:{y}")
+        else:
             vf.append(f"delogo=x={x}:y={y}:w={w}:h={h}")
     vf.append(f"crop={size}:{size}:{int(seg.get('x0', 0))}:{y0}")
     if seg.get("mirror", plan["mirror"]):
@@ -731,6 +795,122 @@ def still_frames(im, n, zoom):
         w = 1080 / s
         off = (1080 - w) / 2
         yield np.asarray(im.transform((1080, 1080), Image.AFFINE, (1 / s, 0, off, 0, 1 / s, off), Image.BICUBIC))
+
+
+# ------------------------------------------------------------------ TTS 구간의 화면(지루하지 않게 여러 장면)
+def free_spans(plan: dict, k: int = 0, duration: float | None = None) -> list[tuple]:
+    """k번째 원본 영상에서 컷으로 쓰지 않은 제품 구간들 [(시작, 끝)]. TTS 구간에 깔 장면을 여기서 고른다
+    (같은 소스 구간을 두 번 쓰지 않는다는 규칙을 지키려고)."""
+    ranges = [(float(a), float(b)) for a, b, *rest in (plan.get("ranges") or []) if (int(rest[0]) if rest else 0) == k]
+    if not ranges and duration and not plan.get("ranges"):
+        ranges = [(0.0, float(duration))]
+    cuts = sorted((float(sg["a"]) - 0.25, float(sg["b"]) + 0.25) for sg in plan.get("timeline") or []
+                  if sg.get("type") == "cut" and int(sg.get("src", 0) or 0) == k)
+    out = []
+    for a, b in ranges:
+        cur = a + 0.2
+        for ca, cb in cuts:
+            if cb <= cur or ca >= b:
+                continue
+            if ca > cur:
+                out.append((cur, ca))
+            cur = max(cur, cb)
+        if cur < b - 0.2:
+            out.append((cur, b - 0.2))
+    return [(a, b) for a, b in out if b - a >= 0.3]
+
+
+def add_tts_stills(plan: dict, count: int | None = None) -> dict:
+    """TTS 구간마다 원본의 다른 장면을 몇 장 더 골라 seg["stills"] 에 적는다([{"t", "x0"}, …], 첫 장은 설계가 고른 still_t).
+    컷으로 쓰지 않은 제품 구간에서, 서로 1초 넘게 떨어진 시각을 고르게 고른다. 사용자가 준 이미지를 쓰는 구간은 건드리지 않는다."""
+    count = int(count if count is not None else plan.get("tts_stills") or 4)
+    taken = [(int(sg.get("src", 0) or 0), float(sg["still_t"])) for sg in plan.get("timeline") or []
+             if sg.get("type") == "tts" and not sg.get("image") and sg.get("still_t") is not None]
+    for sg in plan.get("timeline") or []:
+        if sg.get("type") != "tts" or sg.get("image") or sg.get("still_t") is None or count < 2:
+            continue
+        k = int(sg.get("src", 0) or 0)
+        cands = [round(a + 0.5 * i, 2) for a, b in free_spans(plan, k) for i in range(int((b - a) / 0.5) + 1)]
+        chosen = [float(sg["still_t"])]
+        while len(chosen) < count:
+            def gap(t, chosen=chosen, k=k):
+                return min([abs(t - c) for c in chosen] + [abs(t - tt) for kk, tt in taken if kk == k and tt not in chosen])
+            best = max(cands, key=gap, default=None)
+            if best is None or gap(best) < 1.0:
+                break
+            chosen.append(best)
+            taken.append((k, best))
+        if len(chosen) > 1:
+            sg["stills"] = [{"t": t, "x0": int(sg.get("x0", 0)), **({"src": k} if k else {})} for t in chosen]
+        else:
+            sg.pop("stills", None)
+    return plan
+
+
+def user_slides(plan: dict, base_dir: Path) -> dict:
+    """사용자가 준 TTS 이미지를 TTS 구간들에 나눈다 {구간 순번: [파일 이름, …]}.
+    이미지가 TTS 구간보다 많으면 순서대로 고르게 나눠 한 구간에 여러 장이 지나가게 한다."""
+    segs = [i for i, sg in enumerate(plan.get("timeline") or []) if sg.get("type") == "tts" and sg.get("image")]
+    if not segs:
+        return {}
+
+    def order(p: Path):
+        m = re.search(r"(\d+)", p.stem)
+        return (int(m.group(1)) if m else 0, p.name)
+
+    files = sorted((p for p in Path(base_dir).iterdir() if p.suffix.lower() in util.IMAGE_EXT and p.stem.lower().startswith("img")),
+                   key=order) if Path(base_dir).is_dir() else []
+    names = [p.name for p in files]
+    if len(names) <= len(segs):
+        return {i: [plan["timeline"][i]["image"]] for i in segs}
+    out, per = {}, len(names) / len(segs)
+    for n, i in enumerate(segs):
+        out[i] = names[int(round(n * per)):int(round((n + 1) * per))] or [plan["timeline"][i]["image"]]
+    return out
+
+
+def slide_frames(ims: list, n: int, zoom: float):
+    """여러 장을 차례로 보여 주는 프레임 n장. 한 장이 0.5초보다 짧아지지 않게 장 수를 줄이고, 장마다 확대·축소를 번갈아 한다."""
+    from PIL import Image
+    m = max(1, min(len(ims), n // max(1, int(0.5 * FPS))))
+    for i in range(n):
+        j = min(m - 1, i * m // max(1, n))
+        lo, hi = j * n // m, (j + 1) * n // m
+        p = (i - lo) / max(1, hi - lo - 1)
+        sc = 1.0 + (zoom or 0.0) * 1.6 * (p if j % 2 == 0 else 1 - p)
+        w = 1080 / sc
+        off = (1080 - w) / 2
+        yield np.asarray(ims[j].transform((1080, 1080), Image.AFFINE, (1 / sc, 0, off, 0, 1 / sc, off), Image.BICUBIC))
+
+
+def tts_frames(plan: dict, i: int, n: int, srcs, crops, metas, base_dir: Path, slides: dict):
+    """TTS 구간 i 의 화면 프레임 n장과 무엇을 깔았는지(설명 글). 설정 tts_bg 에 따라:
+    clip — 원본의 움직이는 장면(소리 없이), stills — 원본의 여러 장면(또는 사용자가 준 여러 이미지), one — 한 장."""
+    from PIL import Image, ImageOps
+    sg = plan["timeline"][i]
+    k = seg_src(sg, len(srcs))
+    size, y0 = crops[k]
+    mode = plan.get("tts_bg") or "stills"
+    if sg.get("image"):
+        names = slides.get(i) or [sg["image"]]
+        ims = [ImageOps.fit(Image.open(Path(base_dir) / nm).convert("RGB"), (1080, 1080), Image.LANCZOS, centering=(0.5, 0.35))
+               for nm in names if (Path(base_dir) / nm).exists()]
+        if len(ims) > 1 and mode != "one":
+            return slide_frames(ims, n, plan["still_zoom"]), f"사용자 이미지 {min(len(ims), max(1, n // int(0.5 * FPS)))}장"
+        return still_frames(ims[0] if ims else still_image(sg, srcs[k], size, y0, plan, base_dir, metas[k]), n, plan["still_zoom"]), "사용자 이미지 1장"
+    if mode == "clip":
+        need = n / FPS * float(plan["speed"]) + 0.05
+        t = float(sg["still_t"])
+        for a, b in free_spans(plan, k, metas[k].get("duration")):
+            if a <= t <= b and b - a >= need:
+                a0 = max(a, min(t - need / 2, b - need))
+                return cut_frames(srcs[k], {**sg, "a": a0, "b": a0 + need}, size, y0, plan, n, metas[k]), "원본의 움직이는 장면"
+    stills = sg.get("stills") if mode != "one" else None
+    if stills and len(stills) > 1:
+        ims = [still_image({**sg, "still_t": st["t"], "x0": st.get("x0", sg.get("x0", 0))}, srcs[k], size, y0, plan, base_dir, metas[k])
+               for st in stills]
+        return slide_frames(ims, n, plan["still_zoom"]), f"원본의 장면 {min(len(ims), max(1, n // int(0.5 * FPS)))}장"
+    return still_frames(still_image(sg, srcs[k], size, y0, plan, base_dir, metas[k]), n, plan["still_zoom"]), "원본의 정지 화면 1장"
 
 
 class Overlay:
@@ -979,8 +1159,9 @@ def preview_frame(plan: dict, src, base_dir, scene: dict | None = None, show_car
     out = frame.convert("RGBA")
     if seg is not None and sub and str(sub.get("text", "")).strip():
         im = sub_image(sub["text"], bool(sub.get("em")), plan, sub.get("key", ""),
-                       emph_index(plan, scene["seg"], scene.get("sub", 0)))
-        out.alpha_composite(im, (int(CW / 2 - im.width / 2), int(L["sub_y"] - im.height / 2)))
+                       emph_index(plan, scene["seg"], scene.get("sub", 0)), bool(sub.get("other")))
+        scx, scy = sub_center(plan, sub, im)
+        out.alpha_composite(im, (int(scx - im.width / 2), int(scy - im.height / 2)))
     txt = source_text_at(plan, scene["seg"] if seg is not None else None)
     if txt:
         im = source_image(txt, plan)
@@ -1142,10 +1323,11 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
                     overlays.append(Overlay(pim, cx, cy, f0, p1, fade_in=0, fade_out=4, anim=POP_EM))
                     people_out.append({"name": who, "seg": r["i"], "start": round(f0 / FPS, 3), "end": round(p1 / FPS, 3)})
             emph = is_emph(sb)
-            im = sub_image(sb["text"], bool(sb.get("em")), plan, sb.get("key", ""), emph_n)
+            im = sub_image(sb["text"], bool(sb.get("em")), plan, sb.get("key", ""), emph_n, bool(sb.get("other")))
             emph_n += 1 if emph else 0
-            anim = sub_anim(plan, emph)
-            overlays.append(Overlay(im, CW / 2, L["sub_y"], f0, f1, fade_in=0 if anim else 2, anim=anim))
+            anim = sub_anim(plan, emph or bool(sb.get("other")))
+            scx, scy = sub_center(plan, sb, im)
+            overlays.append(Overlay(im, scx, scy, f0, f1, fade_in=0 if anim else 2, anim=anim))
             subs_out.append({"seg": r["i"], "start": round(f0 / FPS, 3), "end": round(f1 / FPS, 3),
                              "text": sb["text"], "kind": r["type"]})
             add_sfx(sb.get("sfx"), f0 / FPS)
@@ -1200,15 +1382,16 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
     base_arr = np.asarray(base)
     vy = L["video_y"]
     fidx = 0
+    slides = user_slides(plan, base_dir)
+    if (plan.get("tts_bg") or "stills") == "stills" and not any(sg.get("stills") for sg in plan["timeline"]):
+        add_tts_stills(plan)       # 설계 단계에서 고르지 않았으면(예전 plan) 여기서 고른다
     for r in segs:
         s = plan["timeline"][r["i"]]
         if r["type"] == "cut":
             k = r["k"]
             frames = cut_frames(srcs[k], {**s, "a": r["a"], "b": r["b"]}, crops[k][0], crops[k][1], plan, r["n"], metas[k])
         else:
-            k = seg_src(s, len(srcs))
-            frames = still_frames(still_image(s, srcs[k], crops[k][0], crops[k][1], plan, base_dir, metas[k]),
-                                  r["n"], plan["still_zoom"])
+            frames, r["bg"] = tts_frames(plan, r["i"], r["n"], srcs, crops, metas, base_dir, slides)
         for fr in frames:
             frame = base_arr.copy()
             frame[vy:vy + 1080] = fr
@@ -1253,7 +1436,7 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
                       "end": round(r["f1"] / FPS, 3),
                       **({"a": r["a"], "b": r["b"], "x0": r["x0"], "src": r["k"],
                           "mirror": bool(plan["timeline"][r["i"]].get("mirror", plan["mirror"]))}
-                         if r["type"] == "cut" else {"text": r["text"]})}
+                         if r["type"] == "cut" else {"text": r["text"], "bg": r.get("bg", "")})}
                      for r in segs],
         "subs": subs_out, "cards": cards_out, "sfx": sfx_out, "tts": tts_report, "people": people_out,
         "dropped_emoji": dropped, "bgm_removed": not (no_uvr or not has_audio), "music": music_note,

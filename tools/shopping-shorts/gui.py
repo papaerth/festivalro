@@ -154,7 +154,21 @@ def load_episode(name: str) -> dict:
             "product": info.get("product", ""), "vidiq": text("vidiq.txt"), "feedback": text("feedback.txt"),
             "video": str(vids[0]) if vids else "",
             "video2": str(vids[1]) if len(vids) > 1 else "", "url2": info.get("url2", "") if len(vids) > 1 else "",
-            "people": episode_people(name)}
+            "people": episode_people(name), "images": episode_images(name)}
+
+
+def episode_images(name: str) -> list[str]:
+    """그 편에 넣어 둔 TTS 이미지(img1, img2 …)의 경로를 번호순으로."""
+    d = ROOT / "input" / name
+    if not name or not d.is_dir():
+        return []
+
+    def order(p: Path):
+        m = re.search(r"(\d+)", p.stem)
+        return (int(m.group(1)) if m else 0, p.name)
+
+    return [str(p) for p in sorted((p for p in d.iterdir() if p.suffix.lower() in IMAGE_EXT and p.stem.lower().startswith("img")),
+                                   key=order)]
 
 
 def person_name(path) -> str:
@@ -248,15 +262,19 @@ def prepare_episode(name: str, video: str, url: str, inpock: str, product: str, 
         (d / "feedback.txt").write_text(feedback + "\n", encoding="utf-8")
     else:
         (d / "feedback.txt").unlink(missing_ok=True)
-    for i, img in enumerate([x for x in images if x][:2], 1):
-        src = Path(img)
+    # TTS 구간에 깔 이미지: 고른 순서대로 img1, img2 … 로 넣는다(여러 장이면 TTS 구간마다 나눠 차례로 지나간다)
+    want = [Path(x) for x in images if x][:12]
+    for src in want:
         if not src.is_file() or src.suffix.lower() not in IMAGE_EXT:
             raise ValueError(f"이미지 파일을 쓸 수 없습니다:\n{src}")
-        for stale in d.glob(f"img{i}.*"):
-            if stale.resolve() != src.resolve():
-                stale.unlink()
-        if src.parent.resolve() != d.resolve():
-            shutil.copy2(src, d / f"img{i}{src.suffix.lower()}")
+    have_imgs = [Path(x) for x in episode_images(name)]
+    imgs_changed = [p.resolve() for p in want] != [p.resolve() for p in have_imgs]
+    if imgs_changed:
+        data = [(src.suffix.lower(), src.read_bytes()) for src in want]
+        for old_img in have_imgs:
+            old_img.unlink()
+        for i, (ext, blob) in enumerate(data, 1):
+            (d / f"img{i}{ext}").write_bytes(blob)
 
     people_changed = False
     if people is not None:        # 언급 인물 사진을 창에서 고른 대로 맞춘다(뺀 것은 지운다)
@@ -291,6 +309,9 @@ def prepare_episode(name: str, video: str, url: str, inpock: str, product: str, 
     if redo is None and designed and old["feedback"] != feedback:
         redo = "design"
         notes.append("수정 요청이 바뀌어 컷 설계부터 다시 합니다." if feedback else "수정 요청을 지워 컷 설계부터 다시 합니다.")
+    if redo is None and designed and imgs_changed:
+        redo = "design"
+        notes.append("TTS 이미지가 바뀌어 컷 설계부터 다시 합니다.")
     if redo is None and designed and people_changed:
         redo = "render"
         notes.append("인물 사진이 바뀌어 영상을 다시 만듭니다(이름이 나오는 장면을 새로 넣으려면 '컷 설계부터 다시').")
@@ -474,7 +495,7 @@ def run_gui(argv: list[str]):
     v_video, v_url, v_name = tk.StringVar(), tk.StringVar(), tk.StringVar()
     v_video2, v_url2 = tk.StringVar(), tk.StringVar()      # 같은 제품의 두 번째 영상(섞어 만들 때만)
     v_inpock, v_product, v_redo = tk.StringVar(), tk.StringVar(), tk.StringVar(value="이어서 하기")
-    v_img = [tk.StringVar(), tk.StringVar()]
+    v_imgs = tk.StringVar(value="없음 — 원본 영상의 장면을 자동으로 씁니다")
     # 내 인포크 링크 주소(link.inpock.co.kr/…). 편마다가 아니라 한 번 적어 두면 계속 쓴다(settings.json)
     v_inpock_url = tk.StringVar(value=str((read_json(ROOT / "settings.json", {}) or {}).get("inpock_url") or ""))
     v_status = tk.StringVar(value="원본 영상을 고르고 유튜브 링크를 붙여 넣은 뒤 [만들기]를 누르세요.")
@@ -609,6 +630,8 @@ def run_gui(argv: list[str]):
         show_mix(bool(ep["video2"]))
         state["people"] = list(ep["people"])
         show_people()
+        state["imgs"] = list(ep["images"])
+        show_imgs()
         set_text(t_vidiq, ep["vidiq"])
         set_text(t_feedback, ep["feedback"])
         state["name"] = name
@@ -707,16 +730,27 @@ def run_gui(argv: list[str]):
     ttk.Label(opt, text="인포크 링크", style="Field.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 16), pady=4)
     ttk.Entry(opt, textvariable=v_inpock_url).grid(row=1, column=1, sticky="ew", pady=4)
     ttk.Label(opt, text="한 번 적어 두면 모든 영상의 설명에 들어가요", style="Faint.TLabel").grid(row=1, column=2, padx=(10, 0))
-    ttk.Label(opt, text="TTS 이미지", style="Field.TLabel").grid(row=2, column=0, sticky="w", padx=(0, 16), pady=4)
+    ttk.Label(opt, text="TTS 사진", style="Field.TLabel").grid(row=2, column=0, sticky="w", padx=(0, 16), pady=4)
     imgs = ttk.Frame(opt)
-    for i in range(2):
-        def pick(i=i):
-            p = filedialog.askopenfilename(title=f"TTS 이미지 {i + 1}",
-                                           filetypes=[("이미지", "*.jpg *.jpeg *.png *.webp")])
-            if p:
-                v_img[i].set(p)
-        ttk.Button(imgs, text=f"이미지 {i + 1} 고르기", command=pick).grid(row=0, column=i * 2, padx=(0, 8))
-        ttk.Label(imgs, textvariable=v_img[i], width=24, style="Sub.TLabel").grid(row=0, column=i * 2 + 1, padx=(0, 12))
+
+    def show_imgs():
+        names = [Path(p).name for p in state.get("imgs", [])]
+        v_imgs.set(f"{len(names)}장: " + ", ".join(names)[:60] if names else "없음 — 원본 영상의 장면을 자동으로 씁니다")
+
+    def pick_imgs():
+        ps = filedialog.askopenfilenames(title="TTS(나레이션) 때 보여 줄 사진 고르기 — 여러 장 고를 수 있어요",
+                                         filetypes=[("이미지", "*.jpg *.jpeg *.png *.webp")])
+        if ps:
+            state["imgs"] = (list(state.get("imgs", [])) + list(ps))[:12]
+            show_imgs()
+
+    def clear_imgs():
+        state["imgs"] = []
+        show_imgs()
+
+    ttk.Button(imgs, text="사진 고르기 (여러 장)", command=pick_imgs).pack(side="left")
+    ttk.Button(imgs, text="비우기", style="Ghost.TButton", command=clear_imgs).pack(side="left", padx=4)
+    ttk.Label(imgs, textvariable=v_imgs, style="Sub.TLabel").pack(side="left", padx=8)
     imgs.grid(row=2, column=1, columnspan=2, sticky="w", pady=4)
 
     def copy_question():
@@ -1275,7 +1309,7 @@ def run_gui(argv: list[str]):
             return
         try:
             cmd, notes = prepare_episode(name, v_video.get().strip(), v_url.get(), v_inpock.get(), v_product.get(),
-                                         t_vidiq.get("1.0", "end"), [v.get() for v in v_img],
+                                         t_vidiq.get("1.0", "end"), list(state.get("imgs", [])),
                                          force_redo or REDO[v_redo.get()], t_feedback.get("1.0", "end"),
                                          v_video2.get(), v_url2.get(), list(state.get("people", [])))
         except ValueError as e:
@@ -1289,6 +1323,8 @@ def run_gui(argv: list[str]):
         state["cleared"] = False
         state["people"] = episode_people(name)
         show_people()
+        state["imgs"] = episode_images(name)
+        show_imgs()
         notes[:0] = fresh_notes
         ep_now = load_episode(name)       # 편 폴더에 복사된 영상으로 칸을 맞춘다
         v_video.set(ep_now["video"])
@@ -1474,7 +1510,9 @@ def run_gui(argv: list[str]):
         state["people"] = []
         show_people()
         state["auto_name"] = ""
-        for v in (v_video, v_url, v_video2, v_url2, v_name, v_inpock, v_product, v_img[0], v_img[1]):
+        state["imgs"] = []
+        show_imgs()
+        for v in (v_video, v_url, v_video2, v_url2, v_name, v_inpock, v_product):
             v.set("")
         v_redo.set("이어서 하기")
         set_text(t_vidiq, "")

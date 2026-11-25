@@ -393,7 +393,7 @@ def design_schema(two: bool = False) -> dict:
             "type": {"type": "string", "enum": ["cut", "tts"]},
             **src,
             "a": N, "b": N, "x0": I, "shows": S,
-            "unmirror": B, "erase": _arr(RECT),
+            "unmirror": B, "erase": _arr(RECT), "blur": B,
             "subs": _arr(_obj({"t": N, "text": S, "em": B, "sfx": {"type": "string", "enum": SFX}})),
             "sfx": {"type": "string", "enum": SFX},
             "text": S, "image": S, "still_t": N,
@@ -484,12 +484,14 @@ def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
   반드시 띄어쓰기 포함 20자 이내로 씁니다(넘으면 규칙 검사에서 걸립니다). 짧고 강하게.
   세 개는 서로 다른 각도로 씁니다.
 - crop: size는 1:1 크롭 한 변(보통 {crops[0]}), x_min/x_max는 크롭이 들어가도 되는 원본 x 범위(모서리 라벨·고지 문구를 피한 범위).
-{("  영상이 둘이므로 crop 은 [영상 A의 것, 영상 B의 것] 순서의 목록으로 적습니다(B의 size 는 보통 " + str(crops[-1]) + ")." + chr(10)) if two else ""}- 원본 글씨는 규칙의 순서대로 처리합니다: ① 안 보이게 컷과 x0를 고른다 ② 작고 단순한 배경 위라 깔끔히 지워지면 erase
-  ③ 그래도 읽히는 글씨가 크롭 안에 남는 컷은 unmirror=true.
+{("  영상이 둘이므로 crop 은 [영상 A의 것, 영상 B의 것] 순서의 목록으로 적습니다(B의 size 는 보통 " + str(crops[-1]) + ")." + chr(10)) if two else ""}- 원본 글씨는 규칙의 순서대로 처리합니다: ① 안 보이게 컷과 x0를 고른다 ② 작고 단순한 배경 위라 깔끔히 지워지면 erase 로 지운다
+  ③ 깔끔히 지워지지 않으면(배경이 복잡하거나 글씨가 크면) erase 사각형을 그대로 적고 blur=true 로 흐리게 덮는다
+  ④ 제품 이름처럼 읽혀야 하는 글씨만 unmirror=true 로 거울반전을 푼다.
   · erase(맨 위): 영상{" A" if two else ""} 내내 같은 자리에 있는 글씨(채널 로고, 고지 문구)를 지울 사각형들. 원본 픽셀 x, y, w, h. 없으면 [].{" 영상 B의 글씨는 그 구간의 erase 로 지웁니다." if two else ""}
   · timeline 각 항목의 erase: 그 구간에만 있는 글씨를 지울 사각형들. 없으면 [].
-  · timeline 각 항목의 unmirror: 그 구간의 거울반전을 풀지. 글씨가 안 보이거나 erase로 다 지워지면 false.
-  사각형은 글씨보다 사방 8픽셀쯤 넉넉히 잡되, 얼굴·손·제품에 닿지 않게 합니다. 지우면 얼룩이 남을 것 같으면 지우지 말고 unmirror를 씁니다.
+  · timeline 각 항목의 blur: true 면 그 구간의 erase 사각형을 지우는 대신 읽을 수 없게 흐리게 덮습니다. 깔끔히 지워질 때는 false.
+  · timeline 각 항목의 unmirror: 그 구간의 거울반전을 풀지. 글씨가 안 보이거나 지우거나 흐리게 덮었으면 false.
+  사각형은 글씨보다 사방 8픽셀쯤 넉넉히 잡되, 얼굴·손·제품에 닿지 않게 합니다. 지우면 얼룩이 남을 것 같으면 blur 를 씁니다.
 - timeline: 재생 순서대로. 각 항목의 shows 에는 그 장면에서 화면에 무엇이 보이는지 한 줄로 적습니다
   (예: "트리 아래에 바스켓을 놓는 손"). 이 제품과의 관련을 설명할 수 없는 장면은 넣지 않습니다.
   · 컷: type "cut", a/b 원본 초, x0 크롭 왼쪽 x(인물의 얼굴이 크롭의 가로 정중앙에 오게. 얼굴이 없는 제품 장면은 제품이 가운데),
@@ -497,9 +499,13 @@ def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
     자막 text 안에서 힘줄 낱말 하나를 *별표*로 감쌀 수 있습니다(예: "진짜 *촉촉해요*"). 별표는 화면에 나오지 않고
     그 낱말만 크고 색 있게 나옵니다. 화자가 힘주어 말한 낱말·제품의 효과·숫자·제품명에만, 자막 서너 덩이에 한 번꼴로 씁니다.
     em(덩이 전체 강조)을 켠 덩이에는 별표를 쓰지 않습니다.
+    주인공(제품을 소개하는 화자)이 아닌 다른 사람이 한 말(진행자의 질문·맞장구, 옆 사람의 반응)은 text 맨 앞에 ^ 를 붙입니다
+    (예: "^아 스타일이 있어?"). ^ 는 화면에 나오지 않고 그 자막이 다른 색으로, 조금 위에 나옵니다. 누가 말했는지 확실할 때만 씁니다.
     sfx는 컷 시작 효과음 또는 "". text와 image는 "", still_t는 -1.
   · TTS: type "tts", text 문구, image는 사용자 이미지 파일명 또는 "", image가 ""이면 still_t(정지 화면 시각)와 x0
-    (정지 화면에도 unmirror·erase를 같은 기준으로 씁니다). a/b는 -1, subs는 [].
+    (정지 화면에도 unmirror·erase·blur를 같은 기준으로 씁니다). a/b는 -1, subs는 [].
+    TTS 구간에는 프로그램이 원본의 다른 장면 몇 장을 더 골라 차례로 보여 줍니다(still_t 는 그 첫 장).
+    사용자 이미지가 여러 장이면 프로그램이 TTS 구간들에 차례로 나눠 보여 주니, image 에는 그중 아무 파일명이나 하나 적습니다.
 - cards: comment는 위 후보의 번호, seg는 카드가 뜨기 시작하는 timeline 순번(0부터), offset은 그 구간 시작 뒤 초.
   이 영상에서 고른 제품과 관련 있는 댓글을 센스 있게 고릅니다: 제품의 사용감·효과·사고 싶다는 반응,
   "나만 몰랐네" 같은 공감, 피식 웃게 하는 재치 있는 한마디처럼 보는 사람이 "맞아" 하거나 궁금해지는 것.
@@ -543,11 +549,14 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict, n_src: int = 1, chann
         if s["type"] == "cut":
             seg = {"type": "cut", "a": round(s["a"], 2), "b": round(s["b"], 2), "x0": s["x0"], "subs": []}
             for sb in s["subs"]:
-                text, key = split_key(sb["text"])
+                other = str(sb["text"]).lstrip().startswith("^")       # 주인공이 아닌 다른 사람이 한 말
+                text, key = split_key(str(sb["text"]).lstrip().lstrip("^"))
                 item = {"t": round(sb["t"], 2), "text": text}
-                if key and not sb["em"]:
+                if other:
+                    item["other"] = True
+                elif key and not sb["em"]:
                     item["key"] = key       # 이 낱말만 크게·색 있게(강조 낱말)
-                if sb["em"]:
+                if sb["em"] and not other:
                     item["em"] = True
                 if sb["sfx"]:
                     item["sfx"] = sb["sfx"]
@@ -568,6 +577,8 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict, n_src: int = 1, chann
         if not seg.get("image"):      # 사용자 이미지는 반전·지우기 대상이 아니다
             if s.get("unmirror"):
                 seg["mirror"] = False
+            if s.get("blur") and rects:
+                seg["blur"] = True
             if rects:
                 seg["erase"] = rects
         tl.append(seg)

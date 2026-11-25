@@ -33,7 +33,7 @@ def read_settings() -> dict:
 
 
 def write_settings(st: dict):
-    keep = {k: v for k, v in st.items() if v or (v is False and k == "sub_vary")}     # 끈 것(False)도 남겨야 하는 값
+    keep = {k: v for k, v in st.items() if v or (v is False and k in ("sub_vary", "sub_sticker"))}     # 끈 것(False)도 남겨야 하는 값
     SETTINGS.write_text(json.dumps(keep, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -127,6 +127,8 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     v_vary = tk.BooleanVar(value=st0.get("sub_vary", True) is not False)
     v_colors = tk.StringVar(value=str(st0.get("sub_colors") or "cycle"))
     v_anim = tk.StringVar(value=str(st0.get("sub_anim") or "pop"))
+    v_sticker = tk.BooleanVar(value=st0.get("sub_sticker", True) is not False)       # 강조 자막의 포인트 스티커
+    v_tts_bg = tk.StringVar(value=str(st0.get("tts_bg") or "stills"))                 # TTS 구간의 화면
     v_title_style = tk.StringVar(value=str(st0.get("title_style") or "plain"))      # 상단 제목 모양
     v_src_format = tk.StringVar(value=str(st0.get("source_format") or "plain"))     # 출처 문구 모양
     v_src_size = tk.IntVar(value=int(st0.get("source_size") or 30))
@@ -168,7 +170,7 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     else:
         tabs = ttk.Notebook(stack)
         tabs.pack(fill="both", expand=True)
-    for pg, name in ((pg_font, "글자체"), (pg_vary, "자막 변화"), (pg_title, "제목·출처"), (pg_app, "앱 화면"), (pg_music, "음악")):
+    for pg, name in ((pg_font, "글자체"), (pg_vary, "자막 변화"), (pg_title, "화면 구성"), (pg_app, "앱 화면"), (pg_music, "음악")):
         tabs.add(pg, text=name)
 
     def font_row(parent, title, var_font, var_size, lo, hi, var_bold, unit="크기", step=2):
@@ -251,6 +253,8 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     ttk.Checkbutton(pg_vary, text="강조할 말을 크게 · 다른 색 · 다른 글자체로", variable=v_vary,
                     command=lambda: schedule()).pack(anchor="w", pady=(8, 0))
     ttk.Label(pg_vary, text="강조할 낱말은 AI가 고릅니다(힘준 말, 효과, 숫자, 제품명).", foreground=UI["sub"]).pack(anchor="w")
+    ttk.Checkbutton(pg_vary, text="포인트 스티커 (강조 자막에 반짝이, 다른 사람 말에 강조선)", variable=v_sticker,
+                    command=lambda: schedule()).pack(anchor="w", pady=(4, 0))
     cb_em = font_row(pg_vary, "강조 글자체", v_em_font, v_em_scale, 100, 170, None, unit="크기(%)", step=5)
     section(pg_vary, "강조 색")
     row_c = ttk.Frame(pg_vary)
@@ -286,6 +290,10 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     num_row("크기", v_src_size, 20, 70, 2, "기본 30")
     num_row("위치", v_src_y, 1540, 1880, 10, "작을수록 위 · 기본 1700")
     num_row("진하기(%)", v_src_alpha, 15, 100, 5, "작을수록 투명 · 기본 84")
+    section(pg_title, "TTS(나레이션) 때의 화면")
+    for key, label in (("stills", "여러 장면이 지나가기 (원본의 다른 장면 또는 넣은 사진들)"),
+                       ("clip", "원본의 움직이는 장면 (소리 없이)"), ("one", "한 장만")):
+        ttk.Radiobutton(pg_title, text=label, value=key, variable=v_tts_bg).pack(anchor="w")
 
     section(pg_app, "앱에서 보이는 모습")
     for key, label in [("", "없음 (완성본 그대로)")] + list(platforms.PLATFORMS.items()):
@@ -359,6 +367,7 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
                 "font_em": refs.get(v_em_font.get()), "font_em_name": v_em_font.get(),
                 "em_scale": max(100, min(170, num(v_em_scale, 125))), "sub_vary": bool(v_vary.get()),
                 "sub_colors": v_colors.get() or "cycle", "sub_anim": v_anim.get() or "pop",
+                "sub_sticker": bool(v_sticker.get()), "tts_bg": v_tts_bg.get() or "stills",
                 "title_style": v_title_style.get() or "plain", "source_format": v_src_format.get() or "plain",
                 "source_size": max(20, min(70, num(v_src_size, 30))), "source_y": max(1540, min(1880, num(v_src_y, 1700))),
                 "source_alpha": max(15, min(100, num(v_src_alpha, 84))),
@@ -456,6 +465,8 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
         v_vary.set(True)
         v_colors.set("cycle")
         v_anim.set("pop")
+        v_sticker.set(True)
+        v_tts_bg.set("stills")
         v_title_style.set("plain")
         v_src_format.set("plain")
         v_src_size.set(30)
