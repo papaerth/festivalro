@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 
 const nav = [
-  ['/', '대시보드', '◈'], ['/schedule', '하루 9편 편성표', '▦'], ['/settings', '설정·백업', '⚙'],
+  ['/', '오늘의 6편', '◈'], ['/settings', '설정·백업', '⚙'],
 ] as const
 // 자동으로 처리되는 작업 화면. 평소에는 접어 둔다(대시보드의 추천 카드에서 상세로 바로 들어갈 수 있음).
 const tools = [
   ['/candidates', '소싱 후보(전체)', '◇'], ['/videos', '영상(전체)', '▶'], ['/channels', '연예인·채널', '★'],
-  ['/products', '상품', '◆'], ['/data', '데이터 수집·가져오기', '⇅'],
+  ['/products', '상품', '◆'], ['/schedule', '하루 9편 편성표', '▦'], ['/data', '데이터 수집·가져오기', '⇅'],
 ] as const
 
 export default function Layout() {

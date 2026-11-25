@@ -478,3 +478,34 @@ class UserSetting(Base):
 
 
 Index("ix_videos_view_count", Video.view_count)
+
+
+class ShortsProject(TimestampMixin, Base):
+    """후보별 쇼츠 제작 재료: 사용자가 직접 준비해 올린 원본 mp4(프로그램은 유튜브 영상을 내려받지 않는다)."""
+
+    __tablename__ = "shorts_projects"
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("sourcing_candidates.id", ondelete="CASCADE"), primary_key=True)
+    source_path: Mapped[str | None] = mapped_column(String(500))
+    source_name: Mapped[str | None] = mapped_column(String(300))
+    source_info: Mapped[dict | None] = mapped_column(JSON)  # {duration,width,height,has_audio,size}
+    hint_start: Mapped[int | None] = mapped_column(Integer)  # 사용자가 알려준 대략 위치(초). 있으면 AI 전체 훑기 생략
+    hint_end: Mapped[int | None] = mapped_column(Integer)
+
+
+class ShortsRender(Base):
+    """쇼츠 자동 제작 1회. edl(편집 결정 목록)은 사람이 고쳐 다시 렌더링할 수 있다."""
+
+    __tablename__ = "shorts_renders"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("sourcing_candidates.id", ondelete="CASCADE"), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="queued", nullable=False)  # queued/running/done/failed
+    step: Mapped[str | None] = mapped_column(String(200))
+    progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 0~100
+    edl: Mapped[dict | None] = mapped_column(JSON)
+    decided_by: Mapped[str | None] = mapped_column(String(30))  # ai_vision / transcript / manual_range / edited
+    output_path: Mapped[str | None] = mapped_column(String(500))
+    output_info: Mapped[dict | None] = mapped_column(JSON)
+    notes: Mapped[list | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)

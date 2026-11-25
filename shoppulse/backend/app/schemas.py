@@ -232,6 +232,19 @@ class AdoptSegmentIn(BaseModel):
     note: str | None = None
 
 
+class EdlClip(BaseModel):
+    start: float = Field(..., ge=0)
+    end: float = Field(..., ge=0)
+    caption: str = ""
+
+
+class EdlIn(BaseModel):
+    hook: EdlClip | None = None
+    segments: list[EdlClip]
+    title_lines: list[str] = []
+    credit: str = ""
+
+
 class VerificationIn(BaseModel):
     item: str
     status: Literal["pending", "passed", "failed", "na"]

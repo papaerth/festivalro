@@ -417,7 +417,7 @@ def test_auto_discovery_creates_candidates_and_ai_skipped_without_key(client):
 
 def test_daily_sourcing_ai_products_skipped_without_key(client):
     rep = client.post("/api/sourcing/run", json={"report_date": "2026-11-29", "background": False}).json()
-    assert rep["summary"]["ai_products"]["skipped"] is True and "ANTHROPIC_API_KEY" in rep["summary"]["ai_products"]["reason"]
+    assert rep["summary"]["ai_products"]["skipped"] is True and ("ANTHROPIC_API_KEY" in rep["summary"]["ai_products"]["reason"] or "집중 모드" in rep["summary"]["ai_products"]["reason"])
 
 
 def test_auto_discovery_respects_window(client):
@@ -642,3 +642,56 @@ def test_auto_celebrity_registration_without_ai_uses_rule(client):
     chans = [c for c in client.get("/api/channels").json() if c["celebrity_name"] == "김영란"]
     assert chans and chans[0]["verification_status"] == "unverified" and chans[0]["channel_id"] is None
     assert not any(c["name"] == "트레이더조" for c in client.get("/api/celebrities").json())
+
+
+def test_studio_upload_and_make_short_without_ai(client, tmp_path):
+    """합성 영상으로 제작실 전체 흐름: 원본 URL 연결 → mp4 업로드 → (AI 키 없음) 위치 지정 → 렌더링 → 편집안 고쳐 재렌더."""
+    import subprocess, time
+    from app.services import shorts_maker
+    caps = shorts_maker.capabilities()
+    if not caps.get("available"):
+        import pytest; pytest.skip("ffmpeg 없음")
+    src = tmp_path / "src.mp4"
+    subprocess.run([caps["path"], "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=60",
+                    "-f", "lavfi", "-i", "sine=frequency=440:duration=60", "-c:v", caps["vcodec"], "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(src)], check=True)
+    v = client.post("/api/videos", json={"url_or_id": "sssssssssss", "title": "제작실 테스트 쇼츠 추천템 #테스트", "duration_seconds": 30,
+                                        "view_count": 500000, "fetch": False, "source_type": "reedit_shorts"}).json()
+    cid = client.post("/api/candidates", json={"video_id": v["id"], "channel_category": "living"}).json()["id"]
+    st = client.get(f"/api/studio/{cid}").json()
+    assert st["ffmpeg"]["available"] and st["source"] is None and "내려받지 않습니다" in st["notice"]
+    assert client.post(f"/api/studio/{cid}/make").status_code == 400  # 파일 먼저
+    assert client.post(f"/api/studio/{cid}/original", json={"url_or_id": "https://youtu.be/rrrrrrrrrrr"}).json()["original"]["url"].endswith("rrrrrrrrrrr")
+    with src.open("rb") as f:
+        st = client.post(f"/api/studio/{cid}/source", files={"file": ("orig.mp4", f, "video/mp4")}).json()
+    assert st["source"]["exists"] and abs(st["source"]["info"]["duration"] - 60) < 1 and st["source"]["info"]["width"] == 640
+    assert client.post(f"/api/studio/{cid}/source", files={"file": ("a.txt", b"x", "text/plain")}).status_code == 400
+
+    def wait():
+        for _ in range(300):
+            r = client.get(f"/api/studio/{cid}").json()["renders"][0]
+            if r["status"] in ("done", "failed"):
+                return r
+            time.sleep(0.2)
+        raise AssertionError("렌더 시간 초과")
+
+    # AI 키 없음 + 위치 없음 → 안내와 함께 실패(가짜 결과 없음)
+    client.post(f"/api/studio/{cid}/make")
+    r = wait()
+    assert r["status"] == "failed" and "대략 위치" in r["error"]
+    # 위치 지정 → 규칙 편집으로 완성
+    client.post(f"/api/studio/{cid}/make", data={"hint": "0:20"})
+    r = wait()
+    assert r["status"] == "done", r
+    assert r["output_info"]["width"] == 1080 and r["output_info"]["height"] == 1920 and 18 <= r["output_info"]["duration"] <= 33
+    assert r["edl"]["hook"] and r["edl"]["credit"].startswith("출처") and "rule" in r["decided_by"]
+    f = client.get(r["file_url"])
+    assert f.status_code == 200 and f.headers["content-type"] == "video/mp4" and len(f.content) > 10000
+    # 편집안 고쳐 재렌더(AI 없음)
+    edl = {"hook": {"start": 30, "end": 32.5, "caption": "이게 뭐길래?"}, "segments": [{"start": 10, "end": 30, "caption": "직접 확인한 구성"}],
+           "title_lines": ["테스트 제목", "둘째 줄"], "credit": "출처: 테스트 채널"}
+    client.post(f"/api/studio/{cid}/rerender", json=edl)
+    r2 = wait()
+    assert r2["status"] == "done" and r2["id"] != r["id"] and r2["decided_by"] == "edited" and r2["edl"]["segments"][0]["caption"] == "직접 확인한 구성"
+    assert abs(r2["output_info"]["duration"] - 22.5) < 1.5
+    client.delete(f"/api/studio/{cid}/source")
+    assert client.get(f"/api/studio/{cid}").json()["source"]["exists"] is False

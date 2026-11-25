@@ -1,0 +1,522 @@
+"""원본 mp4 → 20~30초 세로 쇼츠 자동 제작(ffmpeg).
+
+흐름(버튼 한 번):
+ 1) 영상 정보 확인 → 2) 장면 찾기(사용자 힌트/저장된 장면/자막 → 없으면 AI 가 장면 모음 이미지를 훑어 찾음)
+ 3) 편집안(EDL) 결정: 초반 2~3초 후킹 컷 + 본편 18~27초, 자막 문구(화면에 실제로 보인 말·설명만, 발언을 지어내지 않음)
+ 4) 컷 경계를 말 사이 무음에 맞춤 → 5) 1080x1920 렌더링(흐린 배경 + 원본 화면 + 상단 제목 + 하단 자막 + 출처 표기)
+
+원칙: 프로그램은 유튜브 영상을 내려받지 않는다(사용자가 준비한 파일만 사용). 출처 표기를 항상 넣는다.
+AI 는 이 단계에서만 쓴다(선택과 집중). AI 키가 없으면 '대략 위치'가 있어야 하며 자막 없이 규칙으로 자른다.
+"""
+from __future__ import annotations
+
+import base64
+import json
+import logging
+import re
+import shutil
+import subprocess
+import sys
+import threading
+from pathlib import Path
+
+from ..config import get_settings
+from ..database import SessionLocal
+from ..models import ShortsProject, ShortsRender, SourcingCandidate, utcnow
+
+log = logging.getLogger("shoppulse.shorts")
+W, H, FPS = 1080, 1920, 30
+HOOK_MIN, HOOK_MAX = 1.5, 3.5
+TOTAL_MIN, TOTAL_MAX = 18.0, 32.0
+_caps_cache: dict[str, dict] = {}
+
+
+class ShortsError(RuntimeError):
+    pass
+
+
+# ---------------------------------------------------------------- ffmpeg 찾기·능력
+def find_ffmpeg() -> str | None:
+    s = get_settings()
+    if s.shoppulse_ffmpeg and Path(s.shoppulse_ffmpeg).exists():
+        return s.shoppulse_ffmpeg
+    w = shutil.which("ffmpeg")
+    if w:
+        return w
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def capabilities(ff: str | None = None) -> dict:
+    ff = ff or find_ffmpeg()
+    if not ff:
+        return {"available": False, "reason": "ffmpeg 를 찾지 못했습니다. setup.bat 을 다시 실행하거나(내장 ffmpeg 설치) .env 의 SHOPPULSE_FFMPEG 에 경로를 적으세요."}
+    if ff in _caps_cache:
+        return _caps_cache[ff]
+    try:
+        filt = subprocess.run([ff, "-hide_banner", "-filters"], capture_output=True, text=True, timeout=30, encoding="utf-8", errors="replace").stdout
+        enc = subprocess.run([ff, "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=30, encoding="utf-8", errors="replace").stdout
+        ver = subprocess.run([ff, "-hide_banner", "-version"], capture_output=True, text=True, timeout=30, encoding="utf-8", errors="replace").stdout.splitlines()[0]
+    except Exception as e:
+        return {"available": False, "reason": f"ffmpeg 실행 실패: {e} (Windows 앱 제어가 막았다면 winget install Gyan.FFmpeg 후 다시 시도)"}
+    has = lambda name, text: re.search(rf"\s{name}\s", text) is not None  # noqa: E731
+    vcodec = "libx264" if has("libx264", enc) else ("h264_mf" if has("h264_mf", enc) else "mpeg4")
+    caps = {"available": True, "path": ff, "version": ver, "ass": has("ass", filt), "drawtext": has("drawtext", filt),
+            "tile": has("tile", filt), "vcodec": vcodec, "acodec": "aac"}
+    _caps_cache[ff] = caps
+    return caps
+
+
+def _run(args: list[str], cwd: str | None = None, timeout: int = 1800) -> subprocess.CompletedProcess:
+    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace")
+
+
+def probe(ff: str, path: str) -> dict:
+    """ffprobe 없이 `ffmpeg -i` 출력에서 길이·해상도·오디오 유무를 읽는다."""
+    err = _run([ff, "-hide_banner", "-i", path], timeout=60).stderr
+    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", err)
+    if not m:
+        raise ShortsError("영상 파일을 읽지 못했습니다(지원하지 않는 형식이거나 손상).")
+    dur = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+    v = re.search(r"Stream #.*Video:.*?(\d{3,5})x(\d{3,5})", err)
+    if not v:
+        raise ShortsError("영상 트랙이 없습니다.")
+    rot = re.search(r"rotation of (-?\d+(?:\.\d+)?) degrees|rotate\s*:\s*(\d+)", err)
+    w, h = int(v.group(1)), int(v.group(2))
+    if rot and abs(int(float(rot.group(1) or rot.group(2)))) in (90, 270):
+        w, h = h, w
+    return {"duration": round(dur, 2), "width": w, "height": h, "has_audio": bool(re.search(r"Stream #.*Audio:", err)),
+            "size": Path(path).stat().st_size}
+
+
+# ---------------------------------------------------------------- 장면 모음 이미지(AI 입력)
+def contact_sheets(ff: str, src: str, start: float, end: float, step: float, cols: int, rows: int, cell_w: int,
+                   outdir: Path, tag: str) -> list[dict]:
+    """[start,end] 구간을 step 초마다 한 장씩 뽑아 cols×rows 로 붙인 이미지들. 각 칸의 시각을 계산해 함께 돌려준다."""
+    outdir.mkdir(parents=True, exist_ok=True)
+    for old in outdir.glob(f"{tag}_*.jpg"):
+        old.unlink()
+    dur = max(0.5, end - start)
+    r = _run([ff, "-hide_banner", "-y", "-ss", f"{start:.2f}", "-t", f"{dur:.2f}", "-i", src, "-an",
+              "-vf", f"fps=1/{step:.3f},scale={cell_w}:-2,tile={cols}x{rows}", "-q:v", "5", str(outdir / f"{tag}_%03d.jpg")], timeout=1200)
+    files = sorted(outdir.glob(f"{tag}_*.jpg"))
+    if not files:
+        raise ShortsError(f"장면 이미지 추출 실패: {r.stderr[-300:]}")
+    per = cols * rows
+    n_frames = int(dur // step) + 1
+    sheets = []
+    for i, f in enumerate(files):
+        times = [round(start + (i * per + k) * step, 1) for k in range(per) if (i * per + k) < n_frames + 1]
+        sheets.append({"path": str(f), "times": times, "cols": cols, "rows": rows})
+    return sheets
+
+
+def detect_silences(ff: str, src: str, start: float, end: float) -> list[tuple[float, float]]:
+    r = _run([ff, "-hide_banner", "-ss", f"{max(0, start):.2f}", "-t", f"{max(1, end - start):.2f}", "-i", src, "-vn",
+              "-af", "silencedetect=noise=-32dB:d=0.22", "-f", "null", "-"], timeout=600)
+    out, cur = [], None
+    for line in r.stderr.splitlines():
+        m = re.search(r"silence_start:\s*(-?\d+(?:\.\d+)?)", line)
+        if m:
+            cur = float(m.group(1))
+        m = re.search(r"silence_end:\s*(-?\d+(?:\.\d+)?)", line)
+        if m and cur is not None:
+            out.append((start + max(0.0, cur), start + float(m.group(1))))
+            cur = None
+    return out
+
+
+def snap(t: float, silences: list[tuple[float, float]], tol: float = 0.7) -> float:
+    best, bd = t, tol
+    for a, b in silences:
+        mid = (a + b) / 2
+        if abs(mid - t) <= bd:
+            best, bd = mid, abs(mid - t)
+    return round(best, 2)
+
+
+# ---------------------------------------------------------------- 편집안(EDL)
+def clean_title(text: str | None) -> str:
+    t = re.sub(r"#\S+", "", text or "")
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def split_title(text: str, max_len: int = 13) -> list[str]:
+    """제목을 2줄 이내로(한 줄 13자 안팎)."""
+    words, lines, cur = text.split(" "), [], ""
+    for w in words:
+        if len(cur) + len(w) + (1 if cur else 0) <= max_len:
+            cur = f"{cur} {w}".strip()
+        else:
+            if cur:
+                lines.append(cur)
+            cur = w
+        if len(lines) == 2:
+            break
+    if cur and len(lines) < 2:
+        lines.append(cur)
+    return [ln[:max_len + 4] for ln in lines[:2]] or [text[:max_len]]
+
+
+def normalize_edl(edl: dict, duration: float) -> dict:
+    """AI·사람이 준 편집안을 안전한 범위로 정리: 범위 클램프, 후킹 1.5~3.5초, 본편 시간순·겹침 제거, 총 18~32초."""
+    def clampseg(sg):
+        a, b = float(sg.get("start", 0)), float(sg.get("end", 0))
+        a = max(0.0, min(a, max(0.0, duration - 0.5))); b = max(a + 0.3, min(b, duration))
+        return {"start": round(a, 2), "end": round(b, 2), "caption": (sg.get("caption") or "").strip()[:40]}
+
+    segs = sorted([clampseg(x) for x in (edl.get("segments") or []) if x], key=lambda x: x["start"])
+    merged: list[dict] = []
+    for sg in segs:
+        if sg["end"] - sg["start"] < 1.0:
+            continue
+        if merged and sg["start"] < merged[-1]["end"]:
+            sg["start"] = merged[-1]["end"]
+            if sg["end"] - sg["start"] < 1.0:
+                continue
+        merged.append(sg)
+    if not merged:
+        raise ShortsError("편집안에 쓸 수 있는 본편 구간이 없습니다.")
+    hook = clampseg(edl["hook"]) if edl.get("hook") else None
+    if hook:
+        hl = min(HOOK_MAX, max(HOOK_MIN, hook["end"] - hook["start"]))
+        hook["end"] = round(min(duration, hook["start"] + hl), 2)
+    hook_len = (hook["end"] - hook["start"]) if hook else 0.0
+    # 총 길이 맞추기: 넘치면 뒤에서부터 줄이고, 모자라면 마지막 구간을 늘린다
+    total = hook_len + sum(x["end"] - x["start"] for x in merged)
+    while total > TOTAL_MAX and merged:
+        over = total - TOTAL_MAX
+        last = merged[-1]
+        ln = last["end"] - last["start"]
+        if ln - over >= 2.0:
+            last["end"] = round(last["end"] - over, 2)
+        else:
+            merged.pop()
+        total = hook_len + sum(x["end"] - x["start"] for x in merged)
+    if total < TOTAL_MIN and merged:
+        need = TOTAL_MIN - total
+        merged[-1]["end"] = round(min(duration, merged[-1]["end"] + need), 2)
+    out = {"hook": hook, "segments": merged,
+           "title_lines": [str(x).strip()[:20] for x in (edl.get("title_lines") or []) if str(x).strip()][:2],
+           "credit": (edl.get("credit") or "").strip()[:60], "reason": edl.get("reason"), "quote_seen": edl.get("quote_seen"),
+           "cautions": edl.get("cautions") or []}
+    out["total_seconds"] = round((out["hook"]["end"] - out["hook"]["start"] if out["hook"] else 0) + sum(x["end"] - x["start"] for x in merged), 2)
+    return out
+
+
+def rule_edl(start: float, end: float | None, duration: float, title: str) -> dict:
+    """AI 없이: 알려준 위치에서 25초. 후킹은 구간의 40% 지점 3초(자막 없음)."""
+    end = end if end and end > start + 8 else start + 25
+    end = min(duration, max(end, start + 20))
+    span = min(end - start, 25)
+    return {"hook": {"start": start + span * 0.4, "end": start + span * 0.4 + 3, "caption": ""},
+            "segments": [{"start": start, "end": start + span, "caption": ""}],
+            "title_lines": split_title(clean_title(title)), "reason": "규칙 편집(AI 미사용): 지정 위치에서 25초, 후킹은 구간 40% 지점 3초"}
+
+
+EDL_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["hook", "segments", "title_lines", "quote_seen", "reason", "cautions"],
+    "properties": {
+        "hook": {"type": "object", "additionalProperties": False, "required": ["start", "end", "caption"],
+                 "properties": {"start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"}}},
+        "segments": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["start", "end", "caption"],
+                                               "properties": {"start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"}}}},
+        "title_lines": {"type": "array", "items": {"type": "string"}},
+        "quote_seen": {"type": "string"}, "reason": {"type": "string"},
+        "cautions": {"type": "array", "items": {"type": "string"}},
+    },
+}
+LOCATE_SCHEMA = {
+    "type": "object", "additionalProperties": False, "required": ["found", "start", "end", "confidence", "reason"],
+    "properties": {"found": {"type": "boolean"}, "start": {"type": "number"}, "end": {"type": "number"},
+                   "confidence": {"type": "string", "enum": ["high", "medium", "low"]}, "reason": {"type": "string"}},
+}
+
+
+def _img_block(path: str) -> dict:
+    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.standard_b64encode(Path(path).read_bytes()).decode()}}
+
+
+def _sheet_content(sheets: list[dict]) -> list[dict]:
+    content: list[dict] = []
+    for i, sh in enumerate(sheets, 1):
+        content.append({"type": "text", "text": f"[장면 모음 {i}] {sh['cols']}열×{sh['rows']}행, 왼쪽 위부터 오른쪽으로 순서대로. 각 칸의 시각(초): {sh['times']}"})
+        content.append(_img_block(sh["path"]))
+    return content
+
+
+def ai_locate(ff: str, src: str, info: dict, ctx: dict, workdir: Path) -> dict:
+    """영상 전체를 듬성듬성 훑어 '참고 쇼츠가 쓴 장면'이 있는 구간(최대 150초)을 찾는다."""
+    from .claude_client import create_json
+    dur = info["duration"]
+    step = max(6.0, dur / 150)
+    sheets = contact_sheets(ff, src, 0, dur, step, 3, 3, 520, workdir, "coarse")[:18]
+    content = _sheet_content(sheets)
+    content.append({"type": "text", "text": json.dumps({"task": "아래 정보의 재편집 쇼츠가 잘라 쓴 장면이 원본 어디쯤인지 찾아라.", **ctx}, ensure_ascii=False)})
+    system = ("유튜브 원본 영상의 장면 모음 이미지를 보고, 참고 쇼츠(제목·상품·썸네일 설명)가 다룬 장면이 나오는 구간을 초 단위로 찾는 편집 보조다. 한국어. "
+              "해당 상품·소품·화면 자막이 보이는 칸들의 시각을 근거로 start/end(최대 150초 폭)를 준다. 못 찾으면 found=false. 추측이면 confidence=low.")
+    return create_json(system=system, max_tokens=700, output_schema=LOCATE_SCHEMA, messages=[{"role": "user", "content": content}], timeout=240.0)
+
+
+def ai_edit(ff: str, src: str, info: dict, ctx: dict, rng: tuple[float, float], workdir: Path, transcript: list[dict] | None) -> dict:
+    """찾은 구간을 촘촘히(약 2초 간격) 보고 후킹 컷·본편 컷·자막 문구를 정한다."""
+    from .claude_client import create_json
+    a, b = max(0.0, rng[0] - 8), min(info["duration"], rng[1] + 8)
+    if b - a > 170:
+        b = a + 170
+    step = max(1.5, (b - a) / 80)
+    sheets = contact_sheets(ff, src, a, b, step, 2, 2, 780, workdir, "fine")[:20]
+    content = _sheet_content(sheets)
+    payload = {"task": "이 구간에서 20~30초 쇼츠 편집안을 만든다.", "range": [round(a, 1), round(b, 1)], **ctx}
+    if transcript:
+        payload["transcript_excerpt"] = [{"t": s["start"], "text": s["text"]} for s in transcript if a - 5 <= s["start"] <= b + 5][:120]
+    content.append({"type": "text", "text": json.dumps(payload, ensure_ascii=False)})
+    system = (
+        "쇼핑 쇼츠 편집자. 한국어. 원본 영상 구간의 장면 모음 이미지(각 칸 시각 제공)와 자막 발췌(있으면)를 보고 편집안을 만든다.\n"
+        "규칙: 1) hook 은 가장 궁금증을 일으키는 2~3초(상품이 처음 드러나거나 반응이 큰 순간). 본편과 겹쳐도 된다. "
+        "2) segments 는 시간순 1~4개, 합계 18~27초, 말이 끊기지 않게 한 구간은 3초 이상. 상품이 화면에 보이는 장면을 반드시 포함. "
+        "3) caption 은 각 구간 하단 자막 한 줄(18자 이내). 화면 자막·자막 발췌에 실제로 나온 말이나 사실 설명만 쓴다. 연예인 발언을 지어내지 않는다. "
+        "'추천'은 실제로 추천한 경우에만. hook.caption 은 12자 이내의 궁금증 문구. "
+        "4) title_lines 는 상단 제목 2줄(각 12자 이내, 과장·허위 금지). 5) quote_seen 에는 화면 자막 등에서 실제로 읽은 핵심 문장을 그대로(없으면 빈 문자열). "
+        "6) 확인이 필요한 점(상품 불명확, 광고·협찬 표시가 보임 등)은 cautions 에 적는다. 시각은 반드시 제공된 칸의 시각 범위 안에서 고른다.")
+    return create_json(system=system, max_tokens=1500, output_schema=EDL_SCHEMA, messages=[{"role": "user", "content": content}], timeout=300.0)
+
+
+# ---------------------------------------------------------------- 자막(ASS)·렌더링
+def _ass_time(t: float) -> str:
+    t = max(0.0, t)
+    return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
+
+
+def _ass_text(s: str) -> str:
+    return (s or "").replace("\\", "").replace("{", "(").replace("}", ")").replace("\n", " ").strip()
+
+
+def default_font() -> str:
+    if sys.platform.startswith("win"):
+        return "Malgun Gothic"
+    try:
+        out = subprocess.run(["fc-match", "-f", "%{family}", ":lang=ko"], capture_output=True, text=True, timeout=10).stdout
+        return out.split(",")[0].strip() or "sans-serif"
+    except Exception:
+        return "sans-serif"
+
+
+def build_ass(edl: dict, font: str, fg_top: int, fg_bottom: int) -> str:
+    """출력 타임라인 기준 자막. 제목(상단, 전 구간) · 후킹 문구(후킹 구간) · 구간 자막(하단) · 출처(최하단, 전 구간)."""
+    total = edl["total_seconds"]
+    title_margin = max(90, fg_top - 330)
+    cap_margin = max(260, H - fg_bottom - 250)
+    head = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {W}
+PlayResY: {H}
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Title,{font},92,&H0000F0FF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,7,2,8,50,50,{title_margin},1
+Style: Hook,{font},100,&H00FFFFFF,&H000000FF,&H001A1AE6,&H80000000,1,0,0,0,100,100,0,0,1,8,2,2,50,50,{cap_margin},1
+Style: Cap,{font},68,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,6,2,2,60,60,{cap_margin},1
+Style: Credit,{font},34,&H00DDDDDD,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,0,2,40,40,70,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    ev = []
+    if edl.get("title_lines"):
+        title = "\\N".join(_ass_text(x) for x in edl["title_lines"])
+        ev.append(f"Dialogue: 1,{_ass_time(0)},{_ass_time(total)},Title,,0,0,0,,{title}")
+    t = 0.0
+    if edl.get("hook"):
+        hl = edl["hook"]["end"] - edl["hook"]["start"]
+        if edl["hook"].get("caption"):
+            ev.append(f"Dialogue: 2,{_ass_time(0)},{_ass_time(hl)},Hook,,0,0,0,,{_ass_text(edl['hook']['caption'])}")
+        t = hl
+    for sg in edl["segments"]:
+        ln = sg["end"] - sg["start"]
+        if sg.get("caption"):
+            ev.append(f"Dialogue: 2,{_ass_time(t + 0.05)},{_ass_time(t + ln - 0.05)},Cap,,0,0,0,,{_ass_text(sg['caption'])}")
+        t += ln
+    if edl.get("credit"):
+        ev.append(f"Dialogue: 0,{_ass_time(0)},{_ass_time(total)},Credit,,0,0,0,,{_ass_text(edl['credit'])}")
+    return head + "\n".join(ev) + "\n"
+
+
+def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path, workdir: Path, font: str | None = None) -> dict:
+    clips = ([edl["hook"]] if edl.get("hook") else []) + edl["segments"]
+    vertical = info["height"] >= info["width"]
+    fg_h = H if vertical else int(round(W * info["height"] / info["width"] / 2) * 2)
+    fg_top = 0 if vertical else (H - fg_h) // 2 - 60
+    args = [ff, "-hide_banner", "-y"]
+    for c in clips:
+        args += ["-ss", f"{c['start']:.2f}", "-t", f"{c['end'] - c['start']:.2f}", "-i", src]
+    n = len(clips)
+    parts = []
+    for i in range(n):
+        parts.append(f"[{i}:v]fps={FPS},setpts=PTS-STARTPTS,setsar=1[v{i}]")
+        if info["has_audio"]:
+            parts.append(f"[{i}:a]aresample=48000,asetpts=PTS-STARTPTS[a{i}]")
+    if info["has_audio"]:
+        parts.append("".join(f"[v{i}][a{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=1[cv][ca]")
+    else:
+        parts.append("".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[cv]")
+    if vertical:
+        parts.append(f"[cv]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}[base]")
+    else:
+        parts.append("[cv]split[bg0][fg0]")
+        parts.append(f"[bg0]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=24:2,eq=brightness=-0.28:saturation=0.8[bg]")
+        parts.append(f"[fg0]scale={W}:{fg_h}[fg]")
+        parts.append(f"[bg][fg]overlay=0:{fg_top}[base]")
+    notes = []
+    if caps.get("ass"):
+        (workdir / "subs.ass").write_text(build_ass(edl, font or default_font(), fg_top, fg_top + fg_h), encoding="utf-8")
+        parts.append("[base]ass=subs.ass[vout]")
+    else:
+        parts.append("[base]null[vout]")
+        notes.append("이 ffmpeg 에는 자막 굽기(libass)가 없어 제목·자막 없이 렌더링했습니다. winget install Gyan.FFmpeg 로 전체 버전을 설치하면 자막이 들어갑니다.")
+    # 필터 그래프는 인자로 직접 넘긴다(-filter_complex_script 는 최신 ffmpeg 에서 제거됨). 경로는 작업 폴더 기준 상대경로라 이스케이프 불필요
+    args += ["-filter_complex", ";".join(parts), "-map", "[vout]"]
+    if info["has_audio"]:
+        args += ["-map", "[ca]", "-c:a", caps["acodec"], "-b:a", "160k"]
+    if caps["vcodec"] == "libx264":
+        args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]
+    elif caps["vcodec"] == "h264_mf":
+        args += ["-c:v", "h264_mf", "-b:v", "8M", "-pix_fmt", "yuv420p"]
+    else:
+        args += ["-c:v", "mpeg4", "-q:v", "4"]
+        notes.append("H.264 인코더가 없어 MPEG-4 로 저장했습니다.")
+    args += ["-r", str(FPS), "-movflags", "+faststart", str(out_path)]
+    r = _run(args, cwd=str(workdir), timeout=1800)
+    if r.returncode != 0 or not out_path.exists() or out_path.stat().st_size < 1000:
+        raise ShortsError("렌더링 실패: " + r.stderr[-600:])
+    o = probe(ff, str(out_path))
+    return {"duration": o["duration"], "width": o["width"], "height": o["height"], "size": o["size"], "notes": notes}
+
+
+# ---------------------------------------------------------------- 작업 실행
+def _set(db, r: ShortsRender, step: str, progress: int) -> None:
+    r.step, r.progress = step, progress
+    db.commit()
+
+
+def _context(c: SourcingCandidate) -> dict:
+    short, orig = c.video, c.video.original
+    return {"reference_short_title": short.title, "reference_short_description": (short.description or "")[:300],
+            "product": ({"name": c.product.name, "brand": c.product.brand} if c.product else None),
+            "celebrity": c.celebrity.name if c.celebrity else None,
+            "original_title": orig.title if orig else None,
+            "note": "참고 쇼츠는 타인이 만든 재편집물이다. 그 자막을 베끼지 말고 원본 화면에 근거해 새로 구성한다."}
+
+
+def decide_edl(db, c: SourcingCandidate, proj: ShortsProject, r: ShortsRender, ff: str, info: dict, workdir: Path) -> tuple[dict, str, list[str]]:
+    notes: list[str] = []
+    orig = c.video.original
+    transcript = (orig.transcript or {}).get("segments") if (orig and isinstance(orig.transcript, dict)) else None
+    rng: tuple[float, float] | None = None
+    basis = ""
+    if proj.hint_start is not None:
+        rng, basis = (float(proj.hint_start), float(proj.hint_end or proj.hint_start + 60)), "manual_range"
+    elif c.segment and c.segment.start_seconds is not None:
+        rng, basis = (float(c.segment.start_seconds), float(c.segment.end_seconds or c.segment.start_seconds + 60)), "saved_segment"
+    if rng is not None and rng[0] >= info["duration"] - 5:
+        src_name = "입력한 위치" if basis == "manual_range" else "저장된 장면 위치"
+        raise ShortsError(f"{src_name}({int(rng[0])}초)가 올린 영상 길이({int(info['duration'])}초)를 넘습니다. 올린 파일이 원본 전체가 맞는지 확인하거나 '대략 위치'를 다시 적어 주세요.")
+    has_ai = bool(get_settings().anthropic_api_key)
+    title = c.video.title or ""
+    if not has_ai:
+        if rng is None:
+            raise ShortsError("AI 키가 없으면 '대략 위치(분:초)'를 입력해야 합니다. 원본에서 상품이 나오는 시각을 적고 다시 눌러 주세요.")
+        notes.append("AI 키가 없어 규칙으로 잘랐습니다(자막 문구 없음). 아래 편집안에서 시간을 고쳐 다시 렌더링할 수 있습니다.")
+        return rule_edl(rng[0], rng[1], info["duration"], title), basis + "+rule", notes
+    ctx = _context(c)
+    if rng is None:
+        if info["duration"] <= 200:
+            rng, basis = (0.0, info["duration"]), "whole_video"
+        else:
+            _set(db, r, "AI 가 영상 전체에서 장면 찾는 중", 20)
+            loc = ai_locate(ff, proj.source_path, info, ctx, workdir)
+            if not loc.get("found"):
+                raise ShortsError(f"AI 가 원본에서 해당 장면을 찾지 못했습니다({loc.get('reason', '')}). '대략 위치(분:초)'를 입력하고 다시 시도하세요.")
+            rng, basis = (float(loc["start"]), float(loc["end"])), "ai_locate"
+            notes.append(f"AI 장면 탐색({loc.get('confidence')}): {loc.get('reason', '')}")
+    _set(db, r, "AI 가 후킹 장면·컷 구성 중", 40)
+    raw = ai_edit(ff, proj.source_path, info, ctx, rng, workdir, transcript)
+    raw.pop("_model", None); raw.pop("_transport", None)
+    return raw, basis + "+ai_vision", notes
+
+
+def run_render(render_id: int, reuse_edl: bool = False) -> None:
+    with SessionLocal() as db:
+        r = db.get(ShortsRender, render_id)
+        if not r:
+            return
+        workdir = get_settings().media_dir / "work" / f"r{render_id}"
+        try:
+            c = db.get(SourcingCandidate, r.candidate_id)
+            proj = db.get(ShortsProject, r.candidate_id)
+            if not c or not proj or not proj.source_path or not Path(proj.source_path).exists():
+                raise ShortsError("원본 mp4 파일이 없습니다. 먼저 파일을 올려 주세요.")
+            ff = find_ffmpeg()
+            caps = capabilities(ff)
+            if not caps.get("available"):
+                raise ShortsError(caps.get("reason", "ffmpeg 없음"))
+            r.status = "running"
+            workdir.mkdir(parents=True, exist_ok=True)
+            _set(db, r, "영상 정보 확인", 5)
+            info = probe(ff, proj.source_path)
+            proj.source_info = info
+            notes: list[str] = []
+            if reuse_edl and r.edl:
+                edl, by = r.edl, "edited"
+            else:
+                edl, by, notes = decide_edl(db, c, proj, r, ff, info, workdir)
+            orig = c.video.original
+            ch = (orig.channel.channel_name if orig and orig.channel else (orig.yt_channel_title if orig else None))
+            edl.setdefault("credit", "")
+            if not edl.get("credit"):
+                edl["credit"] = f"출처: {ch or '원본 채널'} 유튜브" if orig or ch else "출처: 원본 유튜브 영상"
+            if not edl.get("title_lines"):
+                edl["title_lines"] = split_title(clean_title(c.video.title))
+            edl = normalize_edl(edl, info["duration"])
+            if not reuse_edl and info["has_audio"]:
+                _set(db, r, "말 사이 무음에 컷 맞추는 중", 60)
+                lo = min(x["start"] for x in ([edl["hook"]] if edl["hook"] else []) + edl["segments"]) - 2
+                hi = max(x["end"] for x in ([edl["hook"]] if edl["hook"] else []) + edl["segments"]) + 2
+                sil = detect_silences(ff, proj.source_path, max(0, lo), min(info["duration"], hi))
+                for sg in edl["segments"]:
+                    sg["start"], sg["end"] = snap(sg["start"], sil), snap(sg["end"], sil)
+                edl = normalize_edl(edl, info["duration"])
+            r.edl, r.decided_by = edl, by
+            _set(db, r, "세로 쇼츠 렌더링 중", 70)
+            out = get_settings().media_dir / "renders" / f"shorts_c{c.id}_r{r.id}.mp4"
+            oi = render(ff, caps, proj.source_path, info, edl, out, workdir)
+            notes += oi.pop("notes", [])
+            notes += [f"확인 필요: {x}" for x in (edl.get("cautions") or [])]
+            r.output_path, r.output_info, r.notes = str(out), oi, notes
+            r.status, r.step, r.progress, r.finished_at = "done", "완료", 100, utcnow()
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            log.exception("쇼츠 제작 실패")
+            r = db.get(ShortsRender, render_id)
+            r.status, r.error, r.finished_at = "failed", str(e)[:800], utcnow()
+            db.commit()
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+
+def start_render(db, candidate_id: int, edl: dict | None = None) -> ShortsRender:
+    running = db.query(ShortsRender).filter(ShortsRender.candidate_id == candidate_id, ShortsRender.status.in_(["queued", "running"])).first()
+    if running:
+        return running
+    r = ShortsRender(candidate_id=candidate_id, status="queued", step="대기", progress=0, edl=edl)
+    db.add(r)
+    db.commit()
+    threading.Thread(target=run_render, args=(r.id, edl is not None), daemon=True, name=f"shorts-{r.id}").start()
+    return r

@@ -1,0 +1,189 @@
+"""쇼츠 제작실: 원본 URL 연결 + 사용자가 준비한 원본 mp4 업로드 → 버튼 한 번으로 20~30초 쇼츠 자동 제작."""
+from __future__ import annotations
+
+import re
+import shutil
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+
+from .. import schemas, serializers
+from ..config import get_settings
+from ..database import get_db
+from ..models import ShortsProject, ShortsRender, SourcingCandidate, Video, utcnow
+from ..services import shorts_maker
+from ..services.audit import log
+from ..services.scoring import get_active_version
+from .common import get_or_404
+
+router = APIRouter(prefix="/api/studio", tags=["studio"])
+ALLOWED_EXT = (".mp4", ".mov", ".mkv", ".webm", ".m4v")
+MAX_BYTES = 6 * 1024 ** 3
+
+
+def _hms(text: str | None) -> int | None:
+    if text is None or not str(text).strip():
+        return None
+    t = str(text).strip()
+    if re.fullmatch(r"\d+", t):
+        return int(t)
+    m = re.fullmatch(r"(?:(\d+):)?(\d{1,2}):(\d{2})", t)
+    if not m:
+        raise HTTPException(400, "위치는 분:초(예: 3:15) 또는 초(예: 195)로 적어 주세요")
+    return int(m.group(1) or 0) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+
+
+def _render(r: ShortsRender) -> dict:
+    return {"id": r.id, "status": r.status, "step": r.step, "progress": r.progress, "edl": r.edl, "decided_by": r.decided_by,
+            "output_info": r.output_info, "notes": r.notes or [], "error": r.error,
+            "file_url": f"/api/studio/renders/{r.id}/file" if r.status == "done" and r.output_path else None,
+            "created_at": serializers.iso(r.created_at), "finished_at": serializers.iso(r.finished_at)}
+
+
+def _state(db: Session, c: SourcingCandidate) -> dict:
+    proj = db.get(ShortsProject, c.id)
+    renders = db.query(ShortsRender).filter(ShortsRender.candidate_id == c.id).order_by(ShortsRender.id.desc()).limit(10).all()
+    v, orig = c.video, c.video.original
+    plan = max(c.plans, key=lambda p: p.created_at) if c.plans else None
+    title = shorts_maker.clean_title(v.title)
+    desc = "\n".join(x for x in [
+        f"원본: {(orig.channel.channel_name if orig and orig.channel else (orig.yt_channel_title if orig else '')) or ''} - {orig.title if orig else ''}".strip(" -"),
+        orig.url if orig else None,
+        "※ 원본 영상의 일부를 인용해 해설을 더한 영상입니다.",
+        "※ 제휴 링크를 쓰는 경우: 이 포스팅은 제휴 활동의 일환으로 수수료를 제공받을 수 있습니다."] if x)
+    return {
+        "candidate": {"id": c.id, "title": v.title, "url": v.url, "thumbnail_url": v.thumbnail_url, "view_count": v.view_count,
+                      "celebrity_name": c.celebrity.name if c.celebrity else None, "channel_category": c.channel_category,
+                      "recommended_slot": c.recommended_slot, "product_name": c.product.name if c.product else None,
+                      "produced_at": serializers.iso(c.produced_at), "duration_seconds": v.duration_seconds},
+        "original": ({"id": orig.id, "title": orig.title, "url": orig.url, "thumbnail_url": orig.thumbnail_url,
+                      "channel": orig.channel.channel_name if orig.channel else orig.yt_channel_title,
+                      "duration_seconds": orig.duration_seconds, "has_transcript": bool(orig.transcript)} if orig else None),
+        "segment": serializers.segment(c.segment) if c.segment else None,
+        "source": ({"name": proj.source_name, "info": proj.source_info, "exists": bool(proj.source_path and Path(proj.source_path).exists()),
+                    "hint_start": proj.hint_start, "hint_end": proj.hint_end} if proj else None),
+        "renders": [_render(r) for r in renders],
+        "ffmpeg": shorts_maker.capabilities(),
+        "ai": bool(get_settings().anthropic_api_key),
+        "upload_text": {"title_suggestion": title, "description": desc,
+                        "plan_titles": (plan.plan.get("title_candidates") if plan else None)},
+        "notice": "원본 mp4 는 직접 준비해 올려 주세요(프로그램은 유튜브 영상을 내려받지 않습니다). 원본 사용 권한·인용 범위는 직접 확인해야 하며, 출처 표기는 자동으로 들어갑니다.",
+    }
+
+
+@router.get("/{cid}")
+def get_studio(cid: int, db: Session = Depends(get_db)):
+    return _state(db, get_or_404(db, SourcingCandidate, cid, "후보"))
+
+
+@router.post("/{cid}/original")
+def set_original(cid: int, body: schemas.LinkOriginalIn, db: Session = Depends(get_db)):
+    """원본 영상 URL 연결(유튜브 URL·ID). API 키가 있으면 제목·길이를 가져오고, 없으면 URL 만 기록한다."""
+    from ..services.metrics import extract_video_id, get_or_create_video
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    yid = extract_video_id(body.url_or_id or "")
+    if not yid:
+        raise HTTPException(400, "유튜브 영상 URL 또는 11자리 ID를 입력하세요")
+    if yid == c.video.youtube_video_id:
+        raise HTTPException(400, "참고 쇼츠 자신의 주소입니다. 원본(롱폼) 영상 주소를 넣어 주세요")
+    v = db.query(Video).filter(Video.youtube_video_id == yid).first()
+    if v is None:
+        from ..services import collection
+        v, _, _err = collection.add_video_by_id(db, yid, None)
+        if v is None:
+            v, _ = get_or_create_video(db, yid, {"data_source": "manual"})
+        v.source_type = "original_celebrity"
+    c.video.original_video_id = v.id
+    if c.video.celebrity_id is None:
+        c.video.celebrity_id = v.celebrity_id or (v.channel.celebrity_id if v.channel else None)
+    c.video.original_match = dict(c.video.original_match or {}, linked=True, confidence="manual", reason="사용자가 직접 연결")
+    log(db, "candidate", c.id, "link_original", {"video_id": v.id, "via": "studio"})
+    db.commit()
+    return _state(db, c)
+
+
+@router.post("/{cid}/source")
+def upload_source(cid: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """원본 mp4 업로드(사용자가 직접 준비한 파일). data/media/originals 에 저장한다."""
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    ext = Path(file.filename or "video.mp4").suffix.lower()
+    if ext not in ALLOWED_EXT:
+        raise HTTPException(400, f"영상 파일만 올릴 수 있습니다({', '.join(ALLOWED_EXT)})")
+    dest = get_settings().media_dir / "originals" / f"c{c.id}{ext}"
+    for old in dest.parent.glob(f"c{c.id}.*"):
+        old.unlink(missing_ok=True)
+    size = 0
+    with dest.open("wb") as out:
+        while True:
+            chunk = file.file.read(4 * 1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_BYTES:
+                out.close(); dest.unlink(missing_ok=True)
+                raise HTTPException(400, "파일이 너무 큽니다(최대 6GB)")
+            out.write(chunk)
+    info = None
+    caps = shorts_maker.capabilities()
+    if caps.get("available"):
+        try:
+            info = shorts_maker.probe(caps["path"], str(dest))
+        except shorts_maker.ShortsError as e:
+            dest.unlink(missing_ok=True)
+            raise HTTPException(400, str(e))
+    proj = db.get(ShortsProject, c.id)
+    if not proj:
+        proj = ShortsProject(candidate_id=c.id)
+        db.add(proj)
+    proj.source_path, proj.source_name, proj.source_info = str(dest), file.filename, info or {"size": size}
+    log(db, "candidate", c.id, "upload_source", {"name": file.filename, "size": size})
+    db.commit()
+    return _state(db, c)
+
+
+@router.post("/{cid}/make")
+def make(cid: int, hint: str | None = Form(None), hint_end: str | None = Form(None), db: Session = Depends(get_db)):
+    """버튼 한 번: 장면 찾기 → 후킹·컷 구성 → 렌더링을 백그라운드로 시작. hint=대략 위치(분:초, 선택)."""
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    proj = db.get(ShortsProject, c.id)
+    if not proj or not proj.source_path or not Path(proj.source_path).exists():
+        raise HTTPException(400, "먼저 원본 mp4 파일을 올려 주세요")
+    caps = shorts_maker.capabilities()
+    if not caps.get("available"):
+        raise HTTPException(503, caps.get("reason", "ffmpeg 없음"))
+    proj.hint_start, proj.hint_end = _hms(hint), _hms(hint_end)
+    db.commit()
+    shorts_maker.start_render(db, c.id)
+    return _state(db, c)
+
+
+@router.post("/{cid}/rerender")
+def rerender(cid: int, body: schemas.EdlIn, db: Session = Depends(get_db)):
+    """편집안(시간·자막)을 사람이 고쳐 다시 렌더링. AI 호출 없음."""
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    proj = db.get(ShortsProject, c.id)
+    if not proj or not proj.source_path or not Path(proj.source_path).exists():
+        raise HTTPException(400, "원본 mp4 파일이 없습니다")
+    shorts_maker.start_render(db, c.id, edl=body.model_dump())
+    return _state(db, c)
+
+
+@router.get("/renders/{rid}/file")
+def render_file(rid: int, download: bool = False, db: Session = Depends(get_db)):
+    r = get_or_404(db, ShortsRender, rid, "렌더")
+    if not r.output_path or not Path(r.output_path).exists():
+        raise HTTPException(404, "파일이 없습니다")
+    return FileResponse(r.output_path, media_type="video/mp4",
+                        filename=f"shoppulse_shorts_{r.candidate_id}_{r.id}.mp4" if download else None)
+
+
+@router.delete("/{cid}/source", status_code=204)
+def delete_source(cid: int, db: Session = Depends(get_db)):
+    """원본 파일 삭제(디스크 정리). 만든 쇼츠는 남는다."""
+    proj = db.get(ShortsProject, cid)
+    if proj and proj.source_path:
+        Path(proj.source_path).unlink(missing_ok=True)
+        proj.source_path = None
+        db.commit()

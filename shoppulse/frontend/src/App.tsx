@@ -10,12 +10,14 @@ import Products from './pages/Products'
 import Schedule from './pages/Schedule'
 import DataPage from './pages/DataPage'
 import SettingsPage from './pages/SettingsPage'
+import Studio from './pages/Studio'
 
 export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/make/:id" element={<Studio />} />
         <Route path="/candidates" element={<Candidates />} />
         <Route path="/candidates/:id" element={<CandidateDetail />} />
         <Route path="/videos" element={<Videos />} />

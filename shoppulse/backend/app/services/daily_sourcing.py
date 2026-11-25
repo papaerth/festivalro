@@ -232,6 +232,12 @@ def ai_plan_step(db: Session, candidate_ids: list[int] | None = None, max_calls:
 def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date | None = None,
                        refresh_limit: int | None = None, auto_discover: bool = True, ai_score: bool = True) -> DailyReport:
     report_date = report_date or date.today()
+    # 집중 모드(기본 켬): 매일 도는 소싱에서는 AI 를 쓰지 않고(규칙 점수로 순위), 쇼츠를 만들 때만 AI 를 쓴다.
+    from ..models import UserSetting as _US
+    _fm = db.get(_US, "ai_focus_mode")
+    focus = bool(_fm.value.get("value", True)) if _fm else True
+    if focus:
+        ai_score = False
     if refresh_limit is None:
         from ..models import UserSetting
         s = db.get(UserSetting, "daily_refresh_limit")
@@ -256,7 +262,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
         discovery = discover_candidates(db, per_category=TARGET_CANDIDATES)
         discovery["legacy_retired"] = legacy_retired
     outliers = computed_outlier_step(db)
-    ai_products = ai_identify_products_step(db) if ai_score else {"skipped": True, "reason": "비활성", "identified": 0, "linked": 0}
+    ai_products = ai_identify_products_step(db) if ai_score else {"skipped": True, "reason": "집중 모드(쇼츠 만들 때만 AI 사용)" if focus else "비활성", "identified": 0, "linked": 0}
     # 규칙 간이 채점 + 템플릿 기획안: AI·사람 채점 전에도 모든 후보에 총점·순위·기획안 뼈대가 있게 한다
     from .rule_scorer import prepare_candidates
     from .original_finder import link_originals_step
@@ -280,7 +286,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
         else:
             st["unresolved"] += 1
     prepared["originals_status"] = st
-    ai = ai_score_step(db) if ai_score else {"skipped": True, "reason": "비활성", "scored": 0}
+    ai = ai_score_step(db) if ai_score else {"skipped": True, "reason": "집중 모드(쇼츠 만들 때만 AI 사용)" if focus else "비활성", "scored": 0}
     yesterday = report_date - timedelta(days=1)
     prev = (
         db.query(DailyReport).filter(DailyReport.report_date == yesterday)
@@ -293,7 +299,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
 
     cfg = get_active_version(db).config
     out_categories = []
-    summary = {"graph_types": {}, "total_candidates": 0, "total_final": 0, "stats_refresh": refresh,
+    summary = {"graph_types": {}, "total_candidates": 0, "total_final": 0, "stats_refresh": refresh, "ai_focus_mode": focus,
                "auto_discovery": discovery, "ai_scoring": ai, "ai_products": ai_products, "computed_outliers": outliers,
                "rule_scores": prepared["rule_scores"], "template_plans": prepared["template_plans"],
                "originals": prepared.get("originals_api"), "originals_status": prepared.get("originals_status"),

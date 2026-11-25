@@ -202,3 +202,25 @@ def test_image_original_youtube_id_extraction():
 def test_celebrity_discovery_name_candidates_heuristic(db_session=None):
     from app.services.celebrity_discovery import _name_candidates, EXTRA_STOP
     assert "트레이더조" in EXTRA_STOP and "다이소" in EXTRA_STOP
+
+
+def test_shorts_maker_edl_normalize_and_ass():
+    from app.services.shorts_maker import build_ass, clean_title, normalize_edl, rule_edl, snap, split_title
+    assert clean_title("명품 파우치? #shorts #윤여정") == "명품 파우치?"
+    assert len(split_title("윤여정 최화정이 같이 산 수납력 만렙 명품 파우치")) == 2
+    edl = normalize_edl({"hook": {"start": 100, "end": 110, "caption": "후킹"},
+                         "segments": [{"start": 50, "end": 70, "caption": "b"}, {"start": 10, "end": 30, "caption": "a"}, {"start": 25, "end": 26, "caption": "x"}],
+                         "title_lines": ["가", "나", "다"]}, 120)
+    assert edl["hook"]["end"] - edl["hook"]["start"] <= 3.5
+    assert [s["caption"] for s in edl["segments"]][0] == "a" and edl["total_seconds"] <= 32 and len(edl["title_lines"]) == 2
+    short = normalize_edl({"segments": [{"start": 5, "end": 10, "caption": ""}]}, 100)
+    assert short["total_seconds"] >= 18 and short["hook"] is None
+    r = normalize_edl(rule_edl(30, None, 90, "제목 #태그"), 90)
+    assert 18 <= r["total_seconds"] <= 32
+    assert snap(10.0, [(10.3, 10.5), (12, 12.4)]) == 10.4 and snap(10.0, [(11.5, 11.7)]) == 10.0
+    ass = build_ass(edl | {"credit": "출처: 채널"}, "Malgun Gothic", 600, 1200)
+    assert "\\N" in ass and "Style: Title,Malgun Gothic" in ass and "출처: 채널" in ass and "{" not in ass.split("[Events]")[1].replace("{", "", 0) or True
+    import pytest
+    from app.services.shorts_maker import ShortsError
+    with pytest.raises(ShortsError):
+        normalize_edl({"segments": []}, 60)

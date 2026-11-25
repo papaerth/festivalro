@@ -123,6 +123,20 @@ export const api = {
   importCsv: (f: File, source = 'vidiq_csv') => { const fd = new FormData(); fd.append('file', f); return req<T.Job>('POST', `/api/import/metrics-csv?source=${source}`, fd, true) },
   jobs: () => req<T.Job[]>('GET', '/api/import/jobs'),
 
+  studio: (id: number) => req<T.StudioState>('GET', `/api/studio/${id}`),
+  studioOriginal: (id: number, url_or_id: string) => req<T.StudioState>('POST', `/api/studio/${id}/original`, { url_or_id }),
+  studioMake: (id: number, hint?: string) => { const fd = new FormData(); if (hint) fd.append('hint', hint); return req<T.StudioState>('POST', `/api/studio/${id}/make`, fd, true) },
+  studioRerender: (id: number, edl: { hook: T.EdlClip | null; segments: T.EdlClip[]; title_lines: string[]; credit: string }) => req<T.StudioState>('POST', `/api/studio/${id}/rerender`, edl),
+  studioDeleteSource: (id: number) => req<void>('DELETE', `/api/studio/${id}/source`),
+  studioUpload: (id: number, file: File, onProgress: (pct: number) => void) => new Promise<T.StudioState>((resolve, reject) => {
+    // 큰 파일 진행률 표시를 위해 XHR 사용
+    const xhr = new XMLHttpRequest(); const fd = new FormData(); fd.append('file', file)
+    xhr.open('POST', `/api/studio/${id}/source`)
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)) }
+    xhr.onload = () => { let d: any = null; try { d = JSON.parse(xhr.responseText) } catch {} ; if (xhr.status >= 200 && xhr.status < 300) resolve(d); else reject(new ApiError(xhr.status, d?.detail ?? xhr.responseText)) }
+    xhr.onerror = () => reject(new ApiError(0, '업로드 실패: 서버에 연결할 수 없습니다'))
+    xhr.send(fd)
+  }),
   autoOnOpen: (force = false) => req<{ started: boolean; reason: string; enabled: boolean; hours: number; last_run: string | null; state: T.BulkState }>('POST', `/api/sourcing/auto-on-open?force=${force}`),
   runSourcing: (report_date?: string) => req<T.BulkState>('POST', '/api/sourcing/run', { report_date, background: true }),
   reports: () => req<T.Report[]>('GET', '/api/sourcing/reports'),

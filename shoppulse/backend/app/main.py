@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .config import FRONTEND_DIST, get_settings
 from .database import Base, SessionLocal, engine
-from .routers import backup, candidates, celebrities, channels, dashboard, imports, products, schedule, settings, sourcing, videos
+from .routers import backup, candidates, celebrities, channels, dashboard, imports, products, schedule, settings, sourcing, studio, videos
 from .seeds.loader import ensure_scoring_version, refresh_data_sources, seed_channels
 from .services import scheduler
 
@@ -96,7 +96,7 @@ app = FastAPI(title="SHOPPULSE 3.0", version=__version__, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                    allow_methods=["*"], allow_headers=["*"])
 
-for r in (dashboard, celebrities, channels, videos, products, candidates, schedule, imports, sourcing, settings, backup):
+for r in (dashboard, celebrities, channels, videos, products, candidates, schedule, imports, sourcing, settings, backup, studio):
     app.include_router(r.router)
 
 

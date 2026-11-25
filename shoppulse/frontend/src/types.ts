@@ -103,3 +103,15 @@ export interface ComputedOutlier { value: number; basis: string; median_views: n
 export interface OriginalMatch { confidence: string; reason: string | null; checked_at: string | null; candidates: { video_id: number; youtube_video_id: string; title: string; url: string | null; published_at: string | null; duration_seconds: number | null; channel: string | null; thumbnail_url: string | null; score: number; keyword_score?: number; hits: string[]; reasons?: string[]; how: string; rank?: number; is_long?: boolean; snippets?: string[] }[]; celebrities?: string[]; hashtags?: string[]; queries?: string[]; notes?: string[]; api_searches: number; linked: boolean; skipped_shorts?: number; method?: string; image_analysis?: { vision?: { youtube_ids: string[]; pages: { url: string; title: string | null }[]; entities: string[] }; ai?: { people: string[]; on_screen_text: string; program_guess: string; search_queries: string[]; notes: string; model?: string } } | null }
 export interface SegmentProposal { status: string; basis?: string; start?: number; end?: number; quote?: string | null; matched?: string[]; link?: string | null; range_label?: string; note?: string; needs_transcript?: boolean; transcript_request?: string; chapter_title?: string; ai?: { confidence: string; reason: string; model?: string }; ai_note?: string }
 export interface VidiqRequest { count: number; video_ids: string[]; prompt: string; note: string }
+
+export interface EdlClip { start: number; end: number; caption: string }
+export interface StudioRender { id: number; status: 'queued' | 'running' | 'done' | 'failed'; step: string | null; progress: number; decided_by: string | null; error: string | null; file_url: string | null; notes: string[]; created_at: string; finished_at: string | null;
+  edl: { hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; reason?: string | null; quote_seen?: string | null; total_seconds: number } | null; output_info: { duration: number; width: number; height: number; size: number } | null }
+export interface StudioState {
+  candidate: { id: number; title: string; url: string | null; thumbnail_url: string | null; view_count: number | null; celebrity_name: string | null; channel_category: Category; recommended_slot: Slot | null; product_name: string | null; produced_at: string | null; duration_seconds: number | null }
+  original: { id: number; title: string; url: string | null; thumbnail_url: string | null; channel: string | null; duration_seconds: number | null; has_transcript: boolean } | null
+  segment: Segment | null
+  source: { name: string | null; info: { duration?: number; width?: number; height?: number; size?: number; has_audio?: boolean } | null; exists: boolean; hint_start: number | null; hint_end: number | null } | null
+  renders: StudioRender[]; ffmpeg: { available: boolean; reason?: string; version?: string; ass?: boolean }; ai: boolean
+  upload_text: { title_suggestion: string; description: string; plan_titles: string[] | null }; notice: string
+}

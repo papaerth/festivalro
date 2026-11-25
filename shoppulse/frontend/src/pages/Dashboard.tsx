@@ -53,14 +53,13 @@ export default function Dashboard() {
       {node}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">오늘의 소싱</h1>
+          <h1 className="text-2xl font-bold tracking-tight">SHOPPULSE <span className="muted text-base font-normal">· 오늘 만들 쇼츠</span></h1>
           <p className="text-sm muted">{s.season.date} ({s.season.weekday}) · {s.season.season} · {s.season.region} · {s.season.events.length ? s.season.events.join(', ') : '특별 이벤트 없음'}</p>
           <p className="text-sm">{s.season.weather.status === 'ok' ? <>{s.season.weather.is_rain_or_snow ? '☔' : '☀'} {s.season.weather.label} · 현재 {s.season.weather.temperature}°C (체감 {s.season.weather.apparent}°C) · 습도 {s.season.weather.humidity}% · 오늘 {s.season.weather.today_min}~{s.season.weather.today_max}°C · 강수확률 {s.season.weather.precip_prob_max ?? '?'}% <span className="muted text-xs">· {s.season.weather.source}</span></> : <span className="muted">날씨 조회 불가: {s.season.weather.note}</span>}</p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-primary" disabled={running} onClick={run}>{running ? '실행 중…' : '▶ 오늘 소싱 실행 (수동)'}</button>
-          <Link to="/data" className="btn-ghost">데이터 수집</Link>
-          {auto && <div className="w-full text-right text-[11px] muted">{auto.enabled ? `접속 시 자동 실행(${auto.hours}시간마다) · 마지막 ${auto.last_run ? fmt.datetime(auto.last_run) : '없음'}${auto.started ? ' · 지금 시작됨' : ` · ${auto.reason}`}` : '접속 자동 실행 꺼짐(설정)'}</div>}
+          <button className="btn-primary whitespace-nowrap" disabled={running} onClick={run}>{running ? '실행 중…' : '↻ 지금 새로 찾기'}</button>
+                    {auto && <div className="w-full text-right text-[11px] muted">{auto.enabled ? `접속 시 자동 실행(${auto.hours}시간마다) · 마지막 ${auto.last_run ? fmt.datetime(auto.last_run) : '없음'}${auto.started ? ' · 지금 시작됨' : ` · ${auto.reason}`}` : '접속 자동 실행 꺼짐(설정)'}</div>}
         </div>
       </div>
 
@@ -70,6 +69,55 @@ export default function Dashboard() {
           <div className="mt-2 h-2 w-full overflow-hidden rounded bg-stone-200 dark:bg-stone-700"><div className="h-full bg-stone-900 transition-all dark:bg-stone-100" style={{ width: `${job.total ? (job.done / job.total) * 100 : 0}%` }} /></div>
         </div>
       )}
+      <div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="section-title">오늘의 6편 <span className="muted text-sm font-normal">· 시간대별 1·2순위 · 카드를 눌러 원본을 넣으면 쇼츠를 만들어 줍니다</span></h2>
+          <div className="flex gap-1">{(['beauty', 'living', 'food'] as const).map((k) => <button key={k} className={cat === k ? 'btn-primary' : 'btn-ghost'} onClick={() => setCat(k)}>{LABELS.category[k]}</button>)}</div>
+        </div>
+        {cands.data && cands.data.items.length === 0 && <div className="card p-6 text-sm muted">{LABELS.category[cat]} 후보가 없습니다. 「오늘 소싱 실행」으로 자동 발굴하거나 영상 상세에서 등록하세요.</div>}
+        {cands.data && cands.data.items.length > 0 && (() => {
+          // 시간대별 1·2순위: 추천 슬롯이 맞는 후보를 점수순으로 먼저, 모자라면 남은 후보 중 점수 최고를 채움(점수순 배정 표시)
+          const items = cands.data.items
+          const used = new Set<number>()
+          const cols = SLOTS.map((sl) => {
+            const picks: { c: typeof items[number]; how: 'slot' | 'fallback' }[] = []
+            for (const c of items) { if (picks.length >= 2) break; if (!used.has(c.id) && c.recommended_slot === sl.key) { picks.push({ c, how: 'slot' }); used.add(c.id) } }
+            for (const c of items) { if (picks.length >= 2) break; if (!used.has(c.id)) { picks.push({ c, how: 'fallback' }); used.add(c.id) } }
+            return { ...sl, picks }
+          })
+          return (
+            <div className="grid gap-4 md:grid-cols-3">
+              {cols.map((col) => (
+                <div key={col.key} className="space-y-3">
+                  <div className={`rounded-2xl px-4 py-3 text-white ${col.tone}`}>
+                    <div className="text-4xl font-black tracking-tight">{col.time}</div>
+                    <div className="text-sm font-semibold opacity-90">{col.label} · {LABELS.category[cat]} 1·2순위</div>
+                  </div>
+                  {col.picks.length === 0 && <div className="card p-4 text-sm muted">이 시간대에 배정할 후보가 없습니다.</div>}
+                  {col.picks.map((p, i) => (
+                    <div key={p.c.id}>
+                      <CandidateCard c={p.c} rankLabel={`${col.label} ${i + 1}순위`} showReason showGraph={false} studio />
+                      <p className="mt-1 px-1 text-[11px] muted">{p.how === 'slot' ? (p.c.slot_reason || '추천 시간대 일치') : `이 시간대 추천 후보가 모자라 점수순으로 배정 (원래 추천: ${p.c.recommended_slot ? LABELS.slot[p.c.recommended_slot] : '미지정'})`}</p>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )
+        })()}
+        <p className="mt-2 text-[11px] muted">1순위가 이상하면 2순위로 바꿔 쓰세요. 「쇼츠 만들기」에서 원본 주소와 mp4 를 넣으면 20~30초 쇼츠가 만들어집니다. 「제작함」을 체크하면 목록에서 빠지고 아래에 쌓입니다.</p>
+      </div>
+
+      <div>
+        <div className="mb-3 flex items-center justify-between"><h2 className="section-title">제작한 영상 <span className="muted text-sm font-normal">· 최근 6개</span></h2><Link to="/candidates?produced=yes" className="text-sm underline">전체 보기</Link></div>
+        {producedList.data && producedList.data.items.length === 0 ? <div className="card p-4 text-sm muted">아직 「제작함」으로 체크한 후보가 없습니다.</div> : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{(producedList.data?.items || []).map((c) => <CandidateCard key={c.id} c={c} />)}</div>
+        )}
+      </div>
+
+      <details className="card p-4">
+        <summary className="cursor-pointer text-sm font-semibold">자세히 보기 <span className="muted font-normal">· 통계 · 소싱 보고서 · 데이터 연결 상태 (평소엔 안 봐도 됩니다)</span></summary>
+        <div className="mt-4 space-y-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Stat label="등록된 연예인 채널" value={s.channels_total} sub={`검증 완료 ${s.channels_verified}개 · 연예인 ${s.celebrities_total}명`} />
         <Stat label="누적 분석 영상" value={s.videos_total} sub={`원본 ${s.videos_original} · 재편집 쇼츠 ${s.videos_derived} (상품 확인 ${s.videos_derived_confirmed}) · 오늘 새로 발견 ${s.videos_new_today}`} />
@@ -78,7 +126,6 @@ export default function Dashboard() {
         <Stat label="검증 대기 후보" value={s.pending_verification} sub={`중대 검증 항목 미해결 · 제작 완료 ${s.produced_total}개`} tone="amber" />
         <Stat label="마지막 데이터 수집" value={<span className="text-base">{fmt.datetime(s.last_collection_at)}</span>} sub={`최근 조회수 관측: ${fmt.datetime(s.last_snapshot_at)}`} />
       </div>
-
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="card p-5 lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
@@ -135,51 +182,8 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-
-      <div>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="section-title">오늘의 Top 6 <span className="muted text-sm font-normal">· 시간대별 1·2순위 · 아직 안 만든 후보</span></h2>
-          <div className="flex gap-1">{(['beauty', 'living', 'food'] as const).map((k) => <button key={k} className={cat === k ? 'btn-primary' : 'btn-ghost'} onClick={() => setCat(k)}>{LABELS.category[k]}</button>)}</div>
         </div>
-        {cands.data && cands.data.items.length === 0 && <div className="card p-6 text-sm muted">{LABELS.category[cat]} 후보가 없습니다. 「오늘 소싱 실행」으로 자동 발굴하거나 영상 상세에서 등록하세요.</div>}
-        {cands.data && cands.data.items.length > 0 && (() => {
-          // 시간대별 1·2순위: 추천 슬롯이 맞는 후보를 점수순으로 먼저, 모자라면 남은 후보 중 점수 최고를 채움(점수순 배정 표시)
-          const items = cands.data.items
-          const used = new Set<number>()
-          const cols = SLOTS.map((sl) => {
-            const picks: { c: typeof items[number]; how: 'slot' | 'fallback' }[] = []
-            for (const c of items) { if (picks.length >= 2) break; if (!used.has(c.id) && c.recommended_slot === sl.key) { picks.push({ c, how: 'slot' }); used.add(c.id) } }
-            for (const c of items) { if (picks.length >= 2) break; if (!used.has(c.id)) { picks.push({ c, how: 'fallback' }); used.add(c.id) } }
-            return { ...sl, picks }
-          })
-          return (
-            <div className="grid gap-4 md:grid-cols-3">
-              {cols.map((col) => (
-                <div key={col.key} className="space-y-3">
-                  <div className={`rounded-2xl px-4 py-3 text-white ${col.tone}`}>
-                    <div className="text-4xl font-black tracking-tight">{col.time}</div>
-                    <div className="text-sm font-semibold opacity-90">{col.label} · {LABELS.category[cat]} 1·2순위</div>
-                  </div>
-                  {col.picks.length === 0 && <div className="card p-4 text-sm muted">이 시간대에 배정할 후보가 없습니다.</div>}
-                  {col.picks.map((p, i) => (
-                    <div key={p.c.id}>
-                      <CandidateCard c={p.c} rankLabel={`${col.label} ${i + 1}순위`} showReason showGraph={false} />
-                      <p className="mt-1 px-1 text-[11px] muted">{p.how === 'slot' ? (p.c.slot_reason || '추천 시간대 일치') : `이 시간대 추천 후보가 모자라 점수순으로 배정 (원래 추천: ${p.c.recommended_slot ? LABELS.slot[p.c.recommended_slot] : '미지정'})`}</p>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )
-        })()}
-        <p className="mt-2 text-[11px] muted">1순위가 이상하면 2순위로 바꿔 쓰세요. 선정 이유는 AI 채점 요약(있으면) 또는 자동 발굴 신호입니다. 카드의 체크박스로 「제작함」을 표시하면 목록에서 빠지고 아래 「제작한 영상」에 쌓입니다.</p>
-      </div>
-      <div>
-        <div className="mb-3 flex items-center justify-between"><h2 className="section-title">제작한 영상 <span className="muted text-sm font-normal">· 최근 6개</span></h2><Link to="/candidates?produced=yes" className="text-sm underline">전체 보기</Link></div>
-        {producedList.data && producedList.data.items.length === 0 ? <div className="card p-4 text-sm muted">아직 「제작함」으로 체크한 후보가 없습니다.</div> : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{(producedList.data?.items || []).map((c) => <CandidateCard key={c.id} c={c} />)}</div>
-        )}
-      </div>
+      </details>
       <p className="text-[11px] muted">점수 모델: {s.scoring_name} · Outlier/VPH 등급은 SHOPPULSE 운영 참고 기준이며 vidIQ 공식 등급이 아닙니다. 그래프는 실제 관측 데이터만 사용합니다. 시간대 배치는 운영 가설입니다.</p>
     </div>
   )

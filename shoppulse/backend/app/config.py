@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     coupang_access_key: str = ""
     coupang_secret_key: str = ""
     google_vision_api_key: str = ""  # 캡처로 원본 찾기(Google Cloud Vision Web Detection)
+    shoppulse_ffmpeg: str = ""  # ffmpeg 실행 파일 경로(비우면 PATH → imageio-ffmpeg 내장본 순으로 찾음)
     shoppulse_browser: str = "chrome"  # start.bat 가 여는 브라우저: chrome / edge / default
     shoppulse_auto_sourcing: bool = False
     shoppulse_timezone: str = "Asia/Seoul"
@@ -41,6 +42,13 @@ class Settings(BaseSettings):
     def data_dir(self) -> Path:
         p = Path(self.shoppulse_data_dir) if self.shoppulse_data_dir else PROJECT_DIR / "data"
         p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def media_dir(self) -> Path:
+        p = self.data_dir / "media"
+        for sub in ("originals", "renders", "work"):
+            (p / sub).mkdir(parents=True, exist_ok=True)
         return p
 
     @property
