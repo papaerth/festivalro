@@ -30,6 +30,15 @@ def list_products(q: str | None = None, category: str | None = None, identificat
     return [serializers.product(p) for p in qs.order_by(Product.updated_at.desc()).all()]
 
 
+@router.get("/search-offers")
+def search_offers(q: str, limit: int = 10):
+    """네이버 쇼핑·쿠팡 파트너스 공식 API 로 판매처를 조회한다(키가 있는 소스만)."""
+    from ..services.commerce import search_offers as _search
+    if not q.strip():
+        raise HTTPException(400, "검색어를 입력하세요")
+    return _search(q.strip(), limit)
+
+
 @router.post("", status_code=201)
 def create_product(body: schemas.ProductIn, db: Session = Depends(get_db)):
     p = Product(**body.model_dump())

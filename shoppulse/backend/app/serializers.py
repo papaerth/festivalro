@@ -214,6 +214,20 @@ def verification(c: SourcingCandidate) -> list[dict]:
     return out
 
 
+def _reason_summary(c: SourcingCandidate, ls: dict) -> str | None:
+    """선정 이유 한 줄: AI 채점 요약 → 사람 점수 근거 → 자동 발굴 신호 순."""
+    final = ls.get("final")
+    if final and final.rationale:
+        if final.rationale.get("_summary"):
+            return final.rationale["_summary"]
+        parts = [v for k, v in final.rationale.items() if not k.startswith("_") and v]
+        if parts:
+            return " / ".join(parts)[:300]
+    if c.notes and c.notes.startswith("[자동 발굴"):
+        return c.notes.split("—", 1)[-1].strip()[:300]
+    return None
+
+
 def candidate_summary(c: SourcingCandidate, config: dict | None = None) -> dict:
     ls = latest_scores(c.scores)
     final = ls["final"]
@@ -239,6 +253,8 @@ def candidate_summary(c: SourcingCandidate, config: dict | None = None) -> dict:
         "segment": segment(c.segment) if c.segment else None,
         "is_short_candidate": c.video.source_type in ("reedit_shorts", "competitor"),
         "plan_count": len(c.plans), "latest_plan_by": (max(c.plans, key=lambda p: p.created_at).generated_by if c.plans else None),
+        "produced_at": iso(c.produced_at), "produced_url": c.produced_url,
+        "reason_summary": _reason_summary(c, ls),
         "original_video": (video_summary(c.video.original, with_graph=False) if c.video.original else None),
         "video_product_status": product_status(c.video),
         "evidence": evidence_summary(c.video.original) if c.video.original else evidence_summary(c.video),

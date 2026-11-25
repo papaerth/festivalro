@@ -4,6 +4,7 @@ import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
 import { Badge, Confirm, ErrorBox, Field, MetricPill, ProductStatusBadge, Select, Spinner, toneFor, useToast } from '../components/ui'
 import ViewGraph from '../components/ViewGraph'
+import OfferSearchModal from '../components/OfferSearch'
 import type { CandidateDetail as CD, Score } from '../types'
 
 export default function CandidateDetail() {
@@ -22,6 +23,8 @@ export default function CandidateDetail() {
   const [rationale, setRationale] = useState<Record<string, string>>({})
   const [target, setTarget] = useState(25)
   const [aiBusy, setAiBusy] = useState(false)
+  const [offerSearch, setOfferSearch] = useState(false)
+  const [prodUrl, setProdUrl] = useState('')
 
   useEffect(() => {
     if (!c || !cfg) return
@@ -48,7 +51,12 @@ export default function CandidateDetail() {
           <h1 className="text-xl font-bold leading-snug tracking-tight">{v.title}</h1>
           <p className="text-sm muted">{c.is_short_candidate && <Badge tone="amber">재편집 쇼츠</Badge>} {c.celebrity_name || '연예인 미지정'} · {v.channel_name || v.yt_channel_title || '채널 미확인'} · {fmt.date(v.published_at)} · {fmt.duration(v.duration_seconds)} · 조회 {fmt.compact(v.view_count)} · <Link className="underline" to={`/videos/${v.id}`}>영상 상세</Link></p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${c.produced_at ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950' : 'border-stone-300 dark:border-stone-700'}`}>
+            <input type="checkbox" checked={!!c.produced_at} onChange={(e) => act(() => api.setProduced(c.id, { produced: e.target.checked, produced_url: prodUrl || null }), e.target.checked ? '제작 완료로 표시' : '제작 표시 해제')} />
+            {c.produced_at ? <span>✓ 제작함 · {fmt.date(c.produced_at)}{c.produced_url && <> · <a className="underline" href={c.produced_url} target="_blank" rel="noreferrer">내 쇼츠</a></>}</span> : <span>이 후보로 영상 만들었음</span>}
+          </label>
+          {!c.produced_at && <input className="input w-56" placeholder="올린 쇼츠 URL(선택)" value={prodUrl} onChange={(e) => setProdUrl(e.target.value)} />}
           {v.url && <a className="btn-ghost" href={v.url} target="_blank" rel="noreferrer">원본 영상 열기 ↗</a>}
           {c.segment?.timestamp_url && <a className="btn-primary" href={c.segment.timestamp_url} target="_blank" rel="noreferrer">장면으로 이동 {fmt.ts(c.segment.start_seconds)} ↗</a>}
           <Confirm onConfirm={() => act(async () => { await api.deleteCandidate(c.id); nav('/candidates') }, '삭제됨')}>후보 삭제</Confirm>
@@ -97,6 +105,7 @@ export default function CandidateDetail() {
                 {(c.product.offers || []).map((o) => <li key={o.id}>{o.seller} · {o.price ? `${o.price.toLocaleString()}원` : '가격 미확인'} · {LABELS.stock[o.stock_status]} · 제휴 {o.affiliate_available === null ? '미확인' : o.affiliate_available ? '가능' : '불가'} · <span className="muted">{fmt.date(o.checked_at)} 기준</span> {o.url && <a className="underline" href={o.url} target="_blank" rel="noreferrer">링크</a>}</li>)}
                 {(c.product.offers || []).length === 0 && <li className="muted">판매처 미확인</li>}
               </ul>
+              <button className="btn-ghost mt-2 px-2 py-1 text-xs" onClick={() => setOfferSearch(true)}>판매처 조회(네이버·쿠팡)</button>
             </div>
           ) : <p className="text-sm muted">상품 미연결</p>}
         </div>
@@ -206,6 +215,7 @@ export default function CandidateDetail() {
         </div>
       </div>
 
+      {c.product && <OfferSearchModal open={offerSearch} onClose={() => setOfferSearch(false)} productId={c.product.id} initialQuery={`${c.product.brand || ''} ${c.product.name}`.trim()} onAdded={() => q.reload()} />}
       <div className="card p-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h2 className="section-title">AI 쇼츠 기획안</h2>

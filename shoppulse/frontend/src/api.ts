@@ -92,6 +92,8 @@ export const api = {
   addScore: (id: number, b: { scorer: 'human' | 'ai'; item_scores: Record<string, number | null>; rationale?: Record<string, string> }) => req<T.CandidateDetail>('POST', `/api/candidates/${id}/scores`, b),
   suggestScore: (id: number) => req<T.CandidateDetail>('POST', `/api/candidates/${id}/scores/suggest`),
   setVerification: (id: number, b: { item: string; status: string; note?: string | null }) => req<T.CandidateDetail>('PUT', `/api/candidates/${id}/verification`, b),
+  setProduced: (id: number, b: { produced: boolean; produced_url?: string | null }) => req<T.CandidateDetail>('PUT', `/api/candidates/${id}/produced`, b),
+  searchOffers: (q: string, limit = 10) => req<T.OfferSearch>('GET', `/api/products/search-offers${qs({ q, limit })}`),
   createPlan: (id: number, b: { target_seconds: number; provider: 'auto' | 'template' }) => req<T.Plan>('POST', `/api/candidates/${id}/plans`, b),
 
   schedule: (date?: string) => req<T.ScheduleView>('GET', `/api/schedule${qs({ schedule_date: date })}`),

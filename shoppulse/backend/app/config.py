@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5-5"
     shoppulse_default_region: str = "서울"
+    naver_client_id: str = ""
+    naver_client_secret: str = ""
+    coupang_access_key: str = ""
+    coupang_secret_key: str = ""
     shoppulse_auto_sourcing: bool = False
     shoppulse_timezone: str = "Asia/Seoul"
     # 테스트에서 메모리 DB 등으로 바꿀 때 사용

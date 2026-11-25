@@ -42,7 +42,8 @@ def list_candidates(
     video_format: str | None = None, sponsorship: str | None = None, production_ready: bool | None = None,
     min_outlier: float | None = None, min_vph: float | None = None, min_views: int | None = None,
     published_from: datetime | None = None, published_to: datetime | None = None,
-    include_demo: bool = False, include_rejected: bool = False, sort: str = "score", limit: int = Query(60, le=500), offset: int = 0,
+    include_demo: bool = False, include_rejected: bool = False, produced: str | None = None,
+    sort: str = "score", limit: int = Query(60, le=500), offset: int = 0,
     db: Session = Depends(get_db),
 ):
     cfg = get_active_version(db).config
@@ -55,6 +56,10 @@ def list_candidates(
         qs = qs.filter(SourcingCandidate.status.in_(status.split(",")))
     elif not include_rejected:
         qs = qs.filter(SourcingCandidate.status != "rejected")
+    if produced == "yes":
+        qs = qs.filter(SourcingCandidate.produced_at.isnot(None))
+    elif produced == "no":
+        qs = qs.filter(SourcingCandidate.produced_at.is_(None))
     if celebrity_id:
         qs = qs.filter(SourcingCandidate.celebrity_id == celebrity_id)
     if content_type:
@@ -175,6 +180,23 @@ def delete_candidate(cid: int, db: Session = Depends(get_db)):
     c = get_or_404(db, SourcingCandidate, cid, "후보")
     db.delete(c)
     db.commit()
+
+
+@router.put("/{cid}/produced")
+def set_produced(cid: int, body: schemas.ProducedIn, db: Session = Depends(get_db)):
+    """사용자가 '이 후보로 영상을 만들었다'고 체크한다. 체크 시 상태가 후보 단계면 '게시 완료'로 올린다."""
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    if body.produced:
+        c.produced_at = c.produced_at or utcnow()
+        c.produced_url = body.produced_url or c.produced_url
+        if c.status in ("candidate", "sourced", "verifying_product", "verifying_rights", "scripting", "editing", "scheduled", "hold"):
+            c.status = "published"
+    else:
+        c.produced_at = None
+        c.produced_url = None
+    log(db, "candidate", c.id, "produced", {"produced": body.produced, "url": body.produced_url})
+    db.commit()
+    return serializers.candidate_detail(c, get_active_version(db).config)
 
 
 @router.post("/{cid}/scores", status_code=201)

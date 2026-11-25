@@ -57,7 +57,7 @@ export interface CandidateSummary {
   research_todo: string | null; notes: string | null; is_demo: boolean; last_recommended_date: string | null; recommendation_count: number; duplicate_reason: string | null;
   score: number | null; grade_key: string | null; grade_label: string | null; score_scorer: string | null; ai_score: number | null; human_score: number | null;
   production_ready: boolean; unresolved_critical: string[]; product_name: string | null; product_identification: string | null; offer_status: string | null;
-  segment: Segment | null; plan_count: number; latest_plan_by: string | null; is_short_candidate: boolean; original_video: VideoSummary | null; video_product_status: 'confirmed' | 'candidate' | 'none'; evidence: Evidence; updated_at: string; created_at: string; video?: VideoSummary
+  segment: Segment | null; plan_count: number; latest_plan_by: string | null; produced_at: string | null; produced_url: string | null; reason_summary: string | null; is_short_candidate: boolean; original_video: VideoSummary | null; video_product_status: 'confirmed' | 'candidate' | 'none'; evidence: Evidence; updated_at: string; created_at: string; video?: VideoSummary
 }
 export interface CandidateDetail extends CandidateSummary {
   video: VideoDetail; original_detail: VideoDetail | null; product: Product | null; scores: { ai: Score | null; human: Score | null; history: Score[] }; verification: Verification[]; plans: Plan[]
@@ -76,9 +76,9 @@ export interface DataSource { key: string; name: string; kind: string; status: s
 
 export interface Stats {
   channels_total: number; channels_verified: number; celebrities_total: number; videos_total: number; videos_original: number; videos_derived: number; graph_derived: Record<string, number>; graph_derived_confirmed: Record<string, number>; videos_derived_confirmed: number; graph_original: Record<string, number>; videos_new_today: number; candidates_today: number; candidates_total: number;
-  final_today: number; spike_plateau: number; resurgence: number; late_surge: number; steady_rise: number; insufficient: number; pending_verification: number;
+  final_today: number; produced_total: number; spike_plateau: number; resurgence: number; late_surge: number; steady_rise: number; insufficient: number; pending_verification: number;
   last_collection_at: string | null; last_snapshot_at: string | null; latest_report: Report | null; scheduler: { running: boolean; auto_enabled: boolean; next_run: string | null; schedule: string; note: string };
-  season: { date: string; weekday: string; season: string; events: string[]; region: string; weather: { status: string; note: string }; note: string }; scoring_name: string
+  season: { date: string; weekday: string; season: string; events: string[]; region: string; weather: Weather; note: string }; scoring_name: string
 }
 
 export interface Settings {
@@ -87,3 +87,7 @@ export interface Settings {
 }
 
 export interface BulkState { running: boolean; task: 'resolve' | 'collect' | 'discover' | 'sourcing' | null; total: number; done: number; current: string | null; started_at: string | null; finished_at: string | null; summary: Record<string, any>; error: string | null }
+
+export interface Weather { status: 'ok' | 'unavailable'; source: string; region: string; matched_region?: boolean; observed_at?: string; temperature?: number | null; apparent?: number | null; humidity?: number | null; precipitation_mm?: number | null; code?: number | null; label?: string; today_max?: number | null; today_min?: number | null; precip_prob_max?: number | null; is_rain_or_snow?: boolean; note: string }
+export interface OfferSearchItem { seller: string; title: string; url: string | null; price: number | null; image: string | null; brand: string | null; category: string; affiliate_available: boolean | null; affiliate_program: string | null; product_id: string | null }
+export interface OfferSearch { query: string; naver: { status: string; items: OfferSearchItem[]; note: string }; coupang: { status: string; items: OfferSearchItem[]; note: string } }

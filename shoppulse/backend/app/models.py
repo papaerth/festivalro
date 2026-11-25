@@ -288,6 +288,8 @@ class SourcingCandidate(TimestampMixin, Base):
     recommendation_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     duplicate_reason: Mapped[str | None] = mapped_column(Text)  # 재추천 사유
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    produced_at: Mapped[datetime | None] = mapped_column(DateTime)  # 사용자가 '제작함' 체크한 시각
+    produced_url: Mapped[str | None] = mapped_column(String(300))  # 우리가 올린 쇼츠 URL
 
     video: Mapped["Video"] = relationship(back_populates="candidates")
     product: Mapped["Product | None"] = relationship()

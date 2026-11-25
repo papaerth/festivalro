@@ -1,17 +1,20 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { CandidateSummary } from '../types'
-import { fmt, LABELS } from '../api'
+import { api, fmt, LABELS } from '../api'
 import { Badge, ProductStatusBadge, toneFor } from './ui'
 import ViewGraph from './ViewGraph'
 
-export default function CandidateCard({ c, draggable, onDragStart }: { c: CandidateSummary; draggable?: boolean; onDragStart?: (e: React.DragEvent) => void }) {
+export default function CandidateCard({ c, draggable, onDragStart, rank, showReason }: { c: CandidateSummary; draggable?: boolean; onDragStart?: (e: React.DragEvent) => void; rank?: number; showReason?: boolean }) {
   const v = c.video
+  const [produced, setProduced] = useState<string | null>(c.produced_at)
+  const toggle = async (on: boolean) => { try { const d = await api.setProduced(c.id, { produced: on }); setProduced(d.produced_at) } catch {} }
   return (
     <div className="card overflow-hidden transition hover:shadow-md" draggable={draggable} onDragStart={onDragStart}>
       <Link to={`/candidates/${c.id}`} className="block">
         <div className="relative aspect-video bg-stone-200 dark:bg-stone-800">
           {v?.thumbnail_url && <img src={v.thumbnail_url} alt="" className="h-full w-full object-cover" loading="lazy" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} />}
-          <div className="absolute left-2 top-2 flex gap-1"><Badge tone={toneFor.category(c.channel_category)}>{LABELS.category[c.channel_category]}</Badge>{c.is_demo && <Badge tone="red">DEMO</Badge>}</div>
+          <div className="absolute left-2 top-2 flex gap-1">{rank && <span className="rounded-md bg-stone-900/90 px-2 py-0.5 text-xs font-bold text-white">Top {rank}</span>}<Badge tone={toneFor.category(c.channel_category)}>{LABELS.category[c.channel_category]}</Badge>{c.is_demo && <Badge tone="red">DEMO</Badge>}{produced && <Badge tone="green">✓ 제작함</Badge>}</div>
           <div className="absolute bottom-2 right-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] text-white">{fmt.duration(v?.duration_seconds)}</div>
           <div className="absolute bottom-2 left-2 rounded-md bg-white/90 px-2 py-0.5 text-xs font-semibold text-stone-900">{c.score !== null ? `${c.score}점` : '점수 없음'}{c.grade_label ? ` · ${c.grade_label}` : ''}</div>
         </div>
@@ -36,6 +39,8 @@ export default function CandidateCard({ c, draggable, onDragStart }: { c: Candid
           {c.recommended_slot && <Badge tone="violet">{LABELS.slot[c.recommended_slot]}</Badge>}
           {c.production_ready ? <Badge tone="green">제작 준비 완료</Badge> : <Badge tone="amber" title={c.unresolved_critical.join(', ')}>검증 {c.unresolved_critical.length}건 미해결</Badge>}
         </div>
+        {showReason && c.reason_summary && <p className="line-clamp-3 rounded-lg bg-stone-50 p-2 text-[11px] text-stone-700 dark:bg-stone-800/60 dark:text-stone-300"><b>선정 이유:</b> {c.reason_summary}</p>}
+        <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={!!produced} onChange={(e) => toggle(e.target.checked)} /> {produced ? `제작함 · ${fmt.date(produced)}` : '이 후보로 영상 만들었음'}</label>
       </div>
     </div>
   )

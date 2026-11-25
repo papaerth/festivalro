@@ -21,6 +21,8 @@ COLUMNS = [
     ("videos", "shopping_hits", "JSON"),
     ("videos", "is_shopping", "BOOLEAN"),
     ("videos", "ai_product_suggestions", "JSON"),
+    ("sourcing_candidates", "produced_at", "DATETIME"),
+    ("sourcing_candidates", "produced_url", "VARCHAR(300)"),
 ]
 INDEXES = [
     ("ix_videos_original_video_id", "videos", "original_video_id"),

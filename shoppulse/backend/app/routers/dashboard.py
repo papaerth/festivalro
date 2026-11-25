@@ -74,6 +74,7 @@ def stats(db: Session = Depends(get_db)):
         "steady_rise": graph_counts.get("steady_rise", 0),
         "insufficient": graph_counts.get("insufficient", 0),
         "pending_verification": pending_verification,
+        "produced_total": sum(1 for c in cands if c.produced_at),
         "last_collection_at": (last_job.finished_at.isoformat() if last_job and last_job.finished_at else None),
         "last_snapshot_at": last_snapshot.isoformat() if last_snapshot else None,
         "latest_report": serializers.report(latest_report) if latest_report else None,

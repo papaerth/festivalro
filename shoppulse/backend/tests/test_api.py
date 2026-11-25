@@ -441,3 +441,24 @@ def test_legacy_original_auto_candidates_are_retired(client):
     assert any(x["id"] == c["id"] for x in client.get("/api/candidates", params={"include_rejected": "true"}).json()["items"])
     food = [x for x in rep["categories"] if x["category"] == "food"][0]
     assert "shorts" in food and "originals" in food
+
+
+def test_produced_flag_and_filters(client):
+    cid = client.get("/api/candidates").json()["items"][0]["id"]
+    r = client.put(f"/api/candidates/{cid}/produced", json={"produced": True, "produced_url": "https://youtube.com/shorts/xyz"}).json()
+    assert r["produced_at"] and r["produced_url"].endswith("xyz") and r["status"] in ("published", "analyzing")
+    assert any(c["id"] == cid for c in client.get("/api/candidates", params={"produced": "yes", "status": "published,analyzing"}).json()["items"])
+    assert client.get("/api/dashboard/stats").json()["produced_total"] >= 1
+    r = client.put(f"/api/candidates/{cid}/produced", json={"produced": False}).json()
+    assert r["produced_at"] is None
+
+
+def test_search_offers_without_keys_reports_not_configured(client):
+    r = client.get("/api/products/search-offers", params={"q": "콜라"}).json()
+    assert r["naver"]["status"] == "not_configured" and r["coupang"]["status"] == "not_configured"
+    assert client.get("/api/products/search-offers", params={"q": " "}).status_code == 400
+
+
+def test_weather_in_stats_is_structured(client):
+    w = client.get("/api/dashboard/stats").json()["season"]["weather"]
+    assert w["status"] in ("ok", "unavailable") and w["region"]

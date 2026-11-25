@@ -318,3 +318,17 @@ class AdoptSuggestionIn(BaseModel):
     category: Category
     subcategory: str | None = None
     evidence: str | None = None
+
+
+class ProducedIn(BaseModel):
+    produced: bool
+    produced_url: str | None = None
+
+
+class OfferFromSearchIn(BaseModel):
+    seller: str
+    url: str | None = None
+    price: int | None = None
+    affiliate_available: bool | None = None
+    affiliate_program: str | None = None
+    notes: str | None = None

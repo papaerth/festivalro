@@ -65,9 +65,14 @@ def refresh_data_sources(db: Session) -> None:
         ("anthropic", "AI 기획안(Claude)", "ai",
          "configured" if (s.shoppulse_ai_provider == "anthropic" and s.anthropic_api_key) else "not_configured",
          "미설정 시 템플릿 기획안으로 동작(발언 생성 없음)."),
-        ("coupang_naver", "쿠팡·네이버쇼핑 상품 조회", "commerce", "unavailable",
-         "자동 조회 미구현. 판매처·가격은 확인 시점과 함께 수동 입력."),
-        ("weather", "날씨 정보", "weather", "unavailable", "자동 조회 미구현. 계절·공휴일은 날짜 기반으로 계산."),
+        ("naver_shopping", "네이버 쇼핑 검색 API", "commerce",
+         "configured" if (s.naver_client_id and s.naver_client_secret) else "not_configured",
+         "상품 화면 「판매처 조회」로 최저가·판매처 검색. developers.naver.com 에서 키 발급 후 .env 의 NAVER_CLIENT_ID/SECRET."),
+        ("coupang_partners", "쿠팡 파트너스 Open API", "commerce",
+         "configured" if (s.coupang_access_key and s.coupang_secret_key) else "not_configured",
+         "상품 화면 「판매처 조회」로 쿠팡 상품·제휴 링크 검색. partners.coupang.com 에서 키 발급 후 .env 의 COUPANG_ACCESS_KEY/SECRET."),
+        ("weather", "날씨 (Open-Meteo)", "weather", "configured",
+         "키 없이 쓰는 공개 기상 API. 설정의 기본 지역(시·도) 기준 현재 기온·습도·강수와 오늘 최고/최저. 기상 모델 값이며 실측이 아님."),
     ]
     for key, name, kind, status, note in rows:
         ds = db.query(DataSource).filter(DataSource.key == key).first()

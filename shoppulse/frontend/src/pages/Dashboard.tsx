@@ -9,7 +9,9 @@ import CandidateCard from '../components/CandidateCard'
 export default function Dashboard() {
   const stats = useAsync(() => api.stats())
   const sources = useAsync(() => api.dataSources())
-  const cands = useAsync(() => api.candidates({ sort: 'score', limit: 6 }))
+  const [cat, setCat] = useState<'beauty' | 'living' | 'food'>('beauty')
+  const cands = useAsync(() => api.candidates({ sort: 'score', limit: 6, category: cat, produced: 'no' }), [cat])
+  const producedList = useAsync(() => api.candidates({ sort: 'updated', limit: 6, produced: 'yes', status: 'published,analyzing' }))
   const { toast, node } = useToast()
   const s = stats.data
 
@@ -40,7 +42,8 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">오늘의 소싱</h1>
-          <p className="text-sm muted">{s.season.date} ({s.season.weekday}) · {s.season.season} · {s.season.region} · {s.season.events.length ? s.season.events.join(', ') : '특별 이벤트 없음'} · 날씨: 미연동</p>
+          <p className="text-sm muted">{s.season.date} ({s.season.weekday}) · {s.season.season} · {s.season.region} · {s.season.events.length ? s.season.events.join(', ') : '특별 이벤트 없음'}</p>
+          <p className="text-sm">{s.season.weather.status === 'ok' ? <>{s.season.weather.is_rain_or_snow ? '☔' : '☀'} {s.season.weather.label} · 현재 {s.season.weather.temperature}°C (체감 {s.season.weather.apparent}°C) · 습도 {s.season.weather.humidity}% · 오늘 {s.season.weather.today_min}~{s.season.weather.today_max}°C · 강수확률 {s.season.weather.precip_prob_max ?? '?'}% <span className="muted text-xs">· {s.season.weather.source}</span></> : <span className="muted">날씨 조회 불가: {s.season.weather.note}</span>}</p>
         </div>
         <div className="flex gap-2">
           <button className="btn-primary" disabled={running} onClick={run}>{running ? '실행 중…' : '▶ 오늘 소싱 실행 (수동)'}</button>
@@ -59,7 +62,7 @@ export default function Dashboard() {
         <Stat label="누적 분석 영상" value={s.videos_total} sub={`원본 ${s.videos_original} · 재편집 쇼츠 ${s.videos_derived} (상품 확인 ${s.videos_derived_confirmed}) · 오늘 새로 발견 ${s.videos_new_today}`} />
         <Stat label="오늘 소싱 후보" value={s.candidates_today} sub={`전체 후보 ${s.candidates_total}개`} />
         <Stat label="오늘 최종 추천" value={s.final_today} sub="목표 9개 (3채널×3)" tone="green" />
-        <Stat label="검증 대기 후보" value={s.pending_verification} sub="중대 검증 항목 미해결" tone="amber" />
+        <Stat label="검증 대기 후보" value={s.pending_verification} sub={`중대 검증 항목 미해결 · 제작 완료 ${s.produced_total}개`} tone="amber" />
         <Stat label="급등 후 평탄화 (재편집 쇼츠)" value={s.graph_derived?.spike_plateau || 0} sub={`상품 확인 ${s.graph_derived_confirmed?.spike_plateau || 0} · 원본 영상 ${s.graph_original?.spike_plateau || 0}`} tone="violet" />
         <Stat label="재상승 (재편집 쇼츠)" value={(s.graph_derived?.resurgence || 0) + (s.graph_derived?.late_surge || 0)} tone="green" sub={`상품 확인 ${(s.graph_derived_confirmed?.resurgence || 0) + (s.graph_derived_confirmed?.late_surge || 0)} · 뒤늦은 급상승 ${s.graph_derived?.late_surge || 0} · 원본 ${(s.graph_original?.resurgence || 0) + (s.graph_original?.late_surge || 0)}`} />
         <Stat label="꾸준히 상승 (재편집 쇼츠)" value={s.graph_derived?.steady_rise || 0} tone="blue" sub={`상품 확인 ${s.graph_derived_confirmed?.steady_rise || 0} · 원본 영상 ${s.graph_original?.steady_rise || 0}`} />
@@ -118,11 +121,21 @@ export default function Dashboard() {
       </div>
 
       <div>
-        <div className="mb-3 flex items-center justify-between"><h2 className="section-title">소싱 점수 상위 후보</h2><span className="text-xs muted">{cands.data?.note}</span></div>
-        {cands.data && cands.data.items.length === 0 && <div className="card p-6 text-sm muted">후보가 없습니다. 영상 상세 화면에서 장면·상품을 기록하고 후보로 등록하세요.</div>}
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {(cands.data?.items || []).map((c) => <CandidateCard key={c.id} c={c} />)}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="section-title">오늘의 Top 6 <span className="muted text-sm font-normal">· 소싱 점수 순 · 아직 안 만든 후보</span></h2>
+          <div className="flex gap-1">{(['beauty', 'living', 'food'] as const).map((k) => <button key={k} className={cat === k ? 'btn-primary' : 'btn-ghost'} onClick={() => setCat(k)}>{LABELS.category[k]}</button>)}</div>
         </div>
+        {cands.data && cands.data.items.length === 0 && <div className="card p-6 text-sm muted">{LABELS.category[cat]} 후보가 없습니다. 「오늘 소싱 실행」으로 자동 발굴하거나 영상 상세에서 등록하세요.</div>}
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {(cands.data?.items || []).map((c, i) => <CandidateCard key={c.id} c={c} rank={i + 1} showReason />)}
+        </div>
+        <p className="mt-2 text-[11px] muted">점수 없는 후보는 뒤로 밀립니다. 선정 이유는 AI 채점 요약(있으면) 또는 자동 발굴 신호입니다. 카드의 체크박스로 「제작함」을 표시하면 목록에서 빠지고 아래 「제작한 영상」에 쌓입니다.</p>
+      </div>
+      <div>
+        <div className="mb-3 flex items-center justify-between"><h2 className="section-title">제작한 영상 <span className="muted text-sm font-normal">· 최근 6개</span></h2><Link to="/candidates?produced=yes" className="text-sm underline">전체 보기</Link></div>
+        {producedList.data && producedList.data.items.length === 0 ? <div className="card p-4 text-sm muted">아직 「제작함」으로 체크한 후보가 없습니다.</div> : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{(producedList.data?.items || []).map((c) => <CandidateCard key={c.id} c={c} />)}</div>
+        )}
       </div>
       <p className="text-[11px] muted">점수 모델: {s.scoring_name} · Outlier/VPH 등급은 SHOPPULSE 운영 참고 기준이며 vidIQ 공식 등급이 아닙니다. 그래프는 실제 관측 데이터만 사용합니다. 시간대 배치는 운영 가설입니다.</p>
     </div>

@@ -4,6 +4,7 @@ import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
 import { Badge, Confirm, ErrorBox, Field, Modal, Select, Spinner, toneFor, useToast } from '../components/ui'
 import type { Product } from '../types'
+import OfferSearchModal from '../components/OfferSearch'
 
 export default function Products() {
   const [f, setF] = useState<Record<string, string>>({})
@@ -11,6 +12,7 @@ export default function Products() {
   const { toast, node } = useToast()
   const [edit, setEdit] = useState<Partial<Product> | null>(null)
   const [offerFor, setOfferFor] = useState<Product | null>(null)
+  const [searchFor, setSearchFor] = useState<Product | null>(null)
   const [offer, setOffer] = useState<Record<string, any>>({ seller: '쿠팡', stock_status: 'unknown', currency: 'KRW' })
   const act = async (fn: () => Promise<any>, ok: string) => { try { await fn(); toast(ok); q.reload() } catch (e: any) { toast(e.message, 'err') } }
 
@@ -18,7 +20,7 @@ export default function Products() {
     <div className="space-y-4">
       {node}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="text-2xl font-bold tracking-tight">상품</h1><p className="text-sm muted">상품명이 모호하면 유사 제품을 동일 제품으로 확정하지 마세요. 가격·재고는 확인 시점 기준입니다. 쿠팡·네이버 자동 조회는 미구현(수동 입력).</p></div>
+        <div><h1 className="text-2xl font-bold tracking-tight">상품</h1><p className="text-sm muted">상품명이 모호하면 유사 제품을 동일 제품으로 확정하지 마세요. 가격·재고는 확인 시점 기준입니다. 「판매처 조회」는 네이버 쇼핑·쿠팡 파트너스 공식 API(키 필요)를 사용합니다.</p></div>
         <button className="btn-primary" onClick={() => setEdit({ name: '', category: 'food', identification_status: 'unidentified' })}>+ 상품 등록</button>
       </div>
       <div className="card grid gap-3 p-4 md:grid-cols-4">
@@ -42,7 +44,7 @@ export default function Products() {
                 {(p.offers || []).map((o) => <div key={o.id} className="flex items-center justify-between rounded-lg bg-stone-50 px-2 py-1 dark:bg-stone-800/60"><span>{o.seller} · {o.price ? `${o.price.toLocaleString()}원` : '가격 미확인'} · {LABELS.stock[o.stock_status]} · 제휴 {o.affiliate_available === null ? '미확인' : o.affiliate_available ? `가능${o.affiliate_program ? `(${o.affiliate_program})` : ''}` : '불가'} <span className="muted">· {fmt.date(o.checked_at)} 기준</span></span><span className="flex gap-2">{o.url && <a className="underline" href={o.url} target="_blank" rel="noreferrer">링크</a>}<button className="text-red-600" onClick={() => act(() => api.deleteOffer(p.id, o.id), '삭제')}>✕</button></span></div>)}
                 {(p.offers || []).length === 0 && <div className="muted">판매처 미확인</div>}
               </div>
-              <div className="mt-3 flex flex-wrap gap-1 text-xs"><button className="btn-ghost px-2 py-1" onClick={() => setEdit(p)}>수정</button><button className="btn-ghost px-2 py-1" onClick={() => { setOffer({ seller: '쿠팡', stock_status: 'unknown', currency: 'KRW' }); setOfferFor(p) }}>+ 판매처</button><Link to={`/videos?q=`} className="btn-ghost px-2 py-1">영상에서 연결</Link><Confirm className="btn-danger px-2 py-1" onConfirm={() => act(() => api.deleteProduct(p.id), '삭제')}>삭제</Confirm></div>
+              <div className="mt-3 flex flex-wrap gap-1 text-xs"><button className="btn-ghost px-2 py-1" onClick={() => setEdit(p)}>수정</button><button className="btn-primary px-2 py-1" onClick={() => setSearchFor(p)}>판매처 조회</button><button className="btn-ghost px-2 py-1" onClick={() => { setOffer({ seller: '쿠팡', stock_status: 'unknown', currency: 'KRW' }); setOfferFor(p) }}>+ 판매처 수동</button><Link to={`/videos?q=`} className="btn-ghost px-2 py-1">영상에서 연결</Link><Confirm className="btn-danger px-2 py-1" onConfirm={() => act(() => api.deleteProduct(p.id), '삭제')}>삭제</Confirm></div>
             </div>
           ))}
         </div>
@@ -60,6 +62,7 @@ export default function Products() {
           <div className="col-span-2 flex justify-end gap-2"><button className="btn-ghost" onClick={() => setEdit(null)}>취소</button><button className="btn-primary" onClick={() => { const b: any = { ...edit }; delete b.id; delete b.offers; delete b.mention_count; delete b.updated_at; act(() => (edit.id ? api.patchProduct(edit.id, b) : api.createProduct(b)), '상품 저장').then(() => setEdit(null)) }}>저장</button></div>
         </div>}
       </Modal>
+      {searchFor && <OfferSearchModal open={!!searchFor} onClose={() => setSearchFor(null)} productId={searchFor.id} initialQuery={`${searchFor.brand || ''} ${searchFor.name}`.trim()} onAdded={() => q.reload()} />}
       <Modal open={!!offerFor} onClose={() => setOfferFor(null)} title={`판매처 추가 — ${offerFor?.name}`}>
         <div className="grid grid-cols-2 gap-3">
           <Field label="판매처"><input className="input" value={offer.seller} onChange={(e) => setOffer({ ...offer, seller: e.target.value })} /></Field>

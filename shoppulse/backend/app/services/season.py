@@ -40,9 +40,11 @@ def season_context(d: date, db: Session | None = None) -> dict:
         if (sm, sd) <= (d.month, d.day) <= (em, ed):
             events.append(name)
     events += [h.get("name", "명절") for h in lunar]
+    from .weather import fetch_weather
+
     return {
         "date": d.isoformat(), "weekday": ["월", "화", "수", "목", "금", "토", "일"][d.weekday()],
         "season": SEASONS[d.month], "events": events, "region": region,
-        "weather": {"status": "unavailable", "note": "날씨 API 미연동 — 기온·강수·습도는 직접 확인하세요."},
+        "weather": fetch_weather(region),
         "note": "계절·이벤트는 날짜 기반 계산입니다. 설·추석은 설정에서 입력(lunar_holidays)하세요.",
     }
