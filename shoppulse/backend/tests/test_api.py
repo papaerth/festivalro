@@ -621,3 +621,24 @@ def test_auto_on_open_runs_pipeline_and_respects_interval(client):
     client.put("/api/settings/user/auto_on_open", json={"value": False})
     assert client.post("/api/sourcing/auto-on-open").json()["reason"].startswith("접속 자동 작업이 꺼져")
     client.put("/api/settings/user/auto_on_open", json={"value": True})
+
+
+def test_auto_celebrity_registration_without_ai_uses_rule(client):
+    # 서로 다른 채널의 쇼츠 3개에 같은 해시태그 이름 → 규칙 기준으로 자동 등록, 브랜드 단어는 제외
+    for i, ch in enumerate(["UCa", "UCb", "UCc"]):
+        client.post("/api/videos", json={"url_or_id": f"qqqqqqqqq{i}q", "title": f"추천템 영상 {i} #김영란 #트레이더조 #다이소", "duration_seconds": 30,
+                                        "fetch": False, "source_type": "reedit_shorts", "view_count": 1000})
+        from app.database import SessionLocal
+        from app.models import Video
+        with SessionLocal() as db:
+            v = db.query(Video).filter(Video.youtube_video_id == f"qqqqqqqqq{i}q").first(); v.yt_channel_id = ch; db.commit()
+    from app.database import SessionLocal
+    from app.services.celebrity_discovery import auto_register_celebrities
+    with SessionLocal() as db:
+        r = auto_register_celebrities(db)
+    assert r["method"] == "heuristic" and any(x["name"] == "김영란" for x in r["list"])
+    names = [c["name"] for c in client.get("/api/celebrities", params={"q": "김영란"}).json()]
+    assert "김영란" in names
+    chans = [c for c in client.get("/api/channels").json() if c["celebrity_name"] == "김영란"]
+    assert chans and chans[0]["verification_status"] == "unverified" and chans[0]["channel_id"] is None
+    assert not any(c["name"] == "트레이더조" for c in client.get("/api/celebrities").json())

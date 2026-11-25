@@ -57,16 +57,15 @@ def pick_best(channel: YoutubeChannel, candidates: list[dict]) -> tuple[dict | N
     return best, "유력"
 
 
-def _run_resolve(limit: int):
-    with SessionLocal() as db:
+def _stage_resolve(db, limit: int) -> dict:
+    if True:
         job = start_job(db, "bulk_resolve_channels", {"limit": limit})
         db.commit()
         try:
             client = YouTubeClient()
         except YouTubeNotConfigured as e:
             finish_job(job, "failed", error=str(e)); db.commit()
-            BULK_STATE.update(running=False, error=str(e), finished_at=utcnow().isoformat())
-            return
+            return {"skipped": True, "reason": str(e)}
         targets = (db.query(YoutubeChannel).filter(YoutubeChannel.channel_id.is_(None), YoutubeChannel.is_active.is_(True))
                    .order_by(YoutubeChannel.id).limit(limit).all())
         BULK_STATE.update(total=len(targets), done=0)
@@ -101,7 +100,45 @@ def _run_resolve(limit: int):
         client.close()
         finish_job(job, "success" if not failed else "partial", summary, items=len(saved) + len(review), quota=client.quota_used)
         db.commit()
-        BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
+        return summary
+
+
+def _run_resolve(limit: int):
+    with SessionLocal() as db:
+        summary = _stage_resolve(db, limit)
+        BULK_STATE.update(running=False, current=None, summary=summary, error=summary.get("reason") if summary.get("skipped") else None,
+                          finished_at=utcnow().isoformat())
+
+
+def _stage_generic_discover(db, limit: int, max_results: int = 25) -> dict:
+    """연예인 이름 없이 일반 검색어(config/discovery_queries.json)를 순환하며 쇼핑 재편집 쇼츠를 찾는다."""
+    from ..config import load_config_json
+    from ..models import UserSetting
+    queries = load_config_json("discovery_queries.json").get("queries", [])
+    if not queries or limit <= 0:
+        return {"skipped": True, "reason": "검색어 없음 또는 0개"}
+    cur = db.get(UserSetting, "generic_query_cursor")
+    off = (int(cur.value.get("value", 0)) if cur else 0) % len(queries)
+    picked = (queries[off:] + queries[:off])[:limit]
+    nxt = (off + len(picked)) % len(queries)
+    if cur:
+        cur.value = {"value": nxt}
+    else:
+        db.add(UserSetting(key="generic_query_cursor", value={"value": nxt}))
+    db.commit()
+    BULK_STATE.update(total=len(picked), done=0)
+    results, quota = [], 0
+    for q in picked:
+        BULK_STATE["current"] = q
+        job = discover_shorts(db, q, celebrity_id=None, max_results=max_results, triggered_by="auto", shopping_only=True)
+        quota += job.quota_used
+        results.append({"query": q, "status": job.status, "created": job.result.get("created"), "found": job.result.get("found"),
+                        "skipped_non_shopping": job.result.get("skipped_non_shopping"), "error": job.error})
+        BULK_STATE["done"] += 1
+        if job.status == "failed" and job.result.get("reason") == "quotaExceeded":
+            break
+    return {"queries": len(results), "created": sum(r["created"] or 0 for r in results), "quota_used": quota,
+            "failed": [r for r in results if r["status"] == "failed"], "results": results}
 
 
 def _stage_collect(db, max_videos: int, years: int | None, stale_days: int) -> dict:
@@ -242,8 +279,11 @@ def _run_sourcing(report_date, refresh_limit: int, trigger: str = "manual"):
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 
-def _run_auto(collect_stale_days: int = 1, discover_limit: int = 10, refresh_limit: int = 300, max_videos: int = 200):
-    """접속 자동 작업: 채널 영상 수집(오늘 안 한 채널만) → 재편집 쇼츠 검색(연예인 N명 순환) → 오늘 소싱 실행. 한 번에 순서대로."""
+def _run_auto(collect_stale_days: int = 1, discover_limit: int = 8, refresh_limit: int = 300, max_videos: int = 200,
+              generic_limit: int = 5, resolve_limit: int = 5):
+    """접속 자동 작업(한 번에 순서대로):
+    1) 채널 ID 일괄 조회(ID 없는 채널 N개) 2) 채널 영상 수집(오늘 안 한 채널만) 3) 재편집 쇼츠 검색(연예인 N명 순환 + 일반 검색어 N개 순환)
+    4) 쇼츠 해시태그에서 새 연예인 자동 등록 5) 오늘 소싱 실행."""
     from ..models import UserSetting
     from ..config import get_settings
 
@@ -251,15 +291,27 @@ def _run_auto(collect_stale_days: int = 1, discover_limit: int = 10, refresh_lim
         summary: dict = {"stages": []}
         try:
             if get_settings().youtube_api_key:
-                BULK_STATE.update(current="1/3 채널 영상 수집", stage="collect")
+                BULK_STATE.update(current="1/5 채널 ID 조회", stage="resolve", done=0, total=0)
+                summary["resolve"] = _stage_resolve(db, resolve_limit) if resolve_limit > 0 else {"skipped": True, "reason": "0개"}
+                summary["stages"].append("resolve")
+                BULK_STATE.update(current="2/5 채널 영상 수집", stage="collect", done=0, total=0)
                 summary["collect"] = _stage_collect(db, max_videos, None, collect_stale_days)
                 summary["stages"].append("collect")
-                BULK_STATE.update(current="2/3 재편집 쇼츠 검색", stage="discover", done=0, total=0)
-                summary["discover"] = _stage_discover(db, discover_limit, 25, "추천템", None, "relevance", True, rotate=True)
+                BULK_STATE.update(current="3/5 재편집 쇼츠 검색(연예인)", stage="discover", done=0, total=0)
+                summary["discover"] = _stage_discover(db, discover_limit, 25, "추천템", None, "relevance", True, rotate=True) if discover_limit > 0 else {"skipped": True}
+                BULK_STATE.update(current="3/5 재편집 쇼츠 검색(일반 검색어)", stage="discover_generic", done=0, total=0)
+                summary["discover_generic"] = _stage_generic_discover(db, generic_limit)
                 summary["stages"].append("discover")
             else:
-                summary["collect"] = summary["discover"] = {"skipped": True, "reason": "YOUTUBE_API_KEY 미설정"}
-            BULK_STATE.update(current="3/3 오늘 소싱 실행", stage="sourcing", done=0, total=0)
+                summary["resolve"] = summary["collect"] = summary["discover"] = summary["discover_generic"] = {"skipped": True, "reason": "YOUTUBE_API_KEY 미설정"}
+            BULK_STATE.update(current="4/5 새 연예인 자동 등록", stage="celebrities", done=0, total=0)
+            try:
+                from .celebrity_discovery import auto_register_celebrities
+                summary["celebrities"] = auto_register_celebrities(db)
+            except Exception as e:
+                summary["celebrities"] = {"error": str(e)[:200]}
+            summary["stages"].append("celebrities")
+            BULK_STATE.update(current="5/5 오늘 소싱 실행", stage="sourcing", done=0, total=0)
             summary["sourcing"] = _stage_sourcing(db, None, refresh_limit, trigger="auto_on_open")
             summary["stages"].append("sourcing")
             st = db.get(UserSetting, "auto_on_open_last")

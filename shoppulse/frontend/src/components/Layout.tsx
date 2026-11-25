@@ -2,13 +2,19 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 
 const nav = [
-  ['/', '대시보드', '◈'], ['/candidates', '소싱 후보', '◇'], ['/videos', '영상', '▶'], ['/channels', '연예인·채널', '★'],
-  ['/products', '상품', '◆'], ['/schedule', '하루 9편 편성표', '▦'], ['/data', '데이터 수집·가져오기', '⇅'], ['/settings', '설정·백업', '⚙'],
+  ['/', '대시보드', '◈'], ['/schedule', '하루 9편 편성표', '▦'], ['/settings', '설정·백업', '⚙'],
+] as const
+// 자동으로 처리되는 작업 화면. 평소에는 접어 둔다(대시보드의 추천 카드에서 상세로 바로 들어갈 수 있음).
+const tools = [
+  ['/candidates', '소싱 후보(전체)', '◇'], ['/videos', '영상(전체)', '▶'], ['/channels', '연예인·채널', '★'],
+  ['/products', '상품', '◆'], ['/data', '데이터 수집·가져오기', '⇅'],
 ] as const
 
 export default function Layout() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
   const [open, setOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(() => { try { return localStorage.getItem('sp-tools') === '1' } catch { return false } })
+  useEffect(() => { try { localStorage.setItem('sp-tools', toolsOpen ? '1' : '0') } catch {} }, [toolsOpen])
   const [down, setDown] = useState<null | { since: number; tries: number }>(null)
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -43,6 +49,19 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
+        <div className="mt-4">
+          <button className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs muted hover:bg-stone-100 dark:hover:bg-stone-800" onClick={() => setToolsOpen(!toolsOpen)} title="접속할 때마다 자동으로 처리되는 작업들입니다. 확인이 필요할 때만 여세요.">
+            <span>작업 도구 (자동 처리됨)</span><span>{toolsOpen ? '▾' : '▸'}</span>
+          </button>
+          {toolsOpen && <nav className="mt-1 space-y-1">
+            {tools.map(([to, label, icon]) => (
+              <NavLink key={to} to={to} onClick={() => setOpen(false)}
+                className={({ isActive }) => `flex items-center gap-2.5 rounded-xl px-3 py-1.5 text-xs ${isActive ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900' : 'hover:bg-stone-100 dark:hover:bg-stone-800'}`}>
+                <span className="w-4 text-center text-xs opacity-70">{icon}</span>{label}
+              </NavLink>
+            ))}
+          </nav>}
+        </div>
         <div className="mt-6 px-2">
           <button className="btn-ghost w-full justify-center text-xs" onClick={() => setDark(!dark)}>{dark ? '☀ 라이트 모드' : '☾ 다크 모드'}</button>
         </div>

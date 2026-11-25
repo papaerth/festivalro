@@ -197,3 +197,8 @@ def test_image_original_youtube_id_extraction():
             "https://youtu.be/99TWvVVTARo", "https://example.com/page"]
     ids = [m for u in urls for m in _YT_ID_RE.findall(u)]
     assert ids == ["sHJvABrKOno", "90Ube_-fCf8", "99TWvVVTARo"]
+
+
+def test_celebrity_discovery_name_candidates_heuristic(db_session=None):
+    from app.services.celebrity_discovery import _name_candidates, EXTRA_STOP
+    assert "트레이더조" in EXTRA_STOP and "다이소" in EXTRA_STOP

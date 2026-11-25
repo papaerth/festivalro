@@ -59,9 +59,11 @@ def auto_on_open(force: bool = False, db: Session = Depends(get_db)):
     if last and not force and (utcnow() - last) < timedelta(hours=hours):
         return base | {"started": False, "reason": f"마지막 실행 후 {hours:g}시간이 지나지 않음"}
     limit = int(setting("daily_refresh_limit", 300))
-    dl = int(setting("auto_discover_limit", 10))
+    dl = int(setting("auto_discover_limit", 8))
+    gl = int(setting("auto_generic_limit", 5))
+    rl = int(setting("auto_resolve_limit", 5))
     try:
-        st = bulk.start("auto", collect_stale_days=1, discover_limit=dl, refresh_limit=limit)
+        st = bulk.start("auto", collect_stale_days=1, discover_limit=dl, refresh_limit=limit, generic_limit=gl, resolve_limit=rl)
     except RuntimeError as e:
         return base | {"started": False, "reason": str(e)}
     return base | {"started": True, "reason": "수집 → 쇼츠 검색 → 소싱 실행 시작", "state": st}
