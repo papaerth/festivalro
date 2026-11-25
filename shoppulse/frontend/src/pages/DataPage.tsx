@@ -19,6 +19,7 @@ export default function DataPage() {
   const csvRef = useRef<HTMLInputElement>(null)
   const [vq, setVq] = useState<VidiqRequest | null>(null)
   const [vqLimit, setVqLimit] = useState(30)
+  const [tq, setTq] = useState<VidiqRequest | null>(null)
   const act = async (fn: () => Promise<any>, ok: (r: any) => string) => { try { const r = await fn(); toast(ok(r), r?.status === 'failed' ? 'err' : 'ok'); jobs.reload() } catch (e: any) { toast(e.message, 'err') } }
   const yt = health.data?.youtube_api
 
@@ -54,7 +55,11 @@ export default function DataPage() {
               <textarea className="input font-mono text-[11px]" rows={8} readOnly value={vq.prompt} />
               <p className="mt-1 muted">{vq.note}</p>
             </div>}
-            <div className="mt-2 font-semibold">2단계 · 받은 JSON 업로드 (아래 버튼)</div>
+            <div className="mt-3 font-semibold">1-b단계 · 원본 영상 자막 요청 (쇼츠가 쓴 구간·실제 발언 찾기용)</div>
+            <p className="muted">후보 쇼츠에 연결된 원본 영상 중 자막이 없는 것들의 ID 목록입니다. 자막을 받아 올리면 「몇 분 몇 초~몇 분 몇 초」 구간과 자막 속 실제 발언이 자동으로 채워집니다.</p>
+            <div className="mt-1 flex items-center gap-2"><button className="btn-ghost" onClick={async () => { try { const r = await api.vidiqTranscriptRequest(50); setTq(r); if (!r.count) toast('자막이 필요한 원본 영상이 없습니다(원본 미연결이거나 이미 자막 있음)') } catch (e: any) { toast(e.message, 'err') } }}>자막 요청 문구 만들기</button>{tq && tq.count > 0 && <><span>원본 {tq.count}개</span><button className="btn-primary px-2 py-1" onClick={() => navigator.clipboard.writeText(tq.video_ids.join('\n')).then(() => toast('원본 ID 복사됨'))}>ID만 복사</button><button className="btn-ghost px-2 py-1" onClick={() => navigator.clipboard.writeText(tq.prompt).then(() => toast('자막 요청 문구 복사됨'))}>문구 전체 복사</button></>}</div>
+            {tq && tq.count > 0 && <textarea className="input mt-1 font-mono text-[11px]" rows={5} readOnly value={tq.prompt} />}
+            <div className="mt-2 font-semibold">2단계 · 받은 JSON 업로드 (아래 버튼) — 시계열·지표·자막 JSON 모두 같은 버튼</div>
           </div>
           <p className="mb-3 text-xs muted">vidIQ 는 외부 프로그램용 공개 REST API 를 제공하지 않습니다. 공식 경로는 ChatGPT·Claude 등에 연결된 <b>vidIQ MCP</b>입니다. 그 대화에서 받은 <code>vidiq_get_videos_by_ids</code>(최신 VPH·Outlier) / <code>vidiq_video_stats</code>(일별 조회수 시계열) 응답 JSON을 파일로 저장해 올리세요. Outlier가 null 이면 0이 아닌 '미확인'으로 저장됩니다. VPH 측정 구간은 vidIQ 가 명시하지 않아 '기준 미확인'으로 표시합니다.</p>
           <div className="flex flex-wrap items-center gap-2">

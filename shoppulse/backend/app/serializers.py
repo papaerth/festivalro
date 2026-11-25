@@ -33,6 +33,12 @@ def channel(ch: YoutubeChannel) -> dict:
     }
 
 
+def _ts(sec: int | None) -> str:
+    if sec is None:
+        return "?"
+    return f"{sec // 3600}:{(sec % 3600) // 60:02d}:{sec % 60:02d}" if sec >= 3600 else f"{sec // 60:02d}:{sec % 60:02d}"
+
+
 def segment(s: VideoSegment) -> dict:
     url = s.video.url if s.video else None
     return {
@@ -42,6 +48,7 @@ def segment(s: VideoSegment) -> dict:
         "sponsorship_status": s.sponsorship_status, "is_recommendation": s.is_recommendation,
         "verification_status": s.verification_status, "source": s.source, "notes": s.notes,
         "timestamp_url": f"{url}&t={s.start_seconds}s" if url and s.start_seconds is not None else None,
+        "range_label": (f"{_ts(s.start_seconds)} ~ {_ts(s.end_seconds)}" if s.start_seconds is not None else None),
     }
 
 
@@ -175,6 +182,8 @@ def video_detail(v: Video) -> dict:
         "metric_history": [{"id": m.id, "metric_type": m.metric_type, "value": m.value, "basis": m.basis, "source": m.source,
                             "measured_at": iso(m.measured_at), "note": m.note} for m in sorted(v.metrics, key=lambda m: m.measured_at)],
         "segments": [segment(s) for s in v.segments],
+        "transcript": ({"source": v.transcript.get("source"), "language": v.transcript.get("language"), "count": v.transcript.get("count"),
+                        "fetched_at": v.transcript.get("fetched_at")} if isinstance(v.transcript, dict) else None),
         "products": [product(m.product, with_offers=False) | {"segment_id": m.segment_id, "mention_id": m.id} for m in v.mentions],
         "candidates": [candidate_summary(c) for c in v.candidates],
         "derived_shorts": [video_summary(x) for x in sorted(v.derived, key=lambda x: -(x.view_count or 0))],
@@ -253,6 +262,14 @@ def _reason_summary(c: SourcingCandidate, ls: dict) -> str | None:
     return None
 
 
+def _match_brief(m: dict | None) -> dict | None:
+    if not m:
+        return None
+    return {"confidence": m.get("confidence"), "reason": m.get("reason"), "checked_at": m.get("checked_at"),
+            "candidates": m.get("candidates", [])[:8], "celebrities": m.get("celebrities"), "notes": m.get("notes"),
+            "api_searches": m.get("api_searches", 0), "linked": m.get("linked", False)}
+
+
 def candidate_summary(c: SourcingCandidate, config: dict | None = None) -> dict:
     ls = latest_scores(c.scores)
     final = ls["final"]
@@ -283,6 +300,8 @@ def candidate_summary(c: SourcingCandidate, config: dict | None = None) -> dict:
         "produced_at": iso(c.produced_at), "produced_url": c.produced_url,
         "reason_summary": _reason_summary(c, ls),
         "original_video": (video_summary(c.video.original, with_graph=False) if c.video.original else None),
+        "original_match": _match_brief(c.video.original_match),
+        "original_has_transcript": bool(c.video.original and c.video.original.transcript),
         "video_product_status": product_status(c.video),
         "evidence": evidence_summary(c.video.original) if c.video.original else evidence_summary(c.video),
         "updated_at": iso(c.updated_at), "created_at": iso(c.created_at),

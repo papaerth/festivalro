@@ -8,7 +8,7 @@ import OfferSearchModal from '../components/OfferSearch'
 import CaptureInvestigateModal from '../components/CaptureInvestigate'
 import ProductLinks from '../components/ProductLinks'
 import MetricBlock from '../components/MetricBlock'
-import type { CandidateDetail as CD, Score } from '../types'
+import type { CandidateDetail as CD, OriginalMatch, Score, SegmentProposal } from '../types'
 
 export default function CandidateDetail() {
   const { id } = useParams()
@@ -29,6 +29,12 @@ export default function CandidateDetail() {
   const [offerSearch, setOfferSearch] = useState(false)
   const [capture, setCapture] = useState(false)
   const [prodUrl, setProdUrl] = useState('')
+  const [om, setOm] = useState<OriginalMatch | null>(null)
+  const [prop, setProp] = useState<SegmentProposal | null>(null)
+  const [origUrl, setOrigUrl] = useState('')
+  const [finding, setFinding] = useState<'' | 'original' | 'segment'>('')
+  const findOriginal = async () => { setFinding('original'); try { const r = await api.findOriginal(cid, true); setOm(r.match); toast(r.match.linked ? `원본 자동 연결(${r.match.confidence}) — ${r.match.reason}` : r.match.candidates.length ? `후보 ${r.match.candidates.length}개 — 아래에서 골라 연결하세요` : (r.match.reason || '원본을 찾지 못했습니다'), r.match.linked ? 'ok' : 'err'); q.reload() } catch (e: any) { toast(e.message, 'err') } finally { setFinding('') } }
+  const findSegment = async (adopt: boolean) => { setFinding('segment'); try { const r = await api.findSegment(cid, adopt); setProp(r.proposal); if (r.proposal.status === 'found') toast(adopt ? `장면 저장: ${r.proposal.range_label}` : `구간 찾음: ${r.proposal.range_label}`); else toast(r.proposal.note || '구간을 찾지 못했습니다', 'err'); if (adopt) q.reload() } catch (e: any) { toast(e.message, 'err') } finally { setFinding('') } }
 
   useEffect(() => {
     if (!c || !cfg) return
@@ -62,7 +68,7 @@ export default function CandidateDetail() {
           </label>
           {!c.produced_at && <input className="input w-56" placeholder="올린 쇼츠 URL(선택)" value={prodUrl} onChange={(e) => setProdUrl(e.target.value)} />}
           {v.url && <a className="btn-ghost" href={v.url} target="_blank" rel="noreferrer">원본 영상 열기 ↗</a>}
-          {c.segment?.timestamp_url && <a className="btn-primary" href={c.segment.timestamp_url} target="_blank" rel="noreferrer">장면으로 이동 {fmt.ts(c.segment.start_seconds)} ↗</a>}
+          {c.segment?.timestamp_url ? <a className="btn-primary" href={c.segment.timestamp_url} target="_blank" rel="noreferrer">▶ 원본 장면 보기 {c.segment.range_label || fmt.ts(c.segment.start_seconds)} ↗</a> : c.is_short_candidate && (c.original_video ? <button className="btn-primary" disabled={finding === 'segment'} onClick={() => findSegment(true)}>{finding === 'segment' ? '구간 찾는 중…' : '원본 장면(몇 분~몇 초) 자동 찾기'}</button> : <button className="btn-primary" disabled={finding === 'original'} onClick={findOriginal}>{finding === 'original' ? '원본 찾는 중…' : '진짜 원본 영상 찾기'}</button>)}
           <Confirm onConfirm={() => act(async () => { await api.deleteCandidate(c.id); nav('/candidates') }, '삭제됨')}>후보 삭제</Confirm>
         </div>
       </div>
@@ -78,13 +84,13 @@ export default function CandidateDetail() {
           {c.segment ? (
             <div className="space-y-2 text-sm">
               <div className="rounded-xl bg-stone-50 p-3 dark:bg-stone-800/60">
-                <div className="text-[11px] muted">{fmt.ts(c.segment.start_seconds)} ~ {fmt.ts(c.segment.end_seconds)} · <Badge tone={toneFor.verification(c.segment.verification_status)}>{LABELS.verification[c.segment.verification_status]}</Badge></div>
+                <div className="text-[11px] muted">{fmt.ts(c.segment.start_seconds)} ~ {fmt.ts(c.segment.end_seconds)} · <Badge tone={toneFor.verification(c.segment.verification_status)}>{LABELS.verification[c.segment.verification_status]}</Badge> · 근거 {c.segment.source === 'captions' ? '자막' : c.segment.source === 'description_only' ? '설명란 챕터' : c.segment.source === 'ai_extracted' ? 'AI' : '직접 확인'}{c.segment.timestamp_url && <> · <a className="underline" href={c.segment.timestamp_url} target="_blank" rel="noreferrer">여기서 재생 ↗</a></>}</div>
                 <p className="mt-1 font-medium">{c.segment.quote ? `“${c.segment.quote}”` : <span className="muted">실제 발언 미기록</span>}</p>
                 {c.segment.context && <p className="mt-1 text-xs muted">맥락: {c.segment.context}</p>}
               </div>
               <div className="flex flex-wrap gap-1"><Badge tone={c.segment.sponsorship_status === 'sponsored' || c.segment.sponsorship_status === 'suspected' ? 'amber' : 'gray'}>{LABELS.sponsorship[c.segment.sponsorship_status]}</Badge><Badge tone="gray">{c.segment.is_recommendation === null ? '추천/언급 미확인' : c.segment.is_recommendation ? '구매 추천' : '단순 언급'}</Badge><Badge tone="gray">{LABELS.access[v.access_status]}</Badge></div>
             </div>
-          ) : <p className="text-sm muted">연결된 장면이 없습니다. 영상 상세에서 타임스탬프와 발언을 기록한 뒤 후보에 연결하세요.</p>}
+          ) : <p className="text-sm muted">연결된 장면이 없습니다. {c.original_video ? '위의 「원본 장면 자동 찾기」를 누르거나, 아래 원본 영상 카드에서 구간을 확인하세요.' : '먼저 원본 영상을 찾아 연결하세요.'}</p>}
           <h2 className="section-title mb-2 mt-4">바이럴 검증 {c.is_short_candidate ? <span className="muted text-xs font-normal">(원본에 연결된 상품 확인 쇼츠 기준)</span> : <span className="muted text-xs font-normal">(재편집 쇼츠)</span>}</h2>
           <p className="mb-1 text-[11px] muted">{c.evidence.note}</p>
           {c.evidence.count > 0 ? (
@@ -120,13 +126,18 @@ export default function CandidateDetail() {
                 <div className="min-w-0 text-sm">
                   <Link to={`/videos/${c.original_detail.id}`} className="line-clamp-2 font-semibold hover:underline">{c.original_detail.title}</Link>
                   <div className="text-xs muted">{c.original_detail.celebrity_name} · {c.original_detail.channel_name} <Badge tone={toneFor.verification(c.original_detail.channel_verification)}>{LABELS.verification[c.original_detail.channel_verification || 'unverified']}</Badge> · {fmt.date(c.original_detail.published_at)} · {fmt.duration(c.original_detail.duration_seconds)} · 조회 {fmt.compact(c.original_detail.view_count)}</div>
-                  <div className="mt-1 flex flex-wrap gap-1">{c.original_detail.url && <a className="btn-ghost px-2 py-1 text-xs" href={c.original_detail.url} target="_blank" rel="noreferrer">원본 열기 ↗</a>}<button className="btn-ghost px-2 py-1 text-xs" onClick={() => act(() => api.patchVideo(v.id, { original_video_id: null }), '원본 연결 해제')}>연결 해제</button></div>
+                  <div className="mt-1 flex flex-wrap gap-1">{c.original_detail.url && <a className="btn-ghost px-2 py-1 text-xs" href={c.original_detail.url} target="_blank" rel="noreferrer">원본 열기 ↗</a>}<button className="btn-ghost px-2 py-1 text-xs" onClick={() => act(() => api.patchVideo(v.id, { original_video_id: null }), '원본 연결 해제')}>연결 해제</button><button className="btn-ghost px-2 py-1 text-xs" disabled={finding === 'segment'} onClick={() => findSegment(false)}>{finding === 'segment' ? '찾는 중…' : '장면 구간 찾기(미리보기)'}</button></div>
+                  {c.original_match?.reason && <p className="mt-1 text-[11px] muted">연결 근거: {c.original_match.confidence === 'manual' ? '사용자 직접 연결' : `${c.original_match.reason} (확신도 ${c.original_match.confidence})`}</p>}
+                  {prop && <div className="mt-2 rounded-lg bg-stone-50 p-2 text-xs dark:bg-stone-800/60">{prop.status === 'found' ? <><div className="font-semibold">제안 구간 {prop.range_label} <span className="muted font-normal">· 근거 {prop.basis === 'chapters' ? '설명란 챕터' : prop.basis === 'transcript+ai' ? '자막 + AI 검토' : '자막'}</span></div>{prop.quote && <p className="mt-1">“{prop.quote.slice(0, 300)}”</p>}<p className="muted mt-1">{prop.note}</p><div className="mt-1 flex gap-1">{prop.link && <a className="btn-ghost px-2 py-1" href={prop.link} target="_blank" rel="noreferrer">여기서 재생 ↗</a>}<button className="btn-primary px-2 py-1" onClick={() => act(() => api.adoptSegment(c.id, { start_seconds: prop.start!, end_seconds: prop.end ?? null, quote: prop.quote ?? null, basis: prop.basis, note: prop.note }), '장면 저장·연결')}>이 구간으로 저장</button></div></> : <><p>{prop.note}</p>{prop.needs_transcript && prop.transcript_request && <button className="btn-ghost mt-1 px-2 py-1" onClick={() => navigator.clipboard.writeText(prop.transcript_request!).then(() => toast('자막 요청 문구 복사됨 — vidIQ 연결된 채팅에 붙여넣고, 받은 JSON을 「데이터 수집 → vidIQ JSON 업로드」에 올리세요'))}>원본 자막 요청 문구 복사(vidIQ)</button>}</>}</div>}
+                  {!c.original_has_transcript && !prop && <p className="mt-1 text-[11px] muted">원본 자막 없음 — 구간 찾기는 설명란 챕터로만 시도합니다. 자막은 「데이터 수집·가져오기 → vidIQ 자막 요청」으로 받아 올릴 수 있습니다.</p>}
                   <div className="mt-2"><Field label="원본 장면(발언·타임스탬프) 선택" hint="원본 영상 상세에서 장면을 기록한 뒤 여기서 고릅니다."><Select value={c.segment_id ? String(c.segment_id) : ''} onChange={(sid) => act(() => api.patchCandidate(c.id, { segment_id: sid ? Number(sid) : null }), '장면 연결')} placeholder={c.original_detail.segments.length ? '선택' : '기록된 장면 없음'} options={c.original_detail.segments.map((sg) => [String(sg.id), `${fmt.ts(sg.start_seconds)} ${sg.quote?.slice(0, 40) || '(발언 미기록)'}`])} /></Field></div>
                 </div>
               </div>
             ) : (
               <div className="text-sm">
-                <p className="mb-2 text-xs muted">이 쇼츠가 어떤 공식 원본 영상을 썼는지 연결하세요. 연예인을 먼저 지정하면 그 연예인의 원본만 목록에 나옵니다.</p>
+                <p className="mb-2 text-xs muted">이 쇼츠가 어떤 공식 원본 영상을 썼는지 연결하세요. 「진짜 원본 영상 찾기」는 설명란 출처 링크 → 제목·해시태그의 연예인 채널에서 수집된 영상 단어 일치 → 채널 안 YouTube 검색(할당량 100/회) → AI 재검토 순으로 찾습니다.</p>
+                <div className="mb-2 flex flex-wrap gap-1"><button className="btn-primary px-2 py-1 text-xs" disabled={finding === 'original'} onClick={findOriginal}>{finding === 'original' ? '찾는 중…' : '진짜 원본 영상 찾기'}</button><input className="input w-64 text-xs" placeholder="원본 유튜브 URL 직접 입력" value={origUrl} onChange={(e) => setOrigUrl(e.target.value)} /><button className="btn-ghost px-2 py-1 text-xs" disabled={!origUrl} onClick={() => act(() => api.linkOriginal(c.id, { url_or_id: origUrl }), '원본 연결')}>이 URL로 연결</button></div>
+                {(om || c.original_match) && (() => { const m = om || c.original_match!; return <div className="mb-2 rounded-lg bg-stone-50 p-2 text-xs dark:bg-stone-800/60"><div className="muted">{m.reason} {m.celebrities?.length ? `· 인식된 연예인: ${m.celebrities.join(', ')}` : ''} {m.api_searches ? `· YouTube 검색 ${m.api_searches}회` : ''}</div>{m.notes?.map((n, i) => <div key={i} className="text-amber-700 dark:text-amber-300">{n}</div>)}{m.candidates.map((o) => <div key={o.video_id} className="mt-1 flex items-center gap-2 border-t border-stone-200 pt-1 dark:border-stone-700">{o.thumbnail_url && <img src={o.thumbnail_url} alt="" className="h-9 w-16 rounded object-cover" />}<div className="min-w-0 flex-1"><div className="line-clamp-1 font-medium">{o.title}</div><div className="muted">{o.channel} · {fmt.date(o.published_at)} · {fmt.duration(o.duration_seconds)} · 일치 {o.hits.join(', ') || '없음'} · 점수 {o.score}</div></div>{o.url && <a className="underline" href={o.url} target="_blank" rel="noreferrer">열기</a>}<button className="btn-primary px-2 py-0.5" onClick={() => act(() => api.linkOriginal(c.id, { video_id: o.video_id }), '원본 연결')}>이 영상이 원본</button></div>)}</div> })()}
                 <Field label="연예인"><Select value={v.celebrity_id ? String(v.celebrity_id) : ''} onChange={(s) => act(() => api.patchVideo(v.id, { celebrity_id: s ? Number(s) : null }), '저장')} placeholder="미지정" options={(celebs.data || []).map((x) => [String(x.id), x.name])} /></Field>
                 <div className="mt-2"><Field label="원본 영상"><Select value="" onChange={(s) => s && act(() => api.patchVideo(v.id, { original_video_id: Number(s) }), '원본 연결')} placeholder="선택" options={(originals.data?.items || []).filter((o) => !v.celebrity_id || o.celebrity_name === (celebs.data || []).find((x) => x.id === v.celebrity_id)?.name).map((o) => [String(o.id), `${o.celebrity_name || o.channel_name || ''} · ${o.title.slice(0, 50)}`])} /></Field></div>
               </div>

@@ -175,3 +175,17 @@ def test_structured_output_schemas_avoid_unsupported_keywords():
         text = json.dumps(sch)
         for b in banned:
             assert f'"{b}"' not in text, f"{b} in schema"
+
+
+def test_segment_finder_parsers_and_window():
+    from app.services.segment_finder import parse_chapters, parse_transcript_text, _window_search, transcript_from_payload
+    ch = parse_chapters("0:00 인트로\n03:15 트레이더조 쇼핑\n10:02 마무리", 700)
+    assert [c["start"] for c in ch] == [0, 195, 602] and ch[1]["end"] == 602 and ch[2]["end"] == 700
+    assert parse_chapters("그냥 설명", 100) == []
+    segs = parse_transcript_text("[0:00] 안녕하세요\n[0:15] 오늘은 트레이더조 가방을 보여드릴게요\n[0:30] 쿨 유리 언니가 줄 서서 샀대요\n[1:05:10] 끝")
+    assert segs[1]["start"] == 15 and segs[3]["start"] == 3910
+    w = _window_search(segs, ["트레이더조", "가방", "유리", "없는단어"])
+    assert w and w["start"] <= 15 and w["end"] >= 30 and "트레이더조" in w["quote"] and set(w["matched"]) == {"트레이더조", "가방", "유리"}
+    tr = transcript_from_payload({"videoId": "x", "transcription": "[0:00] 가\n[0:10] 나", "language": "ko"})
+    assert tr["count"] == 2 and tr["source"] == "vidiq_mcp"
+    assert transcript_from_payload({"videoId": "x"}) is None

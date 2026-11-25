@@ -259,7 +259,12 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
     ai_products = ai_identify_products_step(db) if ai_score else {"skipped": True, "reason": "비활성", "identified": 0, "linked": 0}
     # 규칙 간이 채점 + 템플릿 기획안: AI·사람 채점 전에도 모든 후보에 총점·순위·기획안 뼈대가 있게 한다
     from .rule_scorer import prepare_candidates
+    from .original_finder import link_originals_step
+    from ..models import UserSetting
+    lim = db.get(UserSetting, "auto_original_search_limit")
+    originals_api = link_originals_step(db, use_api=True, max_searches_total=int(lim.value.get("value", 10)) if lim else 10)
     prepared = prepare_candidates(db)
+    prepared["originals_api"] = originals_api
     ai = ai_score_step(db) if ai_score else {"skipped": True, "reason": "비활성", "scored": 0}
     yesterday = report_date - timedelta(days=1)
     prev = (

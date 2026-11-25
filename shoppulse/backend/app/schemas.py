@@ -68,6 +68,7 @@ class VideoIn(BaseModel):
     """영상 수동 등록. URL 또는 ID 필수. fetch=True 면 YouTube API 로 메타데이터 조회 시도."""
     url_or_id: str
     channel_id: int | None = None
+    celebrity_id: int | None = None
     title: str | None = None
     description: str | None = None
     published_at: datetime | None = None
@@ -216,6 +217,19 @@ class ScoreIn(BaseModel):
     scorer: Literal["human", "ai", "rule"] = "human"
     item_scores: dict[str, int | None]
     rationale: dict[str, str] = {}
+
+
+class LinkOriginalIn(BaseModel):
+    video_id: int | None = None
+    url_or_id: str | None = None
+
+
+class AdoptSegmentIn(BaseModel):
+    start_seconds: int = Field(..., ge=0)
+    end_seconds: int | None = Field(None, ge=0)
+    quote: str | None = None
+    basis: str = "manual"
+    note: str | None = None
 
 
 class VerificationIn(BaseModel):

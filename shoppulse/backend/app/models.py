@@ -121,6 +121,8 @@ class Video(TimestampMixin, Base):
     is_shopping: Mapped[bool | None] = mapped_column(Boolean)
     ai_product_suggestions: Mapped[dict | None] = mapped_column(JSON)  # 마지막 AI 상품 추정 결과(추정일 뿐, 확정 아님)
     resolved_links: Mapped[dict | None] = mapped_column(JSON)  # 설명란·링크 페이지(인포크 등)에서 수집한 상품 링크
+    transcript: Mapped[dict | None] = mapped_column(JSON)  # 자막(vidIQ MCP 등): {source, language, segments:[{start,text}], fetched_at}
+    original_match: Mapped[dict | None] = mapped_column(JSON)  # 원본 영상 자동 탐색 결과(후보 목록·근거·확신도)
     yt_channel_description: Mapped[str | None] = mapped_column(Text)  # 미등록 채널의 소개글(링크 수집용)
 
     channel: Mapped["YoutubeChannel | None"] = relationship(back_populates="videos")

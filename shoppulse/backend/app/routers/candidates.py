@@ -300,6 +300,77 @@ def suggest_score(cid: int, mode: str = "ai", db: Session = Depends(get_db)):
     return serializers.candidate_detail(c, ver.config)
 
 
+@router.post("/{cid}/find-original")
+def find_original_ep(cid: int, use_api: bool = True, db: Session = Depends(get_db)):
+    """재편집 쇼츠의 진짜 원본 영상 찾기(설명란 링크 → 연예인 채널 수집 영상 단어 일치 → 채널 내 YouTube 검색 → AI 재검토).
+    확신도 certain/high 면 자동 연결, 아니면 후보 목록을 돌려준다."""
+    from ..services.original_finder import find_original
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    if c.video.source_type not in ("reedit_shorts", "competitor"):
+        raise HTTPException(400, "재편집 쇼츠 후보에서만 원본 찾기를 쓸 수 있습니다")
+    r = find_original(db, c.video, c.product.name if c.product else None, use_api=use_api, max_searches=3)
+    log(db, "candidate", c.id, "find_original", {"confidence": r.get("confidence"), "linked": r.get("linked", False)})
+    db.commit()
+    return {"match": r, "candidate": serializers.candidate_detail(c, get_active_version(db).config)}
+
+
+@router.post("/{cid}/link-original")
+def link_original_ep(cid: int, body: schemas.LinkOriginalIn, db: Session = Depends(get_db)):
+    """원본 후보 중 하나를 사람이 골라 연결(영상 id 또는 유튜브 URL/ID)."""
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    v = None
+    if body.video_id:
+        v = get_or_404(db, Video, body.video_id, "원본 영상")
+    elif body.url_or_id:
+        from ..services.metrics import extract_video_id
+        yid = extract_video_id(body.url_or_id)
+        if not yid:
+            raise HTTPException(400, "유튜브 URL 또는 11자리 ID를 입력하세요")
+        v = db.query(Video).filter(Video.youtube_video_id == yid).first()
+        if v is None:
+            from ..services import collection
+            v, _, err = collection.add_video_by_id(db, yid, None)
+            if v is None:
+                raise HTTPException(503, f"영상 정보를 가져오지 못했습니다: {err}")
+            v.source_type = "original_celebrity"
+    if v is None or v.id == c.video_id:
+        raise HTTPException(400, "연결할 원본 영상을 지정하세요")
+    c.video.original_video_id = v.id
+    if c.video.celebrity_id is None:
+        c.video.celebrity_id = v.celebrity_id or (v.channel.celebrity_id if v.channel else None)
+    om = dict(c.video.original_match or {})
+    om.update({"linked": True, "confidence": "manual", "reason": "사용자가 직접 연결", "best": {"video_id": v.id, "title": v.title}})
+    c.video.original_match = om
+    log(db, "candidate", c.id, "link_original", {"video_id": v.id})
+    db.commit()
+    return serializers.candidate_detail(c, get_active_version(db).config)
+
+
+@router.post("/{cid}/find-segment")
+def find_segment_ep(cid: int, adopt: bool = False, db: Session = Depends(get_db)):
+    """원본 영상 안에서 쇼츠가 쓴 구간(몇 분 몇 초~)을 자막·챕터로 찾는다. adopt=true 면 찾은 구간을 장면으로 저장해 후보에 연결."""
+    from ..services.segment_finder import adopt_segment, propose_segment
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    prop = propose_segment(c)
+    if adopt and prop.get("status") == "found":
+        adopt_segment(db, c, prop, by="사용자 요청 자동 제안")
+        log(db, "candidate", c.id, "segment_auto", {"start": prop["start"], "end": prop["end"], "basis": prop["basis"]})
+    return {"proposal": prop, "candidate": serializers.candidate_detail(c, get_active_version(db).config)}
+
+
+@router.post("/{cid}/adopt-segment")
+def adopt_segment_ep(cid: int, body: schemas.AdoptSegmentIn, db: Session = Depends(get_db)):
+    """제안 구간을(수정해서) 장면으로 저장."""
+    from ..services.segment_finder import adopt_segment
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    try:
+        adopt_segment(db, c, {"start": body.start_seconds, "end": body.end_seconds, "quote": body.quote, "basis": body.basis,
+                              "note": body.note or "", "matched": []}, by="사용자 확인")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return serializers.candidate_detail(c, get_active_version(db).config)
+
+
 @router.put("/{cid}/verification")
 def set_verification(cid: int, body: schemas.VerificationIn, db: Session = Depends(get_db)):
     c = get_or_404(db, SourcingCandidate, cid, "후보")

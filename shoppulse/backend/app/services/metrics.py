@@ -93,7 +93,7 @@ def import_vidiq_json(db: Session, payload: dict | list, measured_at: datetime |
     """vidIQ MCP 응답 JSON 가져오기. 결과 요약 dict 반환."""
     now = measured_at or utcnow()
     result = {"videos_created": 0, "videos_updated": 0, "metrics_added": 0, "snapshots_added": 0,
-              "skipped": [], "null_outliers": 0}
+              "skipped": [], "null_outliers": 0, "transcripts_added": 0}
     items: list[dict] = []
     if isinstance(payload, list):
         items = payload
@@ -108,6 +108,24 @@ def import_vidiq_json(db: Session, payload: dict | list, measured_at: datetime |
     for item in items:
         if not isinstance(item, dict):
             result["skipped"].append("객체가 아닌 항목")
+            continue
+        # 형식 3: 자막(vidiq_video_transcript)
+        if isinstance(item.get("transcription"), str) or isinstance(item.get("segments"), list):
+            vid = extract_video_id(str(item.get("videoId") or item.get("id") or ""))
+            if not vid:
+                result["skipped"].append("videoId 없음(자막)")
+                continue
+            from .segment_finder import transcript_from_payload
+            tr = transcript_from_payload(item)
+            if not tr:
+                result["skipped"].append(f"{vid}: 자막 내용 없음")
+                continue
+            video, created = get_or_create_video(db, vid, {"data_source": "vidiq_mcp_json"})
+            result["videos_created" if created else "videos_updated"] += 1
+            video.transcript = tr
+            if video.access_status in ("unknown", "description_only"):
+                video.access_status = "captions"
+            result["transcripts_added"] += 1
             continue
         # 형식 2: 시계열
         if "data" in item and isinstance(item["data"], list):

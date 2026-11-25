@@ -28,7 +28,7 @@ export interface VideoSummary {
 
 export interface Segment {
   id: number; video_id: number; start_seconds: number | null; end_seconds: number | null; quote: string | null; context: string | null; content_type: string | null;
-  content_type_label: string | null; sponsorship_status: string; is_recommendation: boolean | null; verification_status: string; source: string; notes: string | null; timestamp_url: string | null
+  content_type_label: string | null; sponsorship_status: string; is_recommendation: boolean | null; verification_status: string; source: string; notes: string | null; timestamp_url: string | null; range_label?: string | null
 }
 
 export interface Offer { id: number; seller: string; url: string | null; price: number | null; currency: string; stock_status: string; affiliate_available: boolean | null; affiliate_program: string | null; checked_at: string; source: string; notes: string | null }
@@ -60,7 +60,7 @@ export interface CandidateSummary {
   research_todo: string | null; notes: string | null; is_demo: boolean; last_recommended_date: string | null; recommendation_count: number; duplicate_reason: string | null;
   score: number | null; grade_key: string | null; grade_label: string | null; score_scorer: string | null; ai_score: number | null; human_score: number | null; rule_score?: number | null; rank?: number | null;
   production_ready: boolean; unresolved_critical: string[]; product_name: string | null; product_identification: string | null; offer_status: string | null;
-  segment: Segment | null; plan_count: number; latest_plan_by: string | null; produced_at: string | null; produced_url: string | null; reason_summary: string | null; is_short_candidate: boolean; original_video: VideoSummary | null; video_product_status: 'confirmed' | 'candidate' | 'none'; evidence: Evidence; updated_at: string; created_at: string; video?: VideoSummary
+  segment: Segment | null; plan_count: number; latest_plan_by: string | null; produced_at: string | null; produced_url: string | null; reason_summary: string | null; is_short_candidate: boolean; original_video: VideoSummary | null; original_match?: OriginalMatch | null; original_has_transcript?: boolean; video_product_status: 'confirmed' | 'candidate' | 'none'; evidence: Evidence; updated_at: string; created_at: string; video?: VideoSummary
 }
 export interface CandidateDetail extends CandidateSummary {
   video: VideoDetail; original_detail: VideoDetail | null; product: Product | null; scores: { ai: Score | null; human: Score | null; rule: Score | null; history: Score[] }; verification: Verification[]; plans: Plan[]
@@ -100,4 +100,6 @@ export interface InvestigateResult { items: InvestigateItem[]; notes: string; mo
 
 export interface ComputedVal { value: number; basis: string; hours?: number; note: string }
 export interface ComputedOutlier { value: number; basis: string; median_views: number; sample_size: number; sample_format: string; computed_at: string; note: string }
+export interface OriginalMatch { confidence: string; reason: string | null; checked_at: string | null; candidates: { video_id: number; youtube_video_id: string; title: string; url: string | null; published_at: string | null; duration_seconds: number | null; channel: string | null; thumbnail_url: string | null; score: number; hits: string[]; how: string }[]; celebrities?: string[]; notes?: string[]; api_searches: number; linked: boolean }
+export interface SegmentProposal { status: string; basis?: string; start?: number; end?: number; quote?: string | null; matched?: string[]; link?: string | null; range_label?: string; note?: string; needs_transcript?: boolean; transcript_request?: string; chapter_title?: string; ai?: { confidence: string; reason: string; model?: string }; ai_note?: string }
 export interface VidiqRequest { count: number; video_ids: string[]; prompt: string; note: string }

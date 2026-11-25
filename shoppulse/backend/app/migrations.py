@@ -23,6 +23,8 @@ COLUMNS = [
     ("videos", "ai_product_suggestions", "JSON"),
     ("videos", "resolved_links", "JSON"),
     ("videos", "yt_channel_description", "TEXT"),
+    ("videos", "transcript", "JSON"),
+    ("videos", "original_match", "JSON"),
     ("sourcing_candidates", "produced_at", "DATETIME"),
     ("sourcing_candidates", "produced_url", "VARCHAR(300)"),
     ("sourcing_candidates", "slot_reason", "TEXT"),

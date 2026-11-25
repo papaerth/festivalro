@@ -113,6 +113,26 @@ class YouTubeClient:
                 break
         return ids[:max_results]
 
+    def search_channel_videos(self, channel_id: str, query: str, max_results: int = 10,
+                              published_before: datetime | None = None, published_after: datetime | None = None) -> list[dict]:
+        """특정 채널 안에서 검색(할당량 100). snippet 포함: 제목·설명(앞부분)·게시일을 바로 돌려준다."""
+        params = {"part": "snippet", "type": "video", "q": query, "channelId": channel_id,
+                  "maxResults": min(50, max_results), "order": "relevance"}
+        if published_before:
+            params["publishedBefore"] = published_before.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if published_after:
+            params["publishedAfter"] = published_after.strftime("%Y-%m-%dT%H:%M:%SZ")
+        data = self._get("search", **params)
+        out = []
+        for i in data.get("items", []):
+            vid = (i.get("id") or {}).get("videoId")
+            sn = i.get("snippet") or {}
+            if vid:
+                out.append({"video_id": vid, "title": sn.get("title"), "description": sn.get("description"),
+                            "published_at": sn.get("publishedAt"), "channel_id": sn.get("channelId"),
+                            "channel_title": sn.get("channelTitle")})
+        return out
+
     # ---- 영상
     def list_upload_video_ids(self, uploads_playlist: str, published_after: datetime | None = None,
                               max_videos: int = 200, published_before: datetime | None = None) -> list[str]:

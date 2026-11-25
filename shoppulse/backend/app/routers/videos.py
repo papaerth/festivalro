@@ -170,6 +170,25 @@ def vidiq_request(limit: int = Query(30, le=200), only_candidates: bool = True, 
             "note": "ChatGPT 또는 Claude 에 vidIQ 를 연결한 대화창에 붙여넣으세요. 받은 JSON 파일은 「데이터 수집 → vidIQ JSON 업로드」로 올리면 그래프가 채워집니다. 영상 1개당 vidIQ 크레딧 5가 듭니다."}
 
 
+@router.get("/vidiq-transcript-request")
+def vidiq_transcript_request(limit: int = Query(30, le=200), db: Session = Depends(get_db)):
+    """활성 후보의 원본 영상 중 자막이 없고 장면도 없는 것들의 ID 와 vidIQ 자막 요청 문구."""
+    from ..models import SourcingCandidate
+    from ..services.segment_finder import transcript_request_prompt
+    cands = (db.query(SourcingCandidate)
+             .filter(SourcingCandidate.is_demo.is_(False), SourcingCandidate.status.notin_(["rejected", "published", "analyzing"])).all())
+    seen, ids = set(), []
+    for c in cands:
+        o = c.video.original
+        if o is None or c.segment_id or o.transcript or o.youtube_video_id in seen:
+            continue
+        seen.add(o.youtube_video_id)
+        ids.append(o.youtube_video_id)
+    ids = ids[:limit]
+    return {"count": len(ids), "video_ids": ids, "prompt": transcript_request_prompt(ids) if ids else "",
+            "note": "원본 영상의 자막을 받아 올리면 쇼츠가 쓴 구간(몇 분 몇 초)과 실제 발언을 자동으로 찾습니다. 영상 1개당 vidIQ 크레딧 5."}
+
+
 @router.post("", status_code=201)
 def create_video(body: schemas.VideoIn, db: Session = Depends(get_db)):
     vid = extract_video_id(body.url_or_id)
@@ -191,7 +210,7 @@ def create_video(body: schemas.VideoIn, db: Session = Depends(get_db)):
             return serializers.video_detail(v) | {"fetch_note": "YouTube API 로 메타데이터를 가져왔습니다."}
         fetch_note = f"YouTube API 조회 실패({err}). 입력한 값으로 수동 등록했습니다."
     v = Video(
-        youtube_video_id=vid, channel_id=body.channel_id, title=body.title or f"(제목 미확인) {vid}",
+        youtube_video_id=vid, channel_id=body.channel_id, celebrity_id=body.celebrity_id, title=body.title or f"(제목 미확인) {vid}",
         description=body.description, published_at=body.published_at, duration_seconds=body.duration_seconds,
         video_format=classify_format(body.duration_seconds), thumbnail_url=body.thumbnail_url,
         url=f"https://www.youtube.com/watch?v={vid}", source_type=body.source_type, access_status=body.access_status,

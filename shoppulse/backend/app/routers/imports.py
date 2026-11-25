@@ -26,6 +26,10 @@ async def vidiq_json(file: UploadFile = File(...), measured_at: datetime | None 
     job = start_job(db, "import_vidiq_json", {"filename": file.filename})
     try:
         result = import_vidiq_json(db, payload, measured_at.replace(tzinfo=None) if measured_at else None)
+        if result.get("transcripts_added"):
+            from ..services.segment_finder import segment_step
+            db.commit()
+            result["segments"] = segment_step(db)
         finish_job(job, "success" if not result["skipped"] else "partial", result,
                    items=result["videos_created"] + result["videos_updated"])
         db.commit()

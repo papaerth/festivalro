@@ -550,3 +550,36 @@ def test_prepare_all_and_rank(client):
     assert client.get(f"/api/candidates/{cid}").json()["slot_reason"] == "사용자 지정"
     d = client.patch(f"/api/candidates/{cid}", json={"recommended_slot": None}).json()
     assert d["slot_auto"] is True and d["recommended_slot"]
+
+
+def test_find_original_and_segment_from_transcript(client):
+    import io, json
+    # 연예인 '테스트' 의 원본 영상(수집됨) + 그 이름을 해시태그로 단 재편집 쇼츠
+    found = [x for x in client.get("/api/celebrities", params={"q": "장영란"}).json() if x["name"] == "장영란"]
+    celeb = found[0] if found else client.post("/api/celebrities", json={"name": "장영란"}).json()
+    orig = client.post("/api/videos", json={"url_or_id": "nnnnnnnnnnn", "title": "장영란 미국 마트 털기 트레이더조 쇼핑 브이로그", "duration_seconds": 900,
+                                             "view_count": 50000, "fetch": False, "source_type": "original_celebrity", "celebrity_id": celeb["id"],
+                                             "description": "0:00 인트로\n03:15 트레이더조 가방 구경\n08:00 마무리", "published_at": "2026-06-01T00:00:00"}).json()
+    short = client.post("/api/videos", json={"url_or_id": "ooooooooooo", "title": "줄 서서 사 온 트레이더조 가방 대란 #장영란 #미국쇼핑", "duration_seconds": 30,
+                                              "view_count": 900000, "fetch": False, "source_type": "reedit_shorts", "published_at": "2026-08-01T00:00:00"}).json()
+    cid = client.post("/api/candidates", json={"video_id": short["id"], "channel_category": "living"}).json()["id"]
+    r = client.post(f"/api/candidates/{cid}/find-original", params={"use_api": False}).json()
+    assert r["match"]["celebrities"] == ["장영란"] and r["match"]["linked"] is True and r["match"]["confidence"] in ("high", "certain")
+    assert r["candidate"]["original_video"]["id"] == orig["id"]
+    # 자막 없음 → 설명란 챕터로 구간 제안
+    p = client.post(f"/api/candidates/{cid}/find-segment").json()["proposal"]
+    assert p["status"] == "found" and p["basis"] == "chapters" and p["start"] == 195 and p["end"] == 480 and p["link"].endswith("&t=195s")
+    # vidIQ 자막 업로드 → 자막 기반 구간이 자동 저장(세그먼트 연결)
+    payload = [{"videoId": "nnnnnnnnnnn", "language": "ko",
+                "transcription": "[0:00] 안녕하세요 장영란입니다\n[3:20] 여기가 트레이더조예요 다들 줄 서서 사는 가방\n[3:35] 이 가방이 그렇게 대란이래요\n[3:50] 다음은 과자 코너"}]
+    up = client.post("/api/import/vidiq-json", files={"file": ("t.json", io.BytesIO(json.dumps(payload).encode()), "application/json")}).json()
+    assert up["result"]["transcripts_added"] == 1 and up["result"]["segments"]["found"] >= 1
+    d = client.get(f"/api/candidates/{cid}").json()
+    assert d["segment"] and d["segment"]["source"] == "captions" and 190 <= d["segment"]["start_seconds"] <= 200 and "가방" in d["segment"]["quote"]
+    assert d["segment"]["timestamp_url"].endswith(f"&t={d['segment']['start_seconds']}s") and d["original_has_transcript"] is True
+    # 자막 요청 문구: 이제 자막·장면이 있으니 대상 없음
+    assert "nnnnnnnnnnn" not in client.get("/api/videos/vidiq-transcript-request").json()["video_ids"]
+    # 직접 URL 연결
+    client.patch(f"/api/videos/{short['id']}", json={"original_video_id": None})
+    d = client.post(f"/api/candidates/{cid}/link-original", json={"video_id": orig["id"]}).json()
+    assert d["original_video"]["id"] == orig["id"] and d["original_match"]["confidence"] == "manual"
