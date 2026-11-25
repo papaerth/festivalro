@@ -334,7 +334,7 @@ def link_originals_step(db: Session, use_api: bool = False, max_searches_total: 
     s = get_settings()
     if use_image is None:
         st = db.get(UserSetting, "auto_image_original")
-        use_image = bool(st.value.get("value", True)) if st else True
+        use_image = bool(st.value.get("value", False)) if st else False  # 기본 꺼짐(사용자가 캡처로 직접 찾는 쪽을 선택)
     image_possible = use_image and (s.google_vision_api_key or s.anthropic_api_key)
     cands = (db.query(SourcingCandidate)
              .filter(SourcingCandidate.is_demo.is_(False), SourcingCandidate.status.notin_(["rejected", "published", "analyzing"])).all())

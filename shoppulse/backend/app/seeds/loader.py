@@ -16,11 +16,13 @@ SEED_FILE = Path(__file__).with_name("celebrity_channels_seed.json")
 
 
 def seed_channels(db: Session) -> int:
-    if db.query(YoutubeChannel).filter(YoutubeChannel.source == "seed").count() > 0:
-        return 0
+    """시드 채널 적재. 이미 있는 채널명은 건너뛰고(사용자 수정 보존), 시드에 새로 추가된 채널만 더한다."""
     data = json.loads(SEED_FILE.read_text(encoding="utf-8"))
+    existing = {n for (n,) in db.query(YoutubeChannel.channel_name).all()}
     n = 0
     for row in data["channels"]:
+        if row["channel_name"] in existing:
+            continue
         celeb = None
         if row.get("celebrity"):
             celeb = db.query(Celebrity).filter(Celebrity.name == row["celebrity"]).first()

@@ -1,68 +1,668 @@
 {
-  "note": "[시드] 채널명은 공개적으로 알려진 이름을 참고용으로 적은 것입니다. 채널 ID와 공식 여부는 확인되지 않았으므로 '검증 전' 상태입니다. YouTube API 로 채널 ID를 조회한 뒤 직접 확인하고 '검증 완료'로 바꾸세요. 뷰티/생활/먹거리 관련성(0~3)은 운영자 초기 가설입니다.",
-  "channels": [
-    {"celebrity": "성시경", "channel_name": "성시경 SUNG SI KYUNG", "field": "가수", "food": 3, "living": 1},
-    {"celebrity": "신세경", "channel_name": "신세경 sjkuksee", "field": "배우", "beauty": 2, "living": 3, "food": 2},
-    {"celebrity": "한예슬", "channel_name": "한예슬 is", "field": "배우", "beauty": 3, "living": 2, "food": 1},
-    {"celebrity": "이시영", "channel_name": "이시영의 땀티", "field": "배우", "beauty": 2, "living": 2, "food": 2},
-    {"celebrity": "김나영", "channel_name": "김나영의 nofilterTV", "field": "방송인", "beauty": 3, "living": 3, "food": 2},
-    {"celebrity": "강민경", "channel_name": "걍밍경", "field": "가수", "beauty": 3, "living": 3, "food": 2},
-    {"celebrity": "백종원", "channel_name": "백종원 PAIK JONG WON", "field": "셰프·방송인", "food": 3, "living": 2},
-    {"celebrity": "신동엽", "channel_name": "짠한형 신동엽", "field": "방송인", "food": 3, "living": 1},
-    {"celebrity": "기안84", "channel_name": "인생84", "field": "방송인·작가", "living": 2, "food": 2},
-    {"celebrity": "이경규", "channel_name": "르크크 이경규", "field": "방송인", "food": 2, "living": 1},
-    {"celebrity": "김숙", "channel_name": "김숙티비", "field": "방송인", "living": 2, "food": 2, "beauty": 1},
-    {"celebrity": "송은이", "channel_name": "비보티비 VIVO TV", "field": "방송인", "channel_type": "official_broadcaster", "living": 2, "food": 2},
-    {"celebrity": "박명수", "channel_name": "할명수", "field": "방송인", "food": 2, "living": 1},
-    {"celebrity": "장도연", "channel_name": "TEO 테오 (살롱드립)", "field": "방송인", "channel_type": "official_broadcaster", "beauty": 1, "living": 1, "food": 1},
-    {"celebrity": "홍현희", "channel_name": "홍현희 제이쓴", "field": "방송인", "living": 3, "food": 2, "beauty": 1},
-    {"celebrity": "이지혜", "channel_name": "밉지않은 관종언니", "field": "가수·방송인", "beauty": 2, "living": 3, "food": 2},
-    {"celebrity": "하하", "channel_name": "하하 PD", "field": "방송인", "food": 2, "living": 2},
-    {"celebrity": "유인나", "channel_name": "유인나 YOOINNA", "field": "배우", "beauty": 2, "living": 2, "food": 1},
-    {"celebrity": "최화정", "channel_name": "안녕하세요 최화정이에요", "field": "방송인", "beauty": 2, "living": 3, "food": 3},
-    {"celebrity": "이국주", "channel_name": "이국주의 일주일", "field": "방송인", "food": 3, "living": 2},
-    {"celebrity": "신봉선", "channel_name": "봉선이의 호오해", "field": "방송인", "living": 2, "food": 2},
-    {"celebrity": "박나래", "channel_name": "나래식", "field": "방송인", "food": 3, "living": 2, "beauty": 1},
-    {"celebrity": "장영란", "channel_name": "A급 장영란", "field": "방송인", "beauty": 2, "living": 3, "food": 2},
-    {"celebrity": "이수근", "channel_name": "이수근 채널", "field": "방송인", "food": 2, "living": 1},
-    {"celebrity": "김종국", "channel_name": "김종국 GYM JONG KOOK", "field": "가수·방송인", "living": 1, "food": 2},
-    {"celebrity": "딘딘", "channel_name": "딘딘 DinDin", "field": "가수·방송인", "food": 2},
-    {"celebrity": "지석진", "channel_name": "지편한 세상", "field": "방송인", "food": 2, "living": 1},
-    {"celebrity": "이영지", "channel_name": "이영지", "field": "가수·방송인", "food": 2, "beauty": 1},
-    {"celebrity": "아이유", "channel_name": "이지금 [IU Official]", "field": "가수·배우", "beauty": 2, "food": 1},
-    {"celebrity": "태연", "channel_name": "태연 TAEYEON", "field": "가수", "beauty": 2, "food": 1},
-    {"celebrity": "제니", "channel_name": "Jennierubyjane Official", "field": "가수", "beauty": 3, "living": 1},
-    {"celebrity": "산다라박", "channel_name": "DARA TV", "field": "가수", "beauty": 3, "living": 1, "food": 1},
-    {"celebrity": "고소영", "channel_name": "고소영 KOSOYOUNG", "field": "배우", "beauty": 3, "living": 2, "food": 1},
-    {"celebrity": "김사랑", "channel_name": "김사랑 Kim Sarang", "field": "배우", "beauty": 3, "living": 2, "food": 1},
-    {"celebrity": "한혜진", "channel_name": "한혜진 Han Hye Jin", "field": "모델", "beauty": 3, "living": 2, "food": 1},
-    {"celebrity": "윤승아", "channel_name": "승아로운", "field": "배우", "beauty": 2, "living": 3, "food": 2},
-    {"celebrity": "홍진경", "channel_name": "공부왕찐천재 홍진경", "field": "모델·방송인", "living": 2, "food": 2},
-    {"celebrity": "조현아", "channel_name": "조현아의 목요일 밤", "field": "가수", "food": 2, "beauty": 1},
-    {"celebrity": "장윤정", "channel_name": "도장TV", "field": "가수", "living": 2, "food": 2},
-    {"celebrity": "김구라", "channel_name": "구라철", "field": "방송인", "channel_type": "official_broadcaster", "food": 1, "living": 1},
-    {"celebrity": "김연경", "channel_name": "식빵언니 Kim Yeon Koung", "field": "운동선수", "food": 2, "living": 1},
-    {"celebrity": "임영웅", "channel_name": "임영웅", "field": "가수", "food": 1, "living": 1},
-    {"celebrity": "선미", "channel_name": "SUNMI", "field": "가수", "beauty": 3},
-    {"celebrity": "솔라", "channel_name": "솔라시도 solarsido", "field": "가수", "beauty": 2, "food": 2, "living": 1},
-    {"celebrity": "혜리", "channel_name": "혜리 HYERI", "field": "가수·배우", "beauty": 2, "food": 2, "living": 1},
-    {"celebrity": "수지", "channel_name": "수지 Suzy", "field": "가수·배우", "beauty": 3, "living": 1},
-    {"celebrity": "전소미", "channel_name": "I AM SOMI", "field": "가수", "beauty": 3, "food": 1},
-    {"celebrity": "엄정화", "channel_name": "엄정화 UHM JUNG HWA", "field": "가수·배우", "beauty": 3, "living": 2, "food": 1},
-    {"celebrity": "윤은혜", "channel_name": "윤은혜 Yoon Eun Hye", "field": "배우", "beauty": 3, "living": 2, "food": 1},
-    {"celebrity": "이소라", "channel_name": "이소라 Sora Lee", "field": "모델·방송인", "beauty": 2, "living": 2, "food": 2},
-    {"celebrity": "김성령", "channel_name": "김성령 Kim Sung Ryung", "field": "배우", "beauty": 3, "living": 2, "food": 1},
-    {"celebrity": "유병재", "channel_name": "유병재", "field": "방송인·작가", "food": 1, "living": 1},
-    {"celebrity": "정재형", "channel_name": "요정재형", "field": "가수·방송인", "food": 3, "living": 2},
-    {"celebrity": "이서진", "channel_name": "채널 십오야", "field": "배우", "channel_type": "official_broadcaster", "food": 3, "living": 2},
-    {"celebrity": "유재석", "channel_name": "뜬뜬 DdeunDdeun", "field": "방송인", "channel_type": "official_broadcaster", "food": 2, "living": 1},
-    {"celebrity": null, "channel_name": "스튜디오 와플 - WAFFLE STUDIO", "field": "제작사", "channel_type": "official_broadcaster", "beauty": 1, "living": 1, "food": 1},
-    {"celebrity": null, "channel_name": "문명특급 - MMTG", "field": "방송", "channel_type": "official_broadcaster", "beauty": 1, "living": 1, "food": 1},
-    {"celebrity": null, "channel_name": "tvN D ENT", "field": "방송", "channel_type": "official_broadcaster", "food": 2, "living": 1},
-    {"celebrity": null, "channel_name": "SBS Entertainment", "field": "방송", "channel_type": "official_broadcaster", "food": 2, "living": 1},
-    {"celebrity": null, "channel_name": "MBCentertainment", "field": "방송", "channel_type": "official_broadcaster", "food": 2, "living": 2},
-    {"celebrity": null, "channel_name": "KBS Entertain", "field": "방송", "channel_type": "official_broadcaster", "food": 2, "living": 1},
-    {"celebrity": null, "channel_name": "JTBC Voyage", "field": "방송", "channel_type": "official_broadcaster", "food": 2, "living": 1},
-    {"celebrity": null, "channel_name": "피식대학Psick Univ", "field": "방송인", "channel_type": "official_broadcaster", "food": 2}
-  ]
+ "note": "[시드] 채널명은 공개적으로 알려진 이름을 참고용으로 적은 것입니다. 채널 ID와 공식 여부는 확인되지 않았으므로 '검증 전' 상태입니다. YouTube API 로 채널 ID를 조회한 뒤 직접 확인하고 '검증 완료'로 바꾸세요. 뷰티/생활/먹거리 관련성(0~3)은 운영자 초기 가설입니다.",
+ "channels": [
+  {
+   "celebrity": "성시경",
+   "channel_name": "성시경 SUNG SI KYUNG",
+   "field": "가수",
+   "food": 3,
+   "living": 1
+  },
+  {
+   "celebrity": "신세경",
+   "channel_name": "신세경 sjkuksee",
+   "field": "배우",
+   "beauty": 2,
+   "living": 3,
+   "food": 2
+  },
+  {
+   "celebrity": "한예슬",
+   "channel_name": "한예슬 is",
+   "field": "배우",
+   "beauty": 3,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "이시영",
+   "channel_name": "이시영의 땀티",
+   "field": "배우",
+   "beauty": 2,
+   "living": 2,
+   "food": 2
+  },
+  {
+   "celebrity": "김나영",
+   "channel_name": "김나영의 nofilterTV",
+   "field": "방송인",
+   "beauty": 3,
+   "living": 3,
+   "food": 2
+  },
+  {
+   "celebrity": "강민경",
+   "channel_name": "걍밍경",
+   "field": "가수",
+   "beauty": 3,
+   "living": 3,
+   "food": 2
+  },
+  {
+   "celebrity": "백종원",
+   "channel_name": "백종원 PAIK JONG WON",
+   "field": "셰프·방송인",
+   "food": 3,
+   "living": 2
+  },
+  {
+   "celebrity": "신동엽",
+   "channel_name": "짠한형 신동엽",
+   "field": "방송인",
+   "food": 3,
+   "living": 1
+  },
+  {
+   "celebrity": "기안84",
+   "channel_name": "인생84",
+   "field": "방송인·작가",
+   "living": 2,
+   "food": 2
+  },
+  {
+   "celebrity": "이경규",
+   "channel_name": "르크크 이경규",
+   "field": "방송인",
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": "김숙",
+   "channel_name": "김숙티비",
+   "field": "방송인",
+   "living": 2,
+   "food": 2,
+   "beauty": 1
+  },
+  {
+   "celebrity": "송은이",
+   "channel_name": "비보티비 VIVO TV",
+   "field": "방송인",
+   "channel_type": "official_broadcaster",
+   "living": 2,
+   "food": 2
+  },
+  {
+   "celebrity": "박명수",
+   "channel_name": "할명수",
+   "field": "방송인",
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": "장도연",
+   "channel_name": "TEO 테오 (살롱드립)",
+   "field": "방송인",
+   "channel_type": "official_broadcaster",
+   "beauty": 1,
+   "living": 1,
+   "food": 1
+  },
+  {
+   "celebrity": "홍현희",
+   "channel_name": "홍현희 제이쓴",
+   "field": "방송인",
+   "living": 3,
+   "food": 2,
+   "beauty": 1
+  },
+  {
+   "celebrity": "이지혜",
+   "channel_name": "밉지않은 관종언니",
+   "field": "가수·방송인",
+   "beauty": 2,
+   "living": 3,
+   "food": 2
+  },
+  {
+   "celebrity": "하하",
+   "channel_name": "하하 PD",
+   "field": "방송인",
+   "food": 2,
+   "living": 2
+  },
+  {
+   "celebrity": "유인나",
+   "channel_name": "유인나 YOOINNA",
+   "field": "배우",
+   "beauty": 2,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "최화정",
+   "channel_name": "안녕하세요 최화정이에요",
+   "field": "방송인",
+   "beauty": 2,
+   "living": 3,
+   "food": 3
+  },
+  {
+   "celebrity": "이국주",
+   "channel_name": "이국주의 일주일",
+   "field": "방송인",
+   "food": 3,
+   "living": 2
+  },
+  {
+   "celebrity": "신봉선",
+   "channel_name": "봉선이의 호오해",
+   "field": "방송인",
+   "living": 2,
+   "food": 2
+  },
+  {
+   "celebrity": "박나래",
+   "channel_name": "나래식",
+   "field": "방송인",
+   "food": 3,
+   "living": 2,
+   "beauty": 1
+  },
+  {
+   "celebrity": "장영란",
+   "channel_name": "A급 장영란",
+   "field": "방송인",
+   "beauty": 2,
+   "living": 3,
+   "food": 2
+  },
+  {
+   "celebrity": "이수근",
+   "channel_name": "이수근 채널",
+   "field": "방송인",
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": "김종국",
+   "channel_name": "김종국 GYM JONG KOOK",
+   "field": "가수·방송인",
+   "living": 1,
+   "food": 2
+  },
+  {
+   "celebrity": "딘딘",
+   "channel_name": "딘딘 DinDin",
+   "field": "가수·방송인",
+   "food": 2
+  },
+  {
+   "celebrity": "지석진",
+   "channel_name": "지편한 세상",
+   "field": "방송인",
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": "이영지",
+   "channel_name": "이영지",
+   "field": "가수·방송인",
+   "food": 2,
+   "beauty": 1
+  },
+  {
+   "celebrity": "아이유",
+   "channel_name": "이지금 [IU Official]",
+   "field": "가수·배우",
+   "beauty": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "태연",
+   "channel_name": "태연 TAEYEON",
+   "field": "가수",
+   "beauty": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "제니",
+   "channel_name": "Jennierubyjane Official",
+   "field": "가수",
+   "beauty": 3,
+   "living": 1
+  },
+  {
+   "celebrity": "산다라박",
+   "channel_name": "DARA TV",
+   "field": "가수",
+   "beauty": 3,
+   "living": 1,
+   "food": 1
+  },
+  {
+   "celebrity": "고소영",
+   "channel_name": "고소영 KOSOYOUNG",
+   "field": "배우",
+   "beauty": 3,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "김사랑",
+   "channel_name": "김사랑 Kim Sarang",
+   "field": "배우",
+   "beauty": 3,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "한혜진",
+   "channel_name": "한혜진 Han Hye Jin",
+   "field": "모델",
+   "beauty": 3,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "윤승아",
+   "channel_name": "승아로운",
+   "field": "배우",
+   "beauty": 2,
+   "living": 3,
+   "food": 2
+  },
+  {
+   "celebrity": "홍진경",
+   "channel_name": "공부왕찐천재 홍진경",
+   "field": "모델·방송인",
+   "living": 2,
+   "food": 2
+  },
+  {
+   "celebrity": "조현아",
+   "channel_name": "조현아의 목요일 밤",
+   "field": "가수",
+   "food": 2,
+   "beauty": 1
+  },
+  {
+   "celebrity": "장윤정",
+   "channel_name": "도장TV",
+   "field": "가수",
+   "living": 2,
+   "food": 2
+  },
+  {
+   "celebrity": "김구라",
+   "channel_name": "구라철",
+   "field": "방송인",
+   "channel_type": "official_broadcaster",
+   "food": 1,
+   "living": 1
+  },
+  {
+   "celebrity": "김연경",
+   "channel_name": "식빵언니 Kim Yeon Koung",
+   "field": "운동선수",
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": "임영웅",
+   "channel_name": "임영웅",
+   "field": "가수",
+   "food": 1,
+   "living": 1
+  },
+  {
+   "celebrity": "선미",
+   "channel_name": "SUNMI",
+   "field": "가수",
+   "beauty": 3
+  },
+  {
+   "celebrity": "솔라",
+   "channel_name": "솔라시도 solarsido",
+   "field": "가수",
+   "beauty": 2,
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": "혜리",
+   "channel_name": "혜리 HYERI",
+   "field": "가수·배우",
+   "beauty": 2,
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": "수지",
+   "channel_name": "수지 Suzy",
+   "field": "가수·배우",
+   "beauty": 3,
+   "living": 1
+  },
+  {
+   "celebrity": "전소미",
+   "channel_name": "I AM SOMI",
+   "field": "가수",
+   "beauty": 3,
+   "food": 1
+  },
+  {
+   "celebrity": "엄정화",
+   "channel_name": "엄정화 UHM JUNG HWA",
+   "field": "가수·배우",
+   "beauty": 3,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "윤은혜",
+   "channel_name": "윤은혜 Yoon Eun Hye",
+   "field": "배우",
+   "beauty": 3,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "이소라",
+   "channel_name": "이소라 Sora Lee",
+   "field": "모델·방송인",
+   "beauty": 2,
+   "living": 2,
+   "food": 2
+  },
+  {
+   "celebrity": "김성령",
+   "channel_name": "김성령 Kim Sung Ryung",
+   "field": "배우",
+   "beauty": 3,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "유병재",
+   "channel_name": "유병재",
+   "field": "방송인·작가",
+   "food": 1,
+   "living": 1
+  },
+  {
+   "celebrity": "정재형",
+   "channel_name": "요정재형",
+   "field": "가수·방송인",
+   "food": 3,
+   "living": 2
+  },
+  {
+   "celebrity": "이서진",
+   "channel_name": "채널 십오야",
+   "field": "배우",
+   "channel_type": "official_broadcaster",
+   "food": 3,
+   "living": 2
+  },
+  {
+   "celebrity": "유재석",
+   "channel_name": "뜬뜬 DdeunDdeun",
+   "field": "방송인",
+   "channel_type": "official_broadcaster",
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": null,
+   "channel_name": "스튜디오 와플 - WAFFLE STUDIO",
+   "field": "제작사",
+   "channel_type": "official_broadcaster",
+   "beauty": 1,
+   "living": 1,
+   "food": 1
+  },
+  {
+   "celebrity": null,
+   "channel_name": "문명특급 - MMTG",
+   "field": "방송",
+   "channel_type": "official_broadcaster",
+   "beauty": 1,
+   "living": 1,
+   "food": 1
+  },
+  {
+   "celebrity": null,
+   "channel_name": "tvN D ENT",
+   "field": "방송",
+   "channel_type": "official_broadcaster",
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": null,
+   "channel_name": "SBS Entertainment",
+   "field": "방송",
+   "channel_type": "official_broadcaster",
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": null,
+   "channel_name": "MBCentertainment",
+   "field": "방송",
+   "channel_type": "official_broadcaster",
+   "food": 2,
+   "living": 2
+  },
+  {
+   "celebrity": null,
+   "channel_name": "KBS Entertain",
+   "field": "방송",
+   "channel_type": "official_broadcaster",
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": null,
+   "channel_name": "JTBC Voyage",
+   "field": "방송",
+   "channel_type": "official_broadcaster",
+   "food": 2,
+   "living": 1
+  },
+  {
+   "celebrity": null,
+   "channel_name": "피식대학Psick Univ",
+   "field": "방송인",
+   "channel_type": "official_broadcaster",
+   "food": 2
+  },
+  {
+   "celebrity": "한혜연",
+   "channel_name": "슈스스TV",
+   "field": "스타일리스트",
+   "beauty": 3,
+   "living": 1
+  },
+  {
+   "celebrity": "이민정",
+   "channel_name": "이민정 LEE MIN JUNG",
+   "field": "배우",
+   "beauty": 2,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "고현정",
+   "channel_name": "고현정 GO HYUN JUNG",
+   "field": "배우",
+   "beauty": 2,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "한가인",
+   "channel_name": "자유부인 한가인",
+   "field": "배우",
+   "beauty": 2,
+   "living": 2,
+   "food": 2
+  },
+  {
+   "celebrity": "손담비",
+   "channel_name": "손담비 SON DAM BI",
+   "field": "가수",
+   "beauty": 2,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "소유",
+   "channel_name": "소유 SOYOU",
+   "field": "가수",
+   "beauty": 3,
+   "living": 1,
+   "food": 1
+  },
+  {
+   "celebrity": "효연",
+   "channel_name": "효연 HYO",
+   "field": "가수",
+   "beauty": 2,
+   "living": 1,
+   "food": 1
+  },
+  {
+   "celebrity": "제시",
+   "channel_name": "제시 Jessi",
+   "field": "가수",
+   "beauty": 2,
+   "living": 1,
+   "food": 1
+  },
+  {
+   "celebrity": "백지영",
+   "channel_name": "백지영 Baek Z Young",
+   "field": "가수",
+   "beauty": 2,
+   "living": 2,
+   "food": 1
+  },
+  {
+   "celebrity": "홍진영",
+   "channel_name": "홍진영 HONG JIN YOUNG",
+   "field": "가수",
+   "beauty": 2,
+   "living": 1,
+   "food": 2
+  },
+  {
+   "celebrity": "송가인",
+   "channel_name": "송가인 TV",
+   "field": "가수",
+   "living": 1,
+   "food": 2
+  },
+  {
+   "celebrity": "영탁",
+   "channel_name": "영탁 YOUNGTAK",
+   "field": "가수",
+   "living": 1,
+   "food": 2
+  },
+  {
+   "celebrity": "김재중",
+   "channel_name": "김재중 KIM JAE JOONG",
+   "field": "가수",
+   "beauty": 1,
+   "living": 2,
+   "food": 2
+  },
+  {
+   "celebrity": "강남",
+   "channel_name": "강남 KANGNAM",
+   "field": "방송인",
+   "living": 1,
+   "food": 3
+  },
+  {
+   "celebrity": "김희철",
+   "channel_name": "김희철 KIM HEECHUL",
+   "field": "가수",
+   "living": 1,
+   "food": 2
+  },
+  {
+   "celebrity": "노홍철",
+   "channel_name": "노홍철",
+   "field": "방송인",
+   "living": 2,
+   "food": 2
+  },
+  {
+   "celebrity": "탁재훈",
+   "channel_name": "노빠꾸 탁재훈",
+   "field": "방송인",
+   "living": 1,
+   "food": 2
+  },
+  {
+   "celebrity": "홍석천",
+   "channel_name": "홍석천",
+   "field": "방송인",
+   "living": 1,
+   "food": 3
+  },
+  {
+   "celebrity": "이연복",
+   "channel_name": "이연복의 복주머니",
+   "field": "셰프",
+   "food": 3
+  },
+  {
+   "celebrity": "류수영",
+   "channel_name": "어남선생 류수영",
+   "field": "배우",
+   "living": 1,
+   "food": 3
+  },
+  {
+   "celebrity": "박세리",
+   "channel_name": "박세리",
+   "field": "스포츠인",
+   "living": 1,
+   "food": 2
+  },
+  {
+   "celebrity": "이은지",
+   "channel_name": "이은지의 돼지갈비",
+   "field": "방송인",
+   "living": 1,
+   "food": 2
+  },
+  {
+   "celebrity": "박미선",
+   "channel_name": "미선임파서블",
+   "field": "방송인",
+   "beauty": 1,
+   "living": 2,
+   "food": 2
+  },
+  {
+   "celebrity": "홍윤화",
+   "channel_name": "홍윤화 김민기 꽁냥꽁냥",
+   "field": "방송인",
+   "living": 2,
+   "food": 3
+  },
+  {
+   "celebrity": "사유리",
+   "channel_name": "사유리TV",
+   "field": "방송인",
+   "beauty": 1,
+   "living": 2,
+   "food": 2
+  }
+ ]
 }

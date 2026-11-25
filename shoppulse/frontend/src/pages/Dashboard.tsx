@@ -70,16 +70,12 @@ export default function Dashboard() {
           <div className="mt-2 h-2 w-full overflow-hidden rounded bg-stone-200 dark:bg-stone-700"><div className="h-full bg-stone-900 transition-all dark:bg-stone-100" style={{ width: `${job.total ? (job.done / job.total) * 100 : 0}%` }} /></div>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Stat label="등록된 연예인 채널" value={s.channels_total} sub={`검증 완료 ${s.channels_verified}개 · 연예인 ${s.celebrities_total}명`} />
         <Stat label="누적 분석 영상" value={s.videos_total} sub={`원본 ${s.videos_original} · 재편집 쇼츠 ${s.videos_derived} (상품 확인 ${s.videos_derived_confirmed}) · 오늘 새로 발견 ${s.videos_new_today}`} />
         <Stat label="오늘 소싱 후보" value={s.candidates_today} sub={`전체 후보 ${s.candidates_total}개`} />
         <Stat label="오늘 최종 추천" value={s.final_today} sub="목표 9개 (3채널×3)" tone="green" />
         <Stat label="검증 대기 후보" value={s.pending_verification} sub={`중대 검증 항목 미해결 · 제작 완료 ${s.produced_total}개`} tone="amber" />
-        <Stat label="급등 후 평탄화 (재편집 쇼츠)" value={s.graph_derived?.spike_plateau || 0} sub={`상품 확인 ${s.graph_derived_confirmed?.spike_plateau || 0} · 원본 영상 ${s.graph_original?.spike_plateau || 0}`} tone="violet" />
-        <Stat label="재상승 (재편집 쇼츠)" value={(s.graph_derived?.resurgence || 0) + (s.graph_derived?.late_surge || 0)} tone="green" sub={`상품 확인 ${(s.graph_derived_confirmed?.resurgence || 0) + (s.graph_derived_confirmed?.late_surge || 0)} · 뒤늦은 급상승 ${s.graph_derived?.late_surge || 0} · 원본 ${(s.graph_original?.resurgence || 0) + (s.graph_original?.late_surge || 0)}`} />
-        <Stat label="꾸준히 상승 (재편집 쇼츠)" value={s.graph_derived?.steady_rise || 0} tone="blue" sub={`상품 확인 ${s.graph_derived_confirmed?.steady_rise || 0} · 원본 영상 ${s.graph_original?.steady_rise || 0}`} />
-        <Stat label="그래프 판별 불가" value={s.insufficient} sub={`재편집 ${s.graph_derived?.insufficient || 0} · 원본 ${s.graph_original?.insufficient || 0} — 관측 부족`} />
         <Stat label="마지막 데이터 수집" value={<span className="text-base">{fmt.datetime(s.last_collection_at)}</span>} sub={`최근 조회수 관측: ${fmt.datetime(s.last_snapshot_at)}`} />
       </div>
 
@@ -92,7 +88,6 @@ export default function Dashboard() {
           {rep && (rep.summary.auto_discovery || rep.summary.ai_scoring) && (
             <p className="mb-2 text-[11px] muted">
               {rep.summary.auto_discovery && <>자동 발굴 {Object.entries(rep.summary.auto_discovery.created as Record<string, number>).map(([k, n]) => `${LABELS.category[k]} ${n}`).join(' · ')} (쇼핑 재편집 쇼츠 풀 {Object.values(rep.summary.auto_discovery.pool as Record<string, number>).reduce((a, b) => a + b, 0)}개 · 제외: 쇼핑 아님 {rep.summary.auto_discovery.skipped.not_shopping}, 분류 불가 {rep.summary.auto_discovery.skipped.no_category}, 기간 밖 {rep.summary.auto_discovery.skipped.out_of_window ?? 0}{rep.summary.auto_discovery.legacy_retired ? `, 구버전 원본 후보 정리 ${rep.summary.auto_discovery.legacy_retired}` : ''}) · </>}
-              {rep.summary.computed_outliers && <>계산 Outlier {rep.summary.computed_outliers.with_outlier}/{rep.summary.computed_outliers.candidates}{rep.summary.computed_outliers.api_channels ? ` (채널 ${rep.summary.computed_outliers.api_channels}개 API 조회, 할당량 ${rep.summary.computed_outliers.quota_used})` : ''} · </>}
               {rep.summary.originals_status && <>원본 연결: 연결됨 {rep.summary.originals_status.linked} · <Link className="underline" to="/candidates?original_status=needs_review">확인 필요 {rep.summary.originals_status.needs_review}</Link> · 미발견 {rep.summary.originals_status.unresolved}{rep.summary.originals?.image_searched ? ` (썸네일 이미지 검색 ${rep.summary.originals.image_searched}건)` : ''}{rep.summary.segments ? ` · 장면 자동 ${rep.summary.segments.found}건` : ''} · </>}
               {rep.summary.ai_products && (rep.summary.ai_products.skipped ? <>AI 상품 추정 건너뜀 · </> : <>AI 상품 추정 {rep.summary.ai_products.identified}건(자동 연결 {rep.summary.ai_products.linked}) · </>)}
               {rep.summary.ai_plans && (rep.summary.ai_plans.skipped ? <>기획안 건너뜀 · </> : <>AI 기획안 {rep.summary.ai_plans.generated}건 생성{rep.summary.ai_plans.existing_today ? ` (오늘 생성된 ${rep.summary.ai_plans.existing_today}건 유지)` : ''} · </>)}
@@ -143,50 +138,41 @@ export default function Dashboard() {
 
       <div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="section-title">오늘의 Top 6 <span className="muted text-sm font-normal">· 소싱 점수 순 · 아직 안 만든 후보 · 위 3칸은 시간대별 원픽</span></h2>
+          <h2 className="section-title">오늘의 Top 6 <span className="muted text-sm font-normal">· 시간대별 1·2순위 · 아직 안 만든 후보</span></h2>
           <div className="flex gap-1">{(['beauty', 'living', 'food'] as const).map((k) => <button key={k} className={cat === k ? 'btn-primary' : 'btn-ghost'} onClick={() => setCat(k)}>{LABELS.category[k]}</button>)}</div>
         </div>
         {cands.data && cands.data.items.length === 0 && <div className="card p-6 text-sm muted">{LABELS.category[cat]} 후보가 없습니다. 「오늘 소싱 실행」으로 자동 발굴하거나 영상 상세에서 등록하세요.</div>}
         {cands.data && cands.data.items.length > 0 && (() => {
-          // 시간대별 원픽: Top 6 안에서 추천 슬롯이 맞는 최고 점수 후보, 없으면 남은 후보 중 점수 최고(점수순 배정으로 표시)
+          // 시간대별 1·2순위: 추천 슬롯이 맞는 후보를 점수순으로 먼저, 모자라면 남은 후보 중 점수 최고를 채움(점수순 배정 표시)
           const items = cands.data.items
           const used = new Set<number>()
-          const picks = SLOTS.map((sl) => {
-            let pick = items.find((c) => !used.has(c.id) && c.recommended_slot === sl.key)
-            let how: 'slot' | 'fallback' | 'none' = 'slot'
-            if (!pick) { pick = items.find((c) => !used.has(c.id)); how = pick ? 'fallback' : 'none' }
-            if (pick) used.add(pick.id)
-            return { ...sl, pick, how }
+          const cols = SLOTS.map((sl) => {
+            const picks: { c: typeof items[number]; how: 'slot' | 'fallback' }[] = []
+            for (const c of items) { if (picks.length >= 2) break; if (!used.has(c.id) && c.recommended_slot === sl.key) { picks.push({ c, how: 'slot' }); used.add(c.id) } }
+            for (const c of items) { if (picks.length >= 2) break; if (!used.has(c.id)) { picks.push({ c, how: 'fallback' }); used.add(c.id) } }
+            return { ...sl, picks }
           })
           return (
-            <div className="mb-4 grid gap-3 md:grid-cols-3">
-              {picks.map((p) => (
-                <div key={p.key} className="card overflow-hidden">
-                  <div className={`flex items-baseline justify-between px-4 py-3 text-white ${p.tone}`}>
-                    <div><div className="text-3xl font-black tracking-tight">{p.time}</div><div className="text-sm font-semibold opacity-90">{p.label} 원픽</div></div>
-                    <div className="text-right text-[11px] opacity-90">{LABELS.category[cat]}<br />{s.season?.weather?.status === 'ok' ? `${s.season.weather.label} ${s.season.weather.temperature}°C` : ''}</div>
+            <div className="grid gap-4 md:grid-cols-3">
+              {cols.map((col) => (
+                <div key={col.key} className="space-y-3">
+                  <div className={`rounded-2xl px-4 py-3 text-white ${col.tone}`}>
+                    <div className="text-4xl font-black tracking-tight">{col.time}</div>
+                    <div className="text-sm font-semibold opacity-90">{col.label} · {LABELS.category[cat]} 1·2순위</div>
                   </div>
-                  {p.pick ? (
-                    <Link to={`/candidates/${p.pick.id}`} className="block p-3 hover:bg-stone-50 dark:hover:bg-stone-800/60">
-                      <div className="flex gap-3">
-                        {p.pick.video?.thumbnail_url && <img src={p.pick.video.thumbnail_url} alt="" className="h-16 w-28 shrink-0 rounded-lg object-cover" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} />}
-                        <div className="min-w-0">
-                          <div className="line-clamp-2 text-sm font-semibold leading-snug">{p.pick.video?.title}</div>
-                          <div className="mt-1 text-[11px] muted">{p.pick.celebrity_name || '연예인 미지정'} · {p.pick.score !== null ? `${p.pick.score}점` : '점수 없음'}{p.pick.grade_label ? ` · ${p.pick.grade_label}` : ''} · 조회 {fmt.compact(p.pick.video?.view_count)}</div>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-[11px] muted">{p.how === 'slot' ? (p.pick.slot_reason || '추천 시간대 일치') : `이 시간대로 추천된 후보가 없어 남은 후보 중 점수 최고를 배정했습니다 (추천 시간대: ${p.pick.recommended_slot ? LABELS.slot[p.pick.recommended_slot] : '미지정'})`}</div>
-                    </Link>
-                  ) : <div className="p-3 text-sm muted">이 시간대에 배정할 후보가 없습니다.</div>}
+                  {col.picks.length === 0 && <div className="card p-4 text-sm muted">이 시간대에 배정할 후보가 없습니다.</div>}
+                  {col.picks.map((p, i) => (
+                    <div key={p.c.id}>
+                      <CandidateCard c={p.c} rankLabel={`${col.label} ${i + 1}순위`} showReason showGraph={false} />
+                      <p className="mt-1 px-1 text-[11px] muted">{p.how === 'slot' ? (p.c.slot_reason || '추천 시간대 일치') : `이 시간대 추천 후보가 모자라 점수순으로 배정 (원래 추천: ${p.c.recommended_slot ? LABELS.slot[p.c.recommended_slot] : '미지정'})`}</p>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
           )
         })()}
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {(cands.data?.items || []).map((c, i) => <CandidateCard key={c.id} c={c} rank={i + 1} showReason />)}
-        </div>
-        <p className="mt-2 text-[11px] muted">점수 없는 후보는 뒤로 밀립니다. 선정 이유는 AI 채점 요약(있으면) 또는 자동 발굴 신호입니다. 카드의 체크박스로 「제작함」을 표시하면 목록에서 빠지고 아래 「제작한 영상」에 쌓입니다.</p>
+        <p className="mt-2 text-[11px] muted">1순위가 이상하면 2순위로 바꿔 쓰세요. 선정 이유는 AI 채점 요약(있으면) 또는 자동 발굴 신호입니다. 카드의 체크박스로 「제작함」을 표시하면 목록에서 빠지고 아래 「제작한 영상」에 쌓입니다.</p>
       </div>
       <div>
         <div className="mb-3 flex items-center justify-between"><h2 className="section-title">제작한 영상 <span className="muted text-sm font-normal">· 최근 6개</span></h2><Link to="/candidates?produced=yes" className="text-sm underline">전체 보기</Link></div>
