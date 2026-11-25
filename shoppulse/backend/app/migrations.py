@@ -28,6 +28,7 @@ COLUMNS = [
     ("sourcing_candidates", "produced_at", "DATETIME"),
     ("sourcing_candidates", "produced_url", "VARCHAR(300)"),
     ("sourcing_candidates", "slot_reason", "TEXT"),
+    ("shorts_renders", "style_id", "INTEGER"),
 ]
 INDEXES = [
     ("ix_videos_original_video_id", "videos", "original_video_id"),

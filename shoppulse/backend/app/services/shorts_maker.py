@@ -161,8 +161,9 @@ def split_title(text: str, max_len: int = 13) -> list[str]:
     return [ln[:max_len + 4] for ln in lines[:2]] or [text[:max_len]]
 
 
-def normalize_edl(edl: dict, duration: float) -> dict:
-    """AI·사람이 준 편집안을 안전한 범위로 정리: 범위 클램프, 후킹 1.5~3.5초, 본편 시간순·겹침 제거, 총 18~32초."""
+def normalize_edl(edl: dict, duration: float, total_target: float | None = None) -> dict:
+    """AI·사람이 준 편집안을 안전한 범위로 정리: 범위 클램프, 후킹 1.5~3.5초, 본편 시간순·겹침 제거, 총 길이(기본 18~32초, 스타일 목표 ±5초)."""
+    tmin, tmax = (TOTAL_MIN, TOTAL_MAX) if not total_target else (max(15.0, total_target - 6), min(45.0, total_target + 5))
     def clampseg(sg):
         a, b = float(sg.get("start", 0)), float(sg.get("end", 0))
         a = max(0.0, min(a, max(0.0, duration - 0.5))); b = max(a + 0.3, min(b, duration))
@@ -187,8 +188,8 @@ def normalize_edl(edl: dict, duration: float) -> dict:
     hook_len = (hook["end"] - hook["start"]) if hook else 0.0
     # 총 길이 맞추기: 넘치면 뒤에서부터 줄이고, 모자라면 마지막 구간을 늘린다
     total = hook_len + sum(x["end"] - x["start"] for x in merged)
-    while total > TOTAL_MAX and merged:
-        over = total - TOTAL_MAX
+    while total > tmax and merged:
+        over = total - tmax
         last = merged[-1]
         ln = last["end"] - last["start"]
         if ln - over >= 2.0:
@@ -196,12 +197,13 @@ def normalize_edl(edl: dict, duration: float) -> dict:
         else:
             merged.pop()
         total = hook_len + sum(x["end"] - x["start"] for x in merged)
-    if total < TOTAL_MIN and merged:
-        need = TOTAL_MIN - total
+    if total < tmin and merged:
+        need = tmin - total
         merged[-1]["end"] = round(min(duration, merged[-1]["end"] + need), 2)
     out = {"hook": hook, "segments": merged,
            "title_lines": [str(x).strip()[:20] for x in (edl.get("title_lines") or []) if str(x).strip()][:2],
-           "credit": (edl.get("credit") or "").strip()[:60], "reason": edl.get("reason"), "quote_seen": edl.get("quote_seen"),
+           "credit": (edl.get("credit") or "").strip()[:60], "end_caption": (edl.get("end_caption") or "").strip()[:24],
+           "reason": edl.get("reason"), "quote_seen": edl.get("quote_seen"),
            "cautions": edl.get("cautions") or []}
     out["total_seconds"] = round((out["hook"]["end"] - out["hook"]["start"] if out["hook"] else 0) + sum(x["end"] - x["start"] for x in merged), 2)
     return out
@@ -219,13 +221,14 @@ def rule_edl(start: float, end: float | None, duration: float, title: str) -> di
 
 EDL_SCHEMA = {
     "type": "object", "additionalProperties": False,
-    "required": ["hook", "segments", "title_lines", "quote_seen", "reason", "cautions"],
+    "required": ["hook", "segments", "title_lines", "end_caption", "quote_seen", "reason", "cautions"],
     "properties": {
         "hook": {"type": "object", "additionalProperties": False, "required": ["start", "end", "caption"],
                  "properties": {"start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"}}},
         "segments": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["start", "end", "caption"],
                                                "properties": {"start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"}}}},
         "title_lines": {"type": "array", "items": {"type": "string"}},
+        "end_caption": {"type": "string"},
         "quote_seen": {"type": "string"}, "reason": {"type": "string"},
         "cautions": {"type": "array", "items": {"type": "string"}},
     },
@@ -262,7 +265,8 @@ def ai_locate(ff: str, src: str, info: dict, ctx: dict, workdir: Path) -> dict:
     return create_json(system=system, max_tokens=700, output_schema=LOCATE_SCHEMA, messages=[{"role": "user", "content": content}], timeout=240.0)
 
 
-def ai_edit(ff: str, src: str, info: dict, ctx: dict, rng: tuple[float, float], workdir: Path, transcript: list[dict] | None) -> dict:
+def ai_edit(ff: str, src: str, info: dict, ctx: dict, rng: tuple[float, float], workdir: Path, transcript: list[dict] | None,
+            guide: dict | None = None) -> dict:
     """찾은 구간을 촘촘히(약 2초 간격) 보고 후킹 컷·본편 컷·자막 문구를 정한다."""
     from .claude_client import create_json
     a, b = max(0.0, rng[0] - 8), min(info["duration"], rng[1] + 8)
@@ -272,6 +276,8 @@ def ai_edit(ff: str, src: str, info: dict, ctx: dict, rng: tuple[float, float], 
     sheets = contact_sheets(ff, src, a, b, step, 2, 2, 780, workdir, "fine")[:20]
     content = _sheet_content(sheets)
     payload = {"task": "이 구간에서 20~30초 쇼츠 편집안을 만든다.", "range": [round(a, 1), round(b, 1)], **ctx}
+    if guide:
+        payload["style_guide"] = guide
     if transcript:
         payload["transcript_excerpt"] = [{"t": s["start"], "text": s["text"]} for s in transcript if a - 5 <= s["start"] <= b + 5][:120]
     content.append({"type": "text", "text": json.dumps(payload, ensure_ascii=False)})
@@ -282,7 +288,10 @@ def ai_edit(ff: str, src: str, info: dict, ctx: dict, rng: tuple[float, float], 
         "3) caption 은 각 구간 하단 자막 한 줄(18자 이내). 화면 자막·자막 발췌에 실제로 나온 말이나 사실 설명만 쓴다. 연예인 발언을 지어내지 않는다. "
         "'추천'은 실제로 추천한 경우에만. hook.caption 은 12자 이내의 궁금증 문구. "
         "4) title_lines 는 상단 제목 2줄(각 12자 이내, 과장·허위 금지). 5) quote_seen 에는 화면 자막 등에서 실제로 읽은 핵심 문장을 그대로(없으면 빈 문자열). "
-        "6) 확인이 필요한 점(상품 불명확, 광고·협찬 표시가 보임 등)은 cautions 에 적는다. 시각은 반드시 제공된 칸의 시각 범위 안에서 고른다.")
+        "6) 확인이 필요한 점(상품 불명확, 광고·협찬 표시가 보임 등)은 cautions 에 적는다. 시각은 반드시 제공된 칸의 시각 범위 안에서 고른다.\n"
+        "7) style_guide 가 있으면 그 편집 스타일을 따른다: 후킹 길이·방식, 구간 수와 한 컷 최대 길이, 총 길이 목표, 제목·자막의 말투와 글자 수. "
+        "스타일은 '방식'만 참고하고 다른 채널의 문구를 그대로 쓰지 않는다. own_twist(우리만의 차별점)를 반영해 한 가지 이상 다르게 구성한다. "
+        "end_question 이 true 면 end_caption 에 시청자에게 던지는 짧은 질문(14자 이내)을 쓰고, 아니면 빈 문자열. 위 1~6의 사실 규칙이 항상 우선한다.")
     return create_json(system=system, max_tokens=1500, output_schema=EDL_SCHEMA, messages=[{"role": "user", "content": content}], timeout=300.0)
 
 
@@ -306,11 +315,27 @@ def default_font() -> str:
         return "sans-serif"
 
 
-def build_ass(edl: dict, font: str, fg_top: int, fg_bottom: int) -> str:
-    """출력 타임라인 기준 자막. 제목(상단, 전 구간) · 후킹 문구(후킹 구간) · 구간 자막(하단) · 출처(최하단, 전 구간)."""
+def build_ass(edl: dict, font: str, fg_top: int, fg_bottom: int, style: dict | None = None) -> str:
+    """출력 타임라인 기준 자막. 제목(상단, 전 구간) · 후킹 문구 · 구간 자막 · 끝 질문 · 출처(최하단, 전 구간). 색·크기·위치는 스타일을 따른다."""
+    from .style_profile import DEFAULT_STYLE, SIZES, ass_color
+    st = style or DEFAULT_STYLE
+    ti, ca, ho = st["title"], st["caption"], st["hook"]
     total = edl["total_seconds"]
-    title_margin = max(90, fg_top - 330)
-    cap_margin = max(260, H - fg_bottom - 250)
+    full = fg_top <= 0 and fg_bottom >= H  # 화면을 꽉 채운 배치
+    tsize, csize = SIZES["title"][ti["size"]], SIZES["caption"][ca["size"]]
+    title_margin = 170 if full else max(90, fg_top - int(tsize * 2.6) - 60)
+    if ca["position"] == "bottom" or full:
+        cap_align, cap_margin = 2, 300
+    elif ca["position"] == "over_video":
+        cap_align, cap_margin = 2, max(120, H - fg_bottom + 30)
+    else:  # below_video: 영상 바로 아래에서 시작(위쪽 기준 정렬)
+        cap_align, cap_margin = 8, min(H - 260, fg_bottom + 40)
+
+    def border(box: bool, outline: str, box_color: str, width: int) -> tuple[int, str, int]:
+        return (3, ass_color(box_color), 12) if box else (1, ass_color(outline), width)
+
+    tb, tcol, tw = border(ti["box"], ti["outline_color"], ti["box_color"], 7)
+    cb, ccol, cw = border(ca["box"], ca["outline_color"], ca["box_color"], 6)
     head = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {W}
@@ -320,65 +345,89 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Title,{font},92,&H0000F0FF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,7,2,8,50,50,{title_margin},1
-Style: Hook,{font},100,&H00FFFFFF,&H000000FF,&H001A1AE6,&H80000000,1,0,0,0,100,100,0,0,1,8,2,2,50,50,{cap_margin},1
-Style: Cap,{font},68,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,6,2,2,60,60,{cap_margin},1
+Style: Title,{font},{tsize},{ass_color(ti["color"])},&H000000FF,{tcol},&H80000000,1,0,0,0,100,100,0,0,{tb},{tw},{0 if ti["box"] else 2},8,50,50,{title_margin},1
+Style: Hook,{font},{csize + 32},{ass_color(ho["caption_color"])},&H000000FF,&H001A1AE6,&H80000000,1,0,0,0,100,100,0,0,1,8,2,{cap_align},50,50,{cap_margin},1
+Style: Cap,{font},{csize},{ass_color(ca["color"])},&H000000FF,{ccol},&H80000000,1,0,0,0,100,100,0,0,{cb},{cw},{0 if ca["box"] else 2},{cap_align},60,60,{cap_margin},1
 Style: Credit,{font},34,&H00DDDDDD,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,0,2,40,40,70,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     ev = []
-    if edl.get("title_lines"):
-        title = "\\N".join(_ass_text(x) for x in edl["title_lines"])
-        ev.append(f"Dialogue: 1,{_ass_time(0)},{_ass_time(total)},Title,,0,0,0,,{title}")
+    if ti["enabled"] and edl.get("title_lines"):
+        lines = [_ass_text(x) for x in edl["title_lines"]]
+        if len(lines) > 1 and ti.get("second_line_color"):
+            lines[1] = "{\\c" + ass_color(ti["second_line_color"])[:2] + ass_color(ti["second_line_color"])[4:] + "&}" + lines[1]
+        ev.append(f"Dialogue: 1,{_ass_time(0)},{_ass_time(total)},Title,,0,0,0,," + "\\N".join(lines))
     t = 0.0
     if edl.get("hook"):
         hl = edl["hook"]["end"] - edl["hook"]["start"]
         if edl["hook"].get("caption"):
             ev.append(f"Dialogue: 2,{_ass_time(0)},{_ass_time(hl)},Hook,,0,0,0,,{_ass_text(edl['hook']['caption'])}")
         t = hl
+    end_cap = edl.get("end_caption") or ""
+    end_from = total - 1.8 if end_cap else total
     for sg in edl["segments"]:
         ln = sg["end"] - sg["start"]
-        if sg.get("caption"):
-            ev.append(f"Dialogue: 2,{_ass_time(t + 0.05)},{_ass_time(t + ln - 0.05)},Cap,,0,0,0,,{_ass_text(sg['caption'])}")
+        if ca["enabled"] and sg.get("caption"):
+            a, b = t + 0.05, min(t + ln - 0.05, end_from)
+            if b - a > 0.4:
+                ev.append(f"Dialogue: 2,{_ass_time(a)},{_ass_time(b)},Cap,,0,0,0,,{_ass_text(sg['caption'])}")
         t += ln
+    if end_cap:
+        ev.append(f"Dialogue: 3,{_ass_time(end_from)},{_ass_time(total)},Hook,,0,0,0,,{_ass_text(end_cap)}")
     if edl.get("credit"):
         ev.append(f"Dialogue: 0,{_ass_time(0)},{_ass_time(total)},Credit,,0,0,0,,{_ass_text(edl['credit'])}")
     return head + "\n".join(ev) + "\n"
 
 
-def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path, workdir: Path, font: str | None = None) -> dict:
+def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path, workdir: Path, font: str | None = None,
+           style: dict | None = None) -> dict:
+    from .style_profile import DEFAULT_STYLE
+    st = style or DEFAULT_STYLE
+    lay = st["layout"]
     clips = ([edl["hook"]] if edl.get("hook") else []) + edl["segments"]
     vertical = info["height"] >= info["width"]
-    fg_h = H if vertical else int(round(W * info["height"] / info["width"] / 2) * 2)
-    fg_top = 0 if vertical else (H - fg_h) // 2 - 60
+    fill = vertical or lay["mode"] == "crop_fill"
+    zoom = 1.0 if fill else lay["fg_zoom"]
+    fg_h = H if fill else min(H - 520, int(round(W * info["height"] / info["width"] * zoom / 2) * 2))
+    fg_top = 0 if fill else ((H - fg_h) // 2 - 60 if lay["fg_position"] == "center" else max(300, (H - fg_h) // 2 - 220))
     args = [ff, "-hide_banner", "-y"]
     for c in clips:
         args += ["-ss", f"{c['start']:.2f}", "-t", f"{c['end'] - c['start']:.2f}", "-i", src]
     n = len(clips)
     parts = []
+    sw, sh = info["width"] // 2 * 2, info["height"] // 2 * 2
     for i in range(n):
-        parts.append(f"[{i}:v]fps={FPS},setpts=PTS-STARTPTS,setsar=1[v{i}]")
+        punch = ""
+        if i == 0 and edl.get("hook") and st["hook"]["zoom_punch"]:
+            # 후킹 컷만 살짝 확대(1.12배)해 시선을 끈다
+            punch = f",scale={int(sw * 1.12) // 2 * 2}:{int(sh * 1.12) // 2 * 2},crop={sw}:{sh}"
+        # setsar 는 맨 끝에: 확대한 컷도 다른 컷과 화소 비율이 같아야 이어 붙일 수 있다
+        parts.append(f"[{i}:v]fps={FPS},setpts=PTS-STARTPTS,scale={sw}:{sh}{punch},setsar=1[v{i}]")
         if info["has_audio"]:
             parts.append(f"[{i}:a]aresample=48000,asetpts=PTS-STARTPTS[a{i}]")
     if info["has_audio"]:
         parts.append("".join(f"[v{i}][a{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=1[cv][ca]")
     else:
         parts.append("".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[cv]")
-    if vertical:
-        parts.append(f"[cv]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}[base]")
+    if fill:
+        parts.append(f"[cv]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[base]")
     else:
         parts.append("[cv]split[bg0][fg0]")
-        parts.append(f"[bg0]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=24:2,eq=brightness=-0.28:saturation=0.8[bg]")
-        parts.append(f"[fg0]scale={W}:{fg_h}[fg]")
+        if lay["mode"] == "color_bg":
+            parts.append(f"[bg0]scale={W}:{H},setsar=1,drawbox=x=0:y=0:w=iw:h=ih:color=0x{lay['bg_color'][1:]}:t=fill[bg]")
+        else:
+            parts.append(f"[bg0]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=24:2,eq=brightness=-0.28:saturation=0.8,setsar=1[bg]")
+        crop = f"crop=trunc(iw/{zoom}/2)*2:ih," if zoom > 1.001 else ""
+        parts.append(f"[fg0]{crop}scale={W}:{fg_h},setsar=1[fg]")
         parts.append(f"[bg][fg]overlay=0:{fg_top}[base]")
     notes = []
     if caps.get("ass"):
-        (workdir / "subs.ass").write_text(build_ass(edl, font or default_font(), fg_top, fg_top + fg_h), encoding="utf-8")
-        parts.append("[base]ass=subs.ass[vout]")
+        (workdir / "subs.ass").write_text(build_ass(edl, font or default_font(), fg_top, fg_top + fg_h, st), encoding="utf-8")
+        parts.append("[base]ass=subs.ass,setsar=1[vout]")  # 화소 비율 1:1 고정(아니면 플레이어에서 눌려 보인다)
     else:
-        parts.append("[base]null[vout]")
+        parts.append("[base]setsar=1[vout]")
         notes.append("이 ffmpeg 에는 자막 굽기(libass)가 없어 제목·자막 없이 렌더링했습니다. winget install Gyan.FFmpeg 로 전체 버전을 설치하면 자막이 들어갑니다.")
     # 필터 그래프는 인자로 직접 넘긴다(-filter_complex_script 는 최신 ffmpeg 에서 제거됨). 경로는 작업 폴더 기준 상대경로라 이스케이프 불필요
     args += ["-filter_complex", ";".join(parts), "-map", "[vout]"]
@@ -414,7 +463,8 @@ def _context(c: SourcingCandidate) -> dict:
             "note": "참고 쇼츠는 타인이 만든 재편집물이다. 그 자막을 베끼지 말고 원본 화면에 근거해 새로 구성한다."}
 
 
-def decide_edl(db, c: SourcingCandidate, proj: ShortsProject, r: ShortsRender, ff: str, info: dict, workdir: Path) -> tuple[dict, str, list[str]]:
+def decide_edl(db, c: SourcingCandidate, proj: ShortsProject, r: ShortsRender, ff: str, info: dict, workdir: Path,
+               style: dict | None = None) -> tuple[dict, str, list[str]]:
     notes: list[str] = []
     orig = c.video.original
     transcript = (orig.transcript or {}).get("segments") if (orig and isinstance(orig.transcript, dict)) else None
@@ -446,7 +496,8 @@ def decide_edl(db, c: SourcingCandidate, proj: ShortsProject, r: ShortsRender, f
             rng, basis = (float(loc["start"]), float(loc["end"])), "ai_locate"
             notes.append(f"AI 장면 탐색({loc.get('confidence')}): {loc.get('reason', '')}")
     _set(db, r, "AI 가 후킹 장면·컷 구성 중", 40)
-    raw = ai_edit(ff, proj.source_path, info, ctx, rng, workdir, transcript)
+    from .style_profile import style_guide
+    raw = ai_edit(ff, proj.source_path, info, ctx, rng, workdir, transcript, guide=style_guide(style) if style else None)
     raw.pop("_model", None); raw.pop("_transport", None)
     return raw, basis + "+ai_vision", notes
 
@@ -472,10 +523,22 @@ def run_render(render_id: int, reuse_edl: bool = False) -> None:
             info = probe(ff, proj.source_path)
             proj.source_info = info
             notes: list[str] = []
+            from ..models import ReferenceStyle
+            from .style_profile import normalize_style
+            ref = db.get(ReferenceStyle, r.style_id) if r.style_id else None
+            style = normalize_style(ref.profile) if (ref and ref.profile) else None
+            target = style["pacing"]["total_seconds"] if style else None
+            if ref and not style:
+                notes.append(f"스타일 「{ref.name}」이 아직 학습되지 않아 기본 스타일로 만들었습니다.")
             if reuse_edl and r.edl:
                 edl, by = r.edl, "edited"
             else:
-                edl, by, notes = decide_edl(db, c, proj, r, ff, info, workdir)
+                edl, by, notes2 = decide_edl(db, c, proj, r, ff, info, workdir, style)
+                notes += notes2
+                if style and edl.get("hook"):
+                    edl["hook"]["end"] = edl["hook"]["start"] + style["hook"]["seconds"]
+            if ref and style:
+                by += f"+style:{ref.name}"
             orig = c.video.original
             ch = (orig.channel.channel_name if orig and orig.channel else (orig.yt_channel_title if orig else None))
             edl.setdefault("credit", "")
@@ -483,7 +546,7 @@ def run_render(render_id: int, reuse_edl: bool = False) -> None:
                 edl["credit"] = f"출처: {ch or '원본 채널'} 유튜브" if orig or ch else "출처: 원본 유튜브 영상"
             if not edl.get("title_lines"):
                 edl["title_lines"] = split_title(clean_title(c.video.title))
-            edl = normalize_edl(edl, info["duration"])
+            edl = normalize_edl(edl, info["duration"], target)
             if not reuse_edl and info["has_audio"]:
                 _set(db, r, "말 사이 무음에 컷 맞추는 중", 60)
                 lo = min(x["start"] for x in ([edl["hook"]] if edl["hook"] else []) + edl["segments"]) - 2
@@ -491,11 +554,11 @@ def run_render(render_id: int, reuse_edl: bool = False) -> None:
                 sil = detect_silences(ff, proj.source_path, max(0, lo), min(info["duration"], hi))
                 for sg in edl["segments"]:
                     sg["start"], sg["end"] = snap(sg["start"], sil), snap(sg["end"], sil)
-                edl = normalize_edl(edl, info["duration"])
+                edl = normalize_edl(edl, info["duration"], target)
             r.edl, r.decided_by = edl, by
             _set(db, r, "세로 쇼츠 렌더링 중", 70)
             out = get_settings().media_dir / "renders" / f"shorts_c{c.id}_r{r.id}.mp4"
-            oi = render(ff, caps, proj.source_path, info, edl, out, workdir)
+            oi = render(ff, caps, proj.source_path, info, edl, out, workdir, style=style)
             notes += oi.pop("notes", [])
             notes += [f"확인 필요: {x}" for x in (edl.get("cautions") or [])]
             r.output_path, r.output_info, r.notes = str(out), oi, notes
@@ -511,11 +574,11 @@ def run_render(render_id: int, reuse_edl: bool = False) -> None:
             shutil.rmtree(workdir, ignore_errors=True)
 
 
-def start_render(db, candidate_id: int, edl: dict | None = None) -> ShortsRender:
+def start_render(db, candidate_id: int, edl: dict | None = None, style_id: int | None = None) -> ShortsRender:
     running = db.query(ShortsRender).filter(ShortsRender.candidate_id == candidate_id, ShortsRender.status.in_(["queued", "running"])).first()
     if running:
         return running
-    r = ShortsRender(candidate_id=candidate_id, status="queued", step="대기", progress=0, edl=edl)
+    r = ShortsRender(candidate_id=candidate_id, status="queued", step="대기", progress=0, edl=edl, style_id=style_id)
     db.add(r)
     db.commit()
     threading.Thread(target=run_render, args=(r.id, edl is not None), daemon=True, name=f"shorts-{r.id}").start()

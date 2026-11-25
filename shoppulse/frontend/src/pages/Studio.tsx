@@ -19,7 +19,7 @@ export default function Studio() {
   const [hint, setHint] = useState('')
   const [upPct, setUpPct] = useState<number | null>(null)
   const [capture, setCapture] = useState(false)
-  const [edit, setEdit] = useState<{ hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string } | null>(null)
+  const [edit, setEdit] = useState<{ hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; end_caption: string } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const s = q.data
   const latest: StudioRender | undefined = s?.renders[0]
@@ -32,7 +32,7 @@ export default function Studio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, cid])
   useEffect(() => {
-    if (latest?.status === 'done' && latest.edl) setEdit({ hook: latest.edl.hook, segments: latest.edl.segments, title_lines: latest.edl.title_lines, credit: latest.edl.credit })
+    if (latest?.status === 'done' && latest.edl) setEdit({ hook: latest.edl.hook, segments: latest.edl.segments, title_lines: latest.edl.title_lines, credit: latest.edl.credit, end_caption: latest.edl.end_caption || '' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latest?.id, latest?.status])
 
@@ -47,6 +47,8 @@ export default function Studio() {
   if (!s) return <Spinner />
   const c = s.candidate
   const ready = !!s.source?.exists
+  const canMake = ready && !busy && s.ffmpeg.available
+  const usedStyle = latest?.style_id ? s.styles.find((x) => x.id === latest.style_id)?.name : null
   const step = (n: number, done: boolean) => <span className={`mr-2 inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold ${done ? 'bg-emerald-600 text-white' : 'bg-stone-200 text-stone-700 dark:bg-stone-700 dark:text-stone-200'}`}>{done ? '✓' : n}</span>
 
   return (
@@ -95,8 +97,19 @@ export default function Studio() {
         <h2 className="section-title mb-2">{step(3, latest?.status === 'done')}쇼츠 만들기</h2>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm"><div className="mb-1 text-xs muted">상품이 나오는 대략 위치 (선택, 분:초)</div><input className="input w-32" placeholder="예: 12:30" value={hint} onChange={(e) => setHint(e.target.value)} /></label>
-          <button className="btn-primary px-6 py-3 text-base" disabled={!ready || !!busy || !s.ffmpeg.available} onClick={() => act(() => api.studioMake(cid, hint || undefined))}>{busy ? '만드는 중…' : '▶ 쇼츠 만들기'}</button>
+          <button className="btn-primary px-6 py-3 text-base" disabled={!canMake} onClick={() => act(() => api.studioMake(cid, hint || undefined))}>{busy ? '만드는 중…' : '▶ 쇼츠 만들기 (기본 스타일)'}</button>
           <p className="max-w-md text-xs muted">{s.ai ? (hint ? '위치를 알려주셔서 그 주변만 AI 가 봅니다(비용 절약).' : s.segment ? `저장된 장면(${s.segment.range_label}) 주변을 AI 가 봅니다.` : '위치를 비우면 AI 가 영상 전체를 훑어 장면을 찾습니다(조금 더 걸리고 비용이 더 듭니다).') : 'AI 키가 없어 위치가 필요합니다. 그 지점에서 25초를 자막 없이 자릅니다.'} 초반 2~3초 후킹 컷 → 본편 순으로 20~30초 세로 영상을 만듭니다.</p>
+        </div>
+        <div className="mt-3 border-t border-stone-100 pt-3 dark:border-stone-800">
+          <div className="mb-2 text-xs font-semibold">레퍼런스 채널처럼 편집하기</div>
+          <div className="flex flex-wrap gap-2">
+            {s.styles.filter((x) => x.status === 'ready').map((x) => (
+              <button key={x.id} className="btn-ghost border border-stone-300 px-4 py-2 dark:border-stone-600" disabled={!canMake} title={x.summary || ''} onClick={() => act(() => api.studioMake(cid, hint || undefined, x.id), `「${x.name}」 스타일로 만드는 중`)}>🎨 「{x.name}」처럼 편집해줘</button>
+            ))}
+            {s.styles.filter((x) => x.status === 'learning').map((x) => <span key={x.id} className="rounded-xl bg-stone-100 px-3 py-2 text-xs muted dark:bg-stone-800">「{x.name}」 학습 중…</span>)}
+            <Link to="/styles" className="btn-ghost text-xs">+ 레퍼런스 채널 추가·관리</Link>
+          </div>
+          <p className="mt-1 text-[11px] muted">{s.styles.length === 0 ? '레퍼런스 채널을 3~4개 등록해 두면, 그 채널의 편집 방식(화면 배치·자막 모양·후킹 방식·컷 속도)으로 만드는 버튼이 여기에 생깁니다.' : '편집 방식만 따라 하고 문구·장면은 베끼지 않습니다. 스타일마다 우리만의 차별점(킥)이 함께 적용됩니다.'}</p>
         </div>
         {busy && latest && <div className="mt-3"><div className="flex justify-between text-sm"><span>{latest.step}</span><span className="tabular-nums">{latest.progress}%</span></div><div className="mt-1 h-2 w-full overflow-hidden rounded bg-stone-200 dark:bg-stone-700"><div className="h-full bg-emerald-600 transition-all" style={{ width: `${latest.progress}%` }} /></div></div>}
         {latest?.status === 'failed' && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">만들지 못했습니다: {latest.error}</div>}
@@ -110,7 +123,7 @@ export default function Studio() {
               <a className="btn-primary flex-1 justify-center" href={`${latest.file_url}?download=true`}>⬇ mp4 내려받기</a>
               <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={!!c.produced_at} onChange={(e) => api.setProduced(cid, { produced: e.target.checked }).then(() => q.reload())} /> 올렸음(제작함)</label>
             </div>
-            <div className="mt-1 text-[11px] muted">{latest.output_info?.duration}초 · {latest.output_info?.width}×{latest.output_info?.height} · {((latest.output_info?.size || 0) / 1024 / 1024).toFixed(1)}MB · 편집 근거: {latest.decided_by}</div>
+            <div className="mt-1 text-[11px] muted">{latest.output_info?.duration}초 · {latest.output_info?.width}×{latest.output_info?.height} · {((latest.output_info?.size || 0) / 1024 / 1024).toFixed(1)}MB · 스타일: {usedStyle ? `「${usedStyle}」` : '기본'} · 편집 근거: {latest.decided_by}</div>
           </div>
           <div className="space-y-4">
             {(latest.notes.length > 0 || latest.edl.reason) && <div className="card p-4 text-sm"><h3 className="mb-1 font-semibold">확인할 점</h3>{latest.edl.reason && <p className="text-xs muted">구성 이유: {latest.edl.reason}</p>}{latest.edl.quote_seen && <p className="mt-1 text-xs">화면에서 읽은 말: “{latest.edl.quote_seen}”</p>}<ul className="mt-1 list-disc pl-5 text-xs text-amber-700 dark:text-amber-300">{latest.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
@@ -123,6 +136,7 @@ export default function Studio() {
                   {edit.segments.map((sg, i) => <ClipRow key={i} label={`본편 ${i + 1}`} clip={sg} onChange={(n) => setEdit({ ...edit, segments: edit.segments.map((x, j) => (j === i ? n : x)) })} onRemove={edit.segments.length > 1 ? () => setEdit({ ...edit, segments: edit.segments.filter((_, j) => j !== i) }) : undefined} original={s.original?.url} />)}
                 </tbody></table>
                 <div className="mt-2 flex items-center gap-2"><button className="btn-ghost px-2 py-1 text-xs" onClick={() => { const last = edit.segments[edit.segments.length - 1]; setEdit({ ...edit, segments: [...edit.segments, { start: last.end + 1, end: last.end + 6, caption: '' }] }) }}>+ 구간 추가</button><input className="input flex-1 text-xs" placeholder="출처 표기" value={edit.credit} onChange={(e) => setEdit({ ...edit, credit: e.target.value })} /></div>
+                <input className="input mt-2 text-xs" placeholder="끝 질문 자막 (선택, 마지막 1.8초에 표시 · 예: 여러분이라면 살까요?)" maxLength={24} value={edit.end_caption} onChange={(e) => setEdit({ ...edit, end_caption: e.target.value })} />
                 <p className="mt-1 text-[11px] muted">시간은 원본 영상 기준 분:초(소수 가능, 예 12:31.5). 총 길이는 18~32초로 자동 조정됩니다.</p>
               </div>
             )}

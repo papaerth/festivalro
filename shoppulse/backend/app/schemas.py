@@ -243,6 +243,13 @@ class EdlIn(BaseModel):
     segments: list[EdlClip]
     title_lines: list[str] = []
     credit: str = ""
+    end_caption: str = ""
+    style_id: int | None = None
+
+
+class StylePatch(BaseModel):
+    name: str | None = None
+    profile: dict | None = None
 
 
 class VerificationIn(BaseModel):

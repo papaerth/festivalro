@@ -106,12 +106,29 @@ export interface VidiqRequest { count: number; video_ids: string[]; prompt: stri
 
 export interface EdlClip { start: number; end: number; caption: string }
 export interface StudioRender { id: number; status: 'queued' | 'running' | 'done' | 'failed'; step: string | null; progress: number; decided_by: string | null; error: string | null; file_url: string | null; notes: string[]; created_at: string; finished_at: string | null;
-  edl: { hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; reason?: string | null; quote_seen?: string | null; total_seconds: number } | null; output_info: { duration: number; width: number; height: number; size: number } | null }
+  style_id: number | null;
+  edl: { hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; end_caption?: string; reason?: string | null; quote_seen?: string | null; total_seconds: number } | null; output_info: { duration: number; width: number; height: number; size: number } | null }
 export interface StudioState {
   candidate: { id: number; title: string; url: string | null; thumbnail_url: string | null; view_count: number | null; celebrity_name: string | null; channel_category: Category; recommended_slot: Slot | null; product_name: string | null; produced_at: string | null; duration_seconds: number | null }
   original: { id: number; title: string; url: string | null; thumbnail_url: string | null; channel: string | null; duration_seconds: number | null; has_transcript: boolean } | null
   segment: Segment | null
   source: { name: string | null; info: { duration?: number; width?: number; height?: number; size?: number; has_audio?: boolean } | null; exists: boolean; hint_start: number | null; hint_end: number | null } | null
   renders: StudioRender[]; ffmpeg: { available: boolean; reason?: string; version?: string; ass?: boolean }; ai: boolean
+  styles: { id: number; name: string; status: string; summary: string | null }[]
   upload_text: { title_suggestion: string; description: string; plan_titles: string[] | null }; notice: string
+}
+
+export interface StyleProfile {
+  summary: string
+  layout: { mode: 'blur_bg' | 'crop_fill' | 'color_bg'; bg_color: string; fg_zoom: number; fg_position: 'center' | 'upper' }
+  title: { enabled: boolean; size: 'small' | 'medium' | 'large'; color: string; second_line_color: string; outline_color: string; box: boolean; box_color: string; tone: string; patterns: string[] }
+  caption: { enabled: boolean; position: 'below_video' | 'bottom' | 'over_video'; size: 'small' | 'medium' | 'large'; color: string; outline_color: string; box: boolean; box_color: string; tone: string; max_chars: number; emoji: boolean }
+  hook: { seconds: number; pattern: string; zoom_punch: boolean; caption_color: string }
+  pacing: { total_seconds: number; segments: number; max_clip_seconds: number; note: string }
+  end_question: boolean; kick: string[]
+}
+export interface RefStyle {
+  id: number; name: string; channel_url: string | null; channel_title: string | null; status: 'learning' | 'ready' | 'failed'; step: string | null
+  profile: StyleProfile | null; error: string | null; created_at: string; updated_at: string
+  stats: { sources?: string[]; notes?: string[]; evidence?: string[]; confidence?: string; shorts_analyzed?: number; avg_seconds?: number | null; avg_title_chars?: number | null; avg_hashtags?: number | null; sample_videos?: number; avg_shot_seconds?: number; cuts_per_10s?: number } | null
 }

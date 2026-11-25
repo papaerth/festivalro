@@ -695,3 +695,106 @@ def test_studio_upload_and_make_short_without_ai(client, tmp_path):
     assert abs(r2["output_info"]["duration"] - 22.5) < 1.5
     client.delete(f"/api/studio/{cid}/source")
     assert client.get(f"/api/studio/{cid}").json()["source"]["exists"] is False
+
+
+def test_reference_style_learn_and_make_with_style(client, tmp_path):
+    """레퍼런스 스타일: 키 없이 채널 주소만 → 정직하게 실패 / 샘플 mp4 → 컷 속도 실측으로 학습 → 그 스타일로 쇼츠 제작."""
+    import subprocess, time
+    from app.services import shorts_maker
+    caps = shorts_maker.capabilities()
+    if not caps.get("available"):
+        import pytest; pytest.skip("ffmpeg 없음")
+    ff = caps["path"]
+
+    def wait_style(sid):
+        for _ in range(300):
+            s = client.get(f"/api/styles/{sid}").json()
+            if s["status"] != "learning":
+                return s
+            time.sleep(0.2)
+        raise AssertionError("학습 시간 초과")
+
+    assert client.post("/api/styles", data={"name": "빈 것"}).status_code == 400
+    # 채널 주소만 + YouTube 키 없음 → 가짜 스타일을 만들지 않고 실패 사유를 알려 준다
+    s0 = wait_style(client.post("/api/styles", data={"name": "주소만", "channel_url": "https://www.youtube.com/@some_ref"}).json()["id"])
+    assert s0["status"] == "failed" and "YOUTUBE_API_KEY" in s0["error"] and s0["profile"] is None
+    # 샘플 쇼츠(3초마다 화면이 바뀌는 9초 세로 영상) → 컷 간격 실측
+    sample = tmp_path / "ref.mp4"
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=red:size=360x640:rate=30:duration=3",
+                    "-f", "lavfi", "-i", "testsrc2=size=360x640:rate=30:duration=3", "-f", "lavfi", "-i", "color=c=blue:size=360x640:rate=30:duration=3",
+                    "-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1:a=0", "-c:v", caps["vcodec"], "-pix_fmt", "yuv420p", str(sample)], check=True)
+    with sample.open("rb") as f:
+        made = client.post("/api/styles", data={"name": "빠른 컷 채널"}, files=[("files", ("ref.mp4", f, "video/mp4"))])
+    assert made.status_code == 201
+    s1 = wait_style(made.json()["id"])
+    assert s1["status"] == "ready", s1
+    assert s1["stats"]["sample_videos"] == 1 and 2.0 <= s1["stats"]["avg_shot_seconds"] <= 4.0
+    assert any("ANTHROPIC_API_KEY" in n for n in s1["stats"]["notes"]) and s1["profile"]["layout"]["mode"] == "blur_bg"
+    # 사람이 직접 고치기: 범위를 벗어난 값은 안전 범위로 정리
+    prof = s1["profile"] | {"layout": {"mode": "color_bg", "fg_zoom": 9}, "hook": {"seconds": 2.0, "zoom_punch": True, "pattern": "p"},
+                            "title": s1["profile"]["title"] | {"color": "#00E5FF", "box": True}, "end_question": True, "kick": ["끝 질문 자막"]}
+    p1 = client.patch(f"/api/styles/{s1['id']}", json={"name": "빠른 컷", "profile": prof}).json()
+    assert p1["name"] == "빠른 컷" and p1["profile"]["layout"]["fg_zoom"] == 1.45 and p1["profile"]["title"]["color"] == "#00E5FF"
+    assert [x["name"] for x in client.get("/api/styles").json()["styles"]] == ["주소만", "빠른 컷"]
+
+    # 이 스타일로 쇼츠 만들기
+    src = tmp_path / "src.mp4"
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=50",
+                    "-f", "lavfi", "-i", "sine=frequency=440:duration=50", "-c:v", caps["vcodec"], "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(src)], check=True)
+    v = client.post("/api/videos", json={"url_or_id": "ttttttttttt", "title": "스타일 테스트 쇼츠 추천템", "duration_seconds": 30,
+                                        "view_count": 400000, "fetch": False, "source_type": "reedit_shorts"}).json()
+    cid = client.post("/api/candidates", json={"video_id": v["id"], "channel_category": "food"}).json()["id"]
+    with src.open("rb") as f:
+        client.post(f"/api/studio/{cid}/source", files={"file": ("orig.mp4", f, "video/mp4")})
+    assert client.post(f"/api/studio/{cid}/make", data={"hint": "0:10", "style_id": str(s0["id"])}).status_code == 400  # 학습 안 된 스타일
+    st = client.post(f"/api/studio/{cid}/make", data={"hint": "0:10", "style_id": str(s1["id"])}).json()
+    assert [x["name"] for x in st["styles"]] == ["주소만", "빠른 컷"]
+
+    def wait():
+        for _ in range(300):
+            r = client.get(f"/api/studio/{cid}").json()["renders"][0]
+            if r["status"] in ("done", "failed"):
+                return r
+            time.sleep(0.2)
+        raise AssertionError("렌더 시간 초과")
+
+    r = wait()
+    assert r["status"] == "done", r
+    assert r["style_id"] == s1["id"] and "style:빠른 컷" in r["decided_by"] and r["output_info"]["width"] == 1080
+    # 확대·세로 채움 스타일에서도 화소 비율은 1:1 이어야 한다(아니면 플레이어에서 가로로 눌려 보인다)
+    from app.config import get_settings
+    probe = subprocess.run([ff, "-hide_banner", "-i", str(sorted((get_settings().media_dir / "renders").glob("*.mp4"), key=lambda p: p.stat().st_mtime)[-1])],
+                           capture_output=True, text=True).stderr
+    assert "1080x1920" in probe and ("SAR 1:1" in probe or "SAR" not in probe), probe[-400:]
+    assert r["edl"]["hook"]["end"] - r["edl"]["hook"]["start"] <= 2.6
+    # 편집안 재렌더는 직전 스타일을 유지하고 끝 질문 자막을 받는다
+    client.post(f"/api/studio/{cid}/rerender", json={"hook": None, "segments": [{"start": 5, "end": 25, "caption": "확인한 구성"}],
+                                                      "title_lines": ["제목"], "credit": "출처: 테스트", "end_caption": "여러분이라면?"})
+    r2 = wait()
+    assert r2["status"] == "done" and r2["style_id"] == s1["id"] and r2["edl"]["end_caption"] == "여러분이라면?"
+    # 스타일을 지워도 만든 영상·제작실은 그대로
+    assert client.delete(f"/api/styles/{s1['id']}").status_code == 204
+    assert client.get(f"/api/studio/{cid}").status_code == 200
+    client.delete(f"/api/styles/{s0['id']}")
+
+
+def test_interrupted_jobs_are_recovered_on_startup(client):
+    """제작·학습 도중 서버가 꺼지면 '만드는 중'으로 굳지 않고, 다음 시작 때 실패로 정리돼 다시 누를 수 있다."""
+    from app.database import SessionLocal
+    from app.main import _recover_interrupted_jobs
+    from app.models import ReferenceStyle, ShortsRender
+    v = client.post("/api/videos", json={"url_or_id": "uuuuuuuuuuu", "title": "중단 복구 테스트 추천템", "duration_seconds": 30,
+                                        "view_count": 300000, "fetch": False, "source_type": "reedit_shorts"}).json()
+    cid = client.post("/api/candidates", json={"video_id": v["id"], "channel_category": "food"}).json()["id"]
+    with SessionLocal() as db:
+        db.add(ShortsRender(candidate_id=cid, status="running", step="렌더링 중", progress=60))
+        db.add(ReferenceStyle(name="학습 중단", status="learning", step="대기"))
+        db.add(ReferenceStyle(name="재학습 중단", status="learning", step="대기", profile={"summary": "이전에 배운 값"}))
+        db.commit()
+        assert _recover_interrupted_jobs(db) == 3 and _recover_interrupted_jobs(db) == 0
+    r = client.get(f"/api/studio/{cid}").json()["renders"][0]
+    assert r["status"] == "failed" and "다시 눌러" in r["error"]
+    by = {s["name"]: s for s in client.get("/api/styles").json()["styles"]}
+    assert by["학습 중단"]["status"] == "failed" and by["재학습 중단"]["status"] == "ready"
+    for s in by.values():
+        client.delete(f"/api/styles/{s['id']}")

@@ -11,6 +11,7 @@ import Schedule from './pages/Schedule'
 import DataPage from './pages/DataPage'
 import SettingsPage from './pages/SettingsPage'
 import Studio from './pages/Studio'
+import Styles from './pages/Styles'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/make/:id" element={<Studio />} />
+        <Route path="/styles" element={<Styles />} />
         <Route path="/candidates" element={<Candidates />} />
         <Route path="/candidates/:id" element={<CandidateDetail />} />
         <Route path="/videos" element={<Videos />} />

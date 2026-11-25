@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .. import schemas, serializers
 from ..config import get_settings
 from ..database import get_db
-from ..models import ShortsProject, ShortsRender, SourcingCandidate, Video, utcnow
+from ..models import ReferenceStyle, ShortsProject, ShortsRender, SourcingCandidate, Video, utcnow
 from ..services import shorts_maker
 from ..services.audit import log
 from ..services.scoring import get_active_version
@@ -37,7 +37,7 @@ def _hms(text: str | None) -> int | None:
 
 def _render(r: ShortsRender) -> dict:
     return {"id": r.id, "status": r.status, "step": r.step, "progress": r.progress, "edl": r.edl, "decided_by": r.decided_by,
-            "output_info": r.output_info, "notes": r.notes or [], "error": r.error,
+            "output_info": r.output_info, "notes": r.notes or [], "error": r.error, "style_id": r.style_id,
             "file_url": f"/api/studio/renders/{r.id}/file" if r.status == "done" and r.output_path else None,
             "created_at": serializers.iso(r.created_at), "finished_at": serializers.iso(r.finished_at)}
 
@@ -66,6 +66,8 @@ def _state(db: Session, c: SourcingCandidate) -> dict:
                     "hint_start": proj.hint_start, "hint_end": proj.hint_end} if proj else None),
         "renders": [_render(r) for r in renders],
         "ffmpeg": shorts_maker.capabilities(),
+        "styles": [{"id": x.id, "name": x.name, "status": x.status, "summary": (x.profile or {}).get("summary")}
+                   for x in db.query(ReferenceStyle).order_by(ReferenceStyle.id).all()],
         "ai": bool(get_settings().anthropic_api_key),
         "upload_text": {"title_suggestion": title, "description": desc,
                         "plan_titles": (plan.plan.get("title_candidates") if plan else None)},
@@ -144,7 +146,8 @@ def upload_source(cid: int, file: UploadFile = File(...), db: Session = Depends(
 
 
 @router.post("/{cid}/make")
-def make(cid: int, hint: str | None = Form(None), hint_end: str | None = Form(None), db: Session = Depends(get_db)):
+def make(cid: int, hint: str | None = Form(None), hint_end: str | None = Form(None), style_id: int | None = Form(None),
+         db: Session = Depends(get_db)):
     """버튼 한 번: 장면 찾기 → 후킹·컷 구성 → 렌더링을 백그라운드로 시작. hint=대략 위치(분:초, 선택)."""
     c = get_or_404(db, SourcingCandidate, cid, "후보")
     proj = db.get(ShortsProject, c.id)
@@ -155,7 +158,11 @@ def make(cid: int, hint: str | None = Form(None), hint_end: str | None = Form(No
         raise HTTPException(503, caps.get("reason", "ffmpeg 없음"))
     proj.hint_start, proj.hint_end = _hms(hint), _hms(hint_end)
     db.commit()
-    shorts_maker.start_render(db, c.id)
+    if style_id is not None:
+        st = db.get(ReferenceStyle, style_id)
+        if not st or st.status != "ready":
+            raise HTTPException(400, "그 스타일은 아직 학습이 끝나지 않았습니다")
+    shorts_maker.start_render(db, c.id, style_id=style_id)
     return _state(db, c)
 
 
@@ -166,7 +173,12 @@ def rerender(cid: int, body: schemas.EdlIn, db: Session = Depends(get_db)):
     proj = db.get(ShortsProject, c.id)
     if not proj or not proj.source_path or not Path(proj.source_path).exists():
         raise HTTPException(400, "원본 mp4 파일이 없습니다")
-    shorts_maker.start_render(db, c.id, edl=body.model_dump())
+    data = body.model_dump()
+    sid = data.pop("style_id", None)
+    if sid is None:  # 지정이 없으면 직전 렌더의 스타일을 그대로 쓴다
+        last = db.query(ShortsRender).filter(ShortsRender.candidate_id == c.id).order_by(ShortsRender.id.desc()).first()
+        sid = last.style_id if last else None
+    shorts_maker.start_render(db, c.id, edl=data, style_id=sid)
     return _state(db, c)
 
 

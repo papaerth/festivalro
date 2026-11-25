@@ -505,7 +505,24 @@ class ShortsRender(Base):
     decided_by: Mapped[str | None] = mapped_column(String(30))  # ai_vision / transcript / manual_range / edited
     output_path: Mapped[str | None] = mapped_column(String(500))
     output_info: Mapped[dict | None] = mapped_column(JSON)
+    style_id: Mapped[int | None] = mapped_column(Integer)  # 적용한 레퍼런스 편집 스타일(reference_styles.id), 없으면 기본
     notes: Mapped[list | None] = mapped_column(JSON)
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class ReferenceStyle(TimestampMixin, Base):
+    """레퍼런스 채널에서 학습한 편집 스타일(패턴만 추상화 — 문구·장면을 복제하지 않는다)."""
+
+    __tablename__ = "reference_styles"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    channel_url: Mapped[str | None] = mapped_column(String(300))
+    yt_channel_id: Mapped[str | None] = mapped_column(String(64))
+    channel_title: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), default="learning", nullable=False)  # learning/ready/failed
+    step: Mapped[str | None] = mapped_column(String(200))
+    profile: Mapped[dict | None] = mapped_column(JSON)   # 렌더러·편집 AI 가 쓰는 스타일 값
+    stats: Mapped[dict | None] = mapped_column(JSON)     # 학습 근거(쇼츠 수, 평균 길이, 컷 빈도 등)
+    error: Mapped[str | None] = mapped_column(Text)

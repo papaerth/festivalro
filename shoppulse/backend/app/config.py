@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     @property
     def media_dir(self) -> Path:
         p = self.data_dir / "media"
-        for sub in ("originals", "renders", "work"):
+        for sub in ("originals", "renders", "work", "styles"):
             (p / sub).mkdir(parents=True, exist_ok=True)
         return p
 

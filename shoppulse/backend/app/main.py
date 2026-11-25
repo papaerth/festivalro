@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .config import FRONTEND_DIST, get_settings
 from .database import Base, SessionLocal, engine
-from .routers import backup, candidates, celebrities, channels, dashboard, imports, products, schedule, settings, sourcing, studio, videos
+from .routers import backup, candidates, celebrities, channels, dashboard, imports, products, schedule, settings, sourcing, studio, styles, videos
 from .seeds.loader import ensure_scoring_version, refresh_data_sources, seed_channels
 from .services import scheduler
 
@@ -61,6 +61,25 @@ def init_db() -> None:
         if n:
             log.info("시드 채널 %d개 적재(모두 '검증 전')", n)
         refresh_data_sources(db)
+        _recover_interrupted_jobs(db)
+
+
+def _recover_interrupted_jobs(db) -> int:
+    """서버가 꺼지며 중단된 영상 제작·스타일 학습을 '실패'로 정리한다(안 그러면 영원히 '만드는 중'으로 남아 다시 누를 수 없다)."""
+    from .models import ReferenceStyle, ShortsRender
+    msg = "서버가 꺼지거나 재시작되어 중단됐습니다. 다시 눌러 주세요."
+    n = 0
+    for r in db.query(ShortsRender).filter(ShortsRender.status.in_(["queued", "running"])).all():
+        r.status, r.error, r.step = "failed", msg, None
+        n += 1
+    for st in db.query(ReferenceStyle).filter(ReferenceStyle.status == "learning").all():
+        # 이미 배운 값이 있으면 그대로 쓸 수 있게 둔다
+        st.status, st.error, st.step = ("ready" if st.profile else "failed"), (None if st.profile else msg), None
+        n += 1
+    if n:
+        db.commit()
+        log.info("중단된 작업 %d건 정리", n)
+    return n
 
 
 def _prepare_candidates_background() -> None:
@@ -96,7 +115,7 @@ app = FastAPI(title="SHOPPULSE 3.0", version=__version__, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                    allow_methods=["*"], allow_headers=["*"])
 
-for r in (dashboard, celebrities, channels, videos, products, candidates, schedule, imports, sourcing, settings, backup, studio):
+for r in (dashboard, celebrities, channels, videos, products, candidates, schedule, imports, sourcing, settings, backup, studio, styles):
     app.include_router(r.router)
 
 

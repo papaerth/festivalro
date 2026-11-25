@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 
 from app.services.dedupe import classify_format, extract_video_id, normalize_channel_ref, parse_iso8601_duration
@@ -224,3 +225,36 @@ def test_shorts_maker_edl_normalize_and_ass():
     from app.services.shorts_maker import ShortsError
     with pytest.raises(ShortsError):
         normalize_edl({"segments": []}, 60)
+
+
+def test_style_profile_normalize_guide_and_ass():
+    from app.services.shorts_maker import build_ass, normalize_edl
+    from app.services.style_learner import STYLE_SCHEMA, metadata_stats
+    from app.services.style_profile import DEFAULT_STYLE, ass_color, normalize_style, style_guide
+    assert ass_color("#FFF000") == "&H0000F0FF" and ass_color("엉터리") == "&H00FFFFFF"
+    d = normalize_style(None)
+    assert d["layout"]["mode"] == "blur_bg" and d["title"]["color"] == DEFAULT_STYLE["title"]["color"]
+    s = normalize_style({"layout": {"mode": "이상한값", "fg_zoom": 5, "bg_color": "red"}, "title": {"color": "ff0066", "size": "huge", "patterns": ["a"] * 20},
+                         "caption": {"position": "bottom", "max_chars": 500}, "hook": {"seconds": 99, "zoom_punch": 1},
+                         "pacing": {"total_seconds": 5, "segments": 50}, "end_question": 1, "kick": ["k"] * 20})
+    assert s["layout"] == {"mode": "blur_bg", "bg_color": "#101010", "fg_zoom": 1.45, "fg_position": "center"}
+    assert s["title"]["color"] == "#FF0066" and s["title"]["size"] == "medium" and len(s["title"]["patterns"]) <= 6
+    assert s["hook"]["seconds"] <= 5 and 18 <= s["pacing"]["total_seconds"] <= 40 and s["pacing"]["segments"] <= 6 and len(s["kick"]) <= 6
+    g = style_guide(s)
+    assert isinstance(g, dict) and json_safe(g)
+    edl = normalize_edl({"hook": {"start": 40, "end": 43, "caption": "후킹"}, "segments": [{"start": 5, "end": 25, "caption": "본편"}],
+                         "title_lines": ["첫 줄", "둘째 줄"], "end_caption": "여러분이라면 살까요?"}, 100)
+    styled = normalize_style({"title": {"color": "#00E5FF", "second_line_color": "#FF3366", "box": True, "size": "large"},
+                              "caption": {"position": "over_video", "color": "#FFFF00"}})
+    ass = build_ass(edl | {"credit": "출처: 채널"}, "Malgun Gothic", 600, 1200, style=styled)
+    assert "&H00FFE500" in ass and "\\c&H6633FF&" in ass and "여러분이라면 살까요?" in ass and "&H0000FFFF" in ass
+    assert build_ass(edl, "Malgun Gothic", 600, 1200) != ass  # 기본 스타일과 다르다
+    # 구조화 출력 스키마에는 minimum/maximum/maxItems 를 쓰지 않는다(API 400 방지)
+    assert not any(k in json.dumps(STYLE_SCHEMA) for k in ('"minimum"', '"maximum"', '"maxItems"', '"minItems"'))
+    ms = metadata_stats([{"title": "이게 뭐길래? #a #b", "duration": "PT30S", "view_count": 10}, {"title": "두번째 제목", "duration": "PT50S", "view_count": 99}])
+    assert ms["shorts_analyzed"] == 2 and ms["avg_seconds"] == 40 and ms["avg_hashtags"] == 1 and ms["question_title_ratio"] == 0.5 and ms["top_views"] == 99
+
+
+def json_safe(o) -> bool:
+    json.dumps(o, ensure_ascii=False)
+    return True

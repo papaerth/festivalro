@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 
 const nav = [
-  ['/', '오늘의 6편', '◈'], ['/settings', '설정·백업', '⚙'],
+  ['/', '오늘의 6편', '◈'], ['/styles', '편집 스타일', '✂'], ['/settings', '설정·백업', '⚙'],
 ] as const
 // 자동으로 처리되는 작업 화면. 평소에는 접어 둔다(대시보드의 추천 카드에서 상세로 바로 들어갈 수 있음).
 const tools = [
