@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     youtube_api_key: str = ""
     shoppulse_ai_provider: str = "template"
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-sonnet-5-5"
+    anthropic_model: str = "claude-opus-5-5"
     shoppulse_default_region: str = "서울"
     naver_client_id: str = ""
     naver_client_secret: str = ""

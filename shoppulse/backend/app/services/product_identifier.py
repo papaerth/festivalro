@@ -60,10 +60,7 @@ def identify(video, extra_images: list[tuple[bytes, str]] | None = None, use_thu
     s = get_settings()
     if not s.anthropic_api_key:
         raise AINotConfigured("ANTHROPIC_API_KEY 가 설정되지 않았습니다. .env 에 키를 넣으면 AI 상품 추정을 쓸 수 있습니다.")
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=s.anthropic_api_key)
-    model = s.anthropic_model or "claude-opus-5-5"
+    from .claude_client import create_json
 
     content: list[dict] = []
     image_sources: list[str] = []
@@ -99,17 +96,10 @@ def identify(video, extra_images: list[tuple[bytes, str]] | None = None, use_thu
         f"영상 정보(JSON):\n{json.dumps(ctx, ensure_ascii=False)}"
     )})
 
-    resp = client.messages.create(
-        model=model, max_tokens=4096,
-        system="당신은 한국 온라인 쇼핑 상품 식별 전문가입니다. 보이는 근거로만 판단하고, 근거 없는 상품명을 만들지 않습니다.",
-        messages=[{"role": "user", "content": content}],
-        output_config={"format": {"type": "json_schema", "schema": SUGGESTION_SCHEMA}},
-    )
-    if resp.stop_reason == "refusal":
-        raise RuntimeError("AI 가 응답을 거부했습니다.")
-    text = next((b.text for b in resp.content if b.type == "text"), "")
-    data = json.loads(text)
-    data["model"] = model
+    data = create_json(system="당신은 한국 온라인 쇼핑 상품 식별 전문가입니다. 보이는 근거로만 판단하고, 근거 없는 상품명을 만들지 않습니다.",
+                       messages=[{"role": "user", "content": content}], output_schema=SUGGESTION_SCHEMA)
+    data["model"] = data.pop("_model", None)
+    data["transport"] = data.pop("_transport", None)
     data["image_sources"] = image_sources
     data["disclaimer"] = "AI 추정입니다. '유사 상품 후보'로 등록되며 사람이 확인해야 '확인됨'이 됩니다."
     return data
@@ -151,10 +141,8 @@ def investigate_capture(images: list[tuple[bytes, str]], hint: str | None = None
         raise AINotConfigured("ANTHROPIC_API_KEY 가 설정되지 않았습니다. .env 에 키를 넣으면 캡처 조사 기능을 쓸 수 있습니다.")
     if not images:
         raise ValueError("이미지가 필요합니다")
-    import anthropic
+    from .claude_client import create_json
 
-    client = anthropic.Anthropic(api_key=s.anthropic_api_key)
-    model = s.anthropic_model or "claude-opus-5-5"
     content: list[dict] = [{"type": "image", "source": {"type": "base64", "media_type": mt, "data": base64.standard_b64encode(data).decode()}}
                            for data, mt in images[:4]]
     content.append({"type": "text", "text": (
@@ -165,15 +153,9 @@ def investigate_capture(images: list[tuple[bytes, str]], hint: str | None = None
         "5) category 는 beauty/living/food/unknown. 6) 여러 상품이면 최대 5개. 한국어로 답합니다.\n"
         + (f"사용자 힌트: {hint}\n" if hint else "") + (f"영상 정보: {json.dumps(context, ensure_ascii=False)}" if context else "")
     )})
-    resp = client.messages.create(
-        model=model, max_tokens=4096,
-        system="당신은 한국 온라인 쇼핑 상품 식별 전문가입니다. 보이는 근거로만 판단하고 근거 없는 상품명을 만들지 않습니다.",
-        messages=[{"role": "user", "content": content}],
-        output_config={"format": {"type": "json_schema", "schema": INVESTIGATE_SCHEMA}},
-    )
-    if resp.stop_reason == "refusal":
-        raise RuntimeError("AI 가 응답을 거부했습니다.")
-    data = json.loads(next((b.text for b in resp.content if b.type == "text"), "{}"))
+    data = create_json(system="당신은 한국 온라인 쇼핑 상품 식별 전문가입니다. 보이는 근거로만 판단하고 근거 없는 상품명을 만들지 않습니다.",
+                       messages=[{"role": "user", "content": content}], output_schema=INVESTIGATE_SCHEMA)
+    model = data.pop("_model", None); data.pop("_transport", None)
     for it in data.get("items", []):
         q = (it.get("search_queries") or [f"{it.get('brand', '')} {it.get('name', '')}".strip()])[0]
         it["links"] = {

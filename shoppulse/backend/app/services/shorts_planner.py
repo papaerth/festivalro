@@ -157,9 +157,6 @@ class AnthropicPlanner:
         s = get_settings()
         if not s.anthropic_api_key:
             raise RuntimeError("ANTHROPIC_API_KEY 가 없습니다. SHOPPULSE_AI_PROVIDER=template 로 설정하세요.")
-        import anthropic  # 지연 임포트: 미설치 환경에서도 template 는 동작
-
-        self.client = anthropic.Anthropic(api_key=s.anthropic_api_key)
         self.model = s.anthropic_model or "claude-opus-5-5"
 
     def generate(self, ctx: dict, target_seconds: int) -> dict:
@@ -170,19 +167,12 @@ class AnthropicPlanner:
             "3) is_recommendation 이 false 면 '추천' 표현을 쓰지 않는다. 4) 광고·협찬 사실을 숨기지 않는다. "
             "5) 모르는 사실은 research_todo 에 넣고 지어내지 않는다. 6) 직접 추천형과 경험담형은 다른 대본 구조를 쓴다."
         )
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=16000,
-            system=system,
-            output_config={"format": {"type": "json_schema", "schema": PLAN_SCHEMA}},
-            messages=[{"role": "user", "content": f"목표 길이 {target_seconds}초. 후보 데이터(JSON):\n{json.dumps(ctx, ensure_ascii=False)}"}],
-        )
-        if response.stop_reason == "refusal":
-            raise RuntimeError("AI 가 응답을 거부했습니다. 템플릿 기획안을 사용하세요.")
-        text = next((b.text for b in response.content if b.type == "text"), "")
-        plan = json.loads(text)
+        from .claude_client import create_json
+
+        plan = create_json(system=system, max_tokens=16000, output_schema=PLAN_SCHEMA,
+                           messages=[{"role": "user", "content": f"목표 길이 {target_seconds}초. 후보 데이터(JSON):\n{json.dumps(ctx, ensure_ascii=False)}"}])
         plan["target_seconds"] = target_seconds
-        plan["model"] = self.model
+        plan["model"] = plan.pop("_model", self.model); plan.pop("_transport", None)
         return plan
 
 

@@ -142,3 +142,23 @@ def test_link_resolver_classification(monkeypatch):
     assert any(p["final_url"].startswith("https://www.coupang.com") and p["title"].startswith("성시경") for p in r["products"])
     assert any("smartstore" in p["url"] for p in r["products"])
     assert all(not o["is_shopping"] for o in r["others"])
+
+
+def test_claude_client_http_fallback(monkeypatch):
+    from app.services import claude_client as cc
+    from app.config import get_settings
+    monkeypatch.setattr(cc, "sdk_import_error", lambda: "ImportError: DLL load failed (테스트)")
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "test-key")
+
+    class R:
+        status_code = 200
+        def json(self): return {"content": [{"type": "text", "text": "{\"ok\": true}"}], "stop_reason": "end_turn", "model": "claude-opus-5-5"}
+    captured = {}
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured.update(url=url, headers=headers, body=json); return R()
+    monkeypatch.setattr(cc.httpx, "post", fake_post)
+    out = cc.create_json(system="s", messages=[{"role": "user", "content": "hi"}], output_schema={"type": "object"})
+    assert out["ok"] is True and out["_transport"] == "http"
+    assert captured["headers"]["x-api-key"] == "test-key" and captured["body"]["output_config"]["format"]["type"] == "json_schema"
+    assert cc.transport_status()["transport"] == "http"
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "")

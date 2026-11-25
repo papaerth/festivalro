@@ -51,6 +51,14 @@ def ensure_scoring_version(db: Session) -> None:
         db.commit()
 
 
+def _ai_note() -> str:
+    from ..services.claude_client import transport_status
+
+    t = transport_status()
+    how = "공식 SDK 사용." if t["sdk_available"] else f"SDK 를 불러올 수 없어 직접 HTTP 호출로 동작합니다(원인: {(t['sdk_error'] or '')[:120]})."
+    return f"{how} 모델 {t['model']}. 키 없으면 템플릿 기획안만 동작(발언 생성 없음)."
+
+
 def refresh_data_sources(db: Session) -> None:
     s = get_settings()
     rows = [
@@ -62,9 +70,9 @@ def refresh_data_sources(db: Session) -> None:
          "vidIQ 는 외부 프로그램용 공개 REST API 를 제공하지 않습니다. 공식 경로는 ChatGPT/Claude 등 AI 어시스턴트에 연결된 vidIQ MCP 서버입니다. "
          "거기서 받은 vidiq_get_videos_by_ids / vidiq_video_stats 응답 JSON 을 그대로 가져옵니다."),
         ("vidiq_csv", "vidIQ CSV / 수동 입력", "import", "configured", "Outlier·VPH·조회수를 CSV 또는 화면에서 직접 입력."),
-        ("anthropic", "AI 기획안(Claude)", "ai",
-         "configured" if (s.shoppulse_ai_provider == "anthropic" and s.anthropic_api_key) else "not_configured",
-         "미설정 시 템플릿 기획안으로 동작(발언 생성 없음)."),
+        ("anthropic", "AI(Claude): 기획안·채점·상품 추정", "ai",
+         "configured" if s.anthropic_api_key else "not_configured",
+         _ai_note()),
         ("naver_shopping", "네이버 쇼핑 검색 API", "commerce",
          "configured" if (s.naver_client_id and s.naver_client_secret) else "not_configured",
          "상품 화면 「판매처 조회」로 최저가·판매처 검색. developers.naver.com 에서 키 발급 후 .env 의 NAVER_CLIENT_ID/SECRET."),

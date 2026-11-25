@@ -25,10 +25,8 @@ def score_with_ai(candidate, scoring_config: dict, context: dict, performance_ru
     s = get_settings()
     if not s.anthropic_api_key:
         raise AINotConfigured("ANTHROPIC_API_KEY 가 설정되지 않았습니다.")
-    import anthropic
+    from .claude_client import create_json
 
-    client = anthropic.Anthropic(api_key=s.anthropic_api_key)
-    model = s.anthropic_model or "claude-opus-5-5"
     items = scoring_config["items"]
     criteria = "\n".join(f"- {it['key']} ({it['label']}, 0~{it['max']}점): {it['criteria']}" for it in items)
     system = (
@@ -37,14 +35,9 @@ def score_with_ai(candidate, scoring_config: dict, context: dict, performance_ru
         "타깃: 한국 30~50대 여성, YouTube Shorts, 채널 3개(뷰티·패션/생활용품/먹거리), 업로드 11시·17시·21시.\n"
         f"평가 항목:\n{criteria}"
     )
-    resp = client.messages.create(
-        model=model, max_tokens=4096, system=system,
-        messages=[{"role": "user", "content": f"후보 데이터(JSON):\n{json.dumps(context, ensure_ascii=False)}"}],
-        output_config={"format": {"type": "json_schema", "schema": _schema(items)}},
-    )
-    if resp.stop_reason == "refusal":
-        raise RuntimeError("AI 가 채점을 거부했습니다.")
-    data = json.loads(next((b.text for b in resp.content if b.type == "text"), "{}"))
+    data = create_json(system=system, messages=[{"role": "user", "content": f"후보 데이터(JSON):\n{json.dumps(context, ensure_ascii=False)}"}],
+                       output_schema=_schema(items))
+    model = data.pop("_model", None); data.pop("_transport", None)
     item_scores, rationale = {}, {}
     for it in items:
         d = data.get(it["key"], {})
