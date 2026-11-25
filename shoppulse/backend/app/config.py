@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     naver_client_secret: str = ""
     coupang_access_key: str = ""
     coupang_secret_key: str = ""
+    google_vision_api_key: str = ""  # 캡처로 원본 찾기(Google Cloud Vision Web Detection)
+    shoppulse_browser: str = "chrome"  # start.bat 가 여는 브라우저: chrome / edge / default
     shoppulse_auto_sourcing: bool = False
     shoppulse_timezone: str = "Asia/Seoul"
     # 테스트에서 메모리 DB 등으로 바꿀 때 사용

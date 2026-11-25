@@ -189,3 +189,11 @@ def test_segment_finder_parsers_and_window():
     tr = transcript_from_payload({"videoId": "x", "transcription": "[0:00] 가\n[0:10] 나", "language": "ko"})
     assert tr["count"] == 2 and tr["source"] == "vidiq_mcp"
     assert transcript_from_payload({"videoId": "x"}) is None
+
+
+def test_image_original_youtube_id_extraction():
+    from app.services.image_original import _YT_ID_RE
+    urls = ["https://www.youtube.com/watch?v=sHJvABrKOno&t=10s", "https://i.ytimg.com/vi/90Ube_-fCf8/maxresdefault.jpg",
+            "https://youtu.be/99TWvVVTARo", "https://example.com/page"]
+    ids = [m for u in urls for m in _YT_ID_RE.findall(u)]
+    assert ids == ["sHJvABrKOno", "90Ube_-fCf8", "99TWvVVTARo"]

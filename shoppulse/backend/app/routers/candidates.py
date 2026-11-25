@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session, joinedload
 
 from ..models import utcnow
@@ -310,6 +310,27 @@ def find_original_ep(cid: int, use_api: bool = True, db: Session = Depends(get_d
         raise HTTPException(400, "재편집 쇼츠 후보에서만 원본 찾기를 쓸 수 있습니다")
     r = find_original(db, c.video, c.product.name if c.product else None, use_api=use_api, max_searches=3)
     log(db, "candidate", c.id, "find_original", {"confidence": r.get("confidence"), "linked": r.get("linked", False)})
+    db.commit()
+    return {"match": r, "candidate": serializers.candidate_detail(c, get_active_version(db).config)}
+
+
+@router.post("/{cid}/find-original-by-image")
+async def find_original_by_image_ep(cid: int, files: list[UploadFile] = File(default=[]), use_thumbnail: bool = True,
+                                    db: Session = Depends(get_db)):
+    """캡처 화면(또는 쇼츠 썸네일)으로 원본 찾기: Google Vision 같은 장면 검색(키 있을 때) + AI 화면 읽기 → YouTube 검색."""
+    from ..services.image_original import find_original_by_image
+    c = get_or_404(db, SourcingCandidate, cid, "후보")
+    images = []
+    for f in files[:4]:
+        data = await f.read()
+        if not (f.content_type or "").startswith("image/") or len(data) > 8 * 1024 * 1024:
+            raise HTTPException(400, f"이미지 파일만 8MB 이하로 올려주세요: {f.filename}")
+        images.append((data, f.content_type))
+    try:
+        r = find_original_by_image(db, c.video, images, use_thumbnail=use_thumbnail, product_name=c.product.name if c.product else None)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    log(db, "candidate", c.id, "find_original_image", {"confidence": r.get("confidence"), "linked": r.get("linked", False)})
     db.commit()
     return {"match": r, "candidate": serializers.candidate_detail(c, get_active_version(db).config)}
 

@@ -267,7 +267,8 @@ def _match_brief(m: dict | None) -> dict | None:
         return None
     return {"confidence": m.get("confidence"), "reason": m.get("reason"), "checked_at": m.get("checked_at"),
             "candidates": m.get("candidates", [])[:8], "celebrities": m.get("celebrities"), "notes": m.get("notes"),
-            "api_searches": m.get("api_searches", 0), "linked": m.get("linked", False)}
+            "api_searches": m.get("api_searches", 0), "linked": m.get("linked", False), "method": m.get("method", "text"),
+            "image_analysis": m.get("image_analysis"), "queries": m.get("queries"), "hashtags": m.get("hashtags")}
 
 
 def candidate_summary(c: SourcingCandidate, config: dict | None = None) -> dict:

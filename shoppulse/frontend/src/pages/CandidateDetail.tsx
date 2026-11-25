@@ -6,6 +6,7 @@ import { Badge, Confirm, ErrorBox, Field, MetricPill, ProductStatusBadge, Select
 import ViewGraph from '../components/ViewGraph'
 import OfferSearchModal from '../components/OfferSearch'
 import CaptureInvestigateModal from '../components/CaptureInvestigate'
+import CaptureOriginalModal from '../components/CaptureOriginal'
 import ProductLinks from '../components/ProductLinks'
 import MetricBlock from '../components/MetricBlock'
 import type { CandidateDetail as CD, OriginalMatch, Score, SegmentProposal } from '../types'
@@ -28,6 +29,7 @@ export default function CandidateDetail() {
   const [aiBusy, setAiBusy] = useState(false)
   const [offerSearch, setOfferSearch] = useState(false)
   const [capture, setCapture] = useState(false)
+  const [captureOrig, setCaptureOrig] = useState(false)
   const [prodUrl, setProdUrl] = useState('')
   const [om, setOm] = useState<OriginalMatch | null>(null)
   const [prop, setProp] = useState<SegmentProposal | null>(null)
@@ -136,7 +138,7 @@ export default function CandidateDetail() {
             ) : (
               <div className="text-sm">
                 <p className="mb-2 text-xs muted">이 쇼츠가 어떤 공식 원본 영상을 썼는지 연결하세요. 「진짜 원본 영상 찾기」는 설명란 출처 링크 → 제목·해시태그의 연예인 채널에서 수집된 영상 단어 일치 → 채널 안 YouTube 검색(할당량 100/회) → AI 재검토 순으로 찾습니다.</p>
-                <div className="mb-2 flex flex-wrap gap-1"><button className="btn-primary px-2 py-1 text-xs" disabled={finding === 'original'} onClick={findOriginal}>{finding === 'original' ? '찾는 중…' : '진짜 원본 영상 찾기'}</button><input className="input w-64 text-xs" placeholder="원본 유튜브 URL 직접 입력" value={origUrl} onChange={(e) => setOrigUrl(e.target.value)} /><button className="btn-ghost px-2 py-1 text-xs" disabled={!origUrl} onClick={() => act(() => api.linkOriginal(c.id, { url_or_id: origUrl }), '원본 연결')}>이 URL로 연결</button></div>
+                <div className="mb-2 flex flex-wrap gap-1"><button className="btn-primary px-2 py-1 text-xs" disabled={finding === 'original'} onClick={findOriginal}>{finding === 'original' ? '찾는 중…' : '진짜 원본 영상 찾기'}</button><button className="btn-ghost px-2 py-1 text-xs" onClick={() => setCaptureOrig(true)}>캡처로 원본 찾기(이미지·AI)</button><input className="input w-64 text-xs" placeholder="원본 유튜브 URL 직접 입력" value={origUrl} onChange={(e) => setOrigUrl(e.target.value)} /><button className="btn-ghost px-2 py-1 text-xs" disabled={!origUrl} onClick={() => act(() => api.linkOriginal(c.id, { url_or_id: origUrl }), '원본 연결')}>이 URL로 연결</button></div>
                 {(om || c.original_match) && (() => { const m = om || c.original_match!; return <div className="mb-2 rounded-lg bg-stone-50 p-2 text-xs dark:bg-stone-800/60"><div className="muted"><b>롱폼 원본 후보 순위</b>(쇼츠 제외) · {m.reason} {m.celebrities?.length ? `· 인식된 연예인: ${m.celebrities.join(', ')}` : ''} {m.api_searches ? `· YouTube 검색 ${m.api_searches}회${m.queries?.length ? ` (검색어: ${m.queries.join(' | ')})` : ''}` : ''}{m.hashtags?.length ? ` · 해시태그: ${m.hashtags.map((h) => '#' + h).join(' ')}` : ''}</div>{m.notes?.map((n, i) => <div key={i} className="text-amber-700 dark:text-amber-300">{n}</div>)}{m.candidates.map((o) => <div key={o.video_id} className="mt-1 flex items-center gap-2 border-t border-stone-200 pt-1 dark:border-stone-700"><span className="w-6 shrink-0 text-center font-bold">#{o.rank}</span>{o.thumbnail_url && <img src={o.thumbnail_url} alt="" className="h-9 w-16 rounded object-cover" />}<div className="min-w-0 flex-1"><div className="line-clamp-1 font-medium">{o.title}</div><div className="muted">{o.channel} · {fmt.date(o.published_at)} · {o.is_long ? '롱폼 ' : ''}{fmt.duration(o.duration_seconds)} · 근거 {(o.reasons || o.hits).join(', ') || '없음'} · 점수 {o.score}</div>{o.snippets && o.snippets.length > 0 && <div className="muted italic line-clamp-2">설명란: {o.snippets.join(' / ')}</div>}</div>{o.url && <a className="underline" href={o.url} target="_blank" rel="noreferrer">열기</a>}<button className="btn-primary px-2 py-0.5" onClick={() => act(() => api.linkOriginal(c.id, { video_id: o.video_id }), '원본 연결')}>이 영상이 원본</button></div>)}</div> })()}
                 <Field label="연예인"><Select value={v.celebrity_id ? String(v.celebrity_id) : ''} onChange={(s) => act(() => api.patchVideo(v.id, { celebrity_id: s ? Number(s) : null }), '저장')} placeholder="미지정" options={(celebs.data || []).map((x) => [String(x.id), x.name])} /></Field>
                 <div className="mt-2"><Field label="원본 영상"><Select value="" onChange={(s) => s && act(() => api.patchVideo(v.id, { original_video_id: Number(s) }), '원본 연결')} placeholder="선택" options={(originals.data?.items || []).filter((o) => !v.celebrity_id || o.celebrity_name === (celebs.data || []).find((x) => x.id === v.celebrity_id)?.name).map((o) => [String(o.id), `${o.celebrity_name || o.channel_name || ''} · ${o.title.slice(0, 50)}`])} /></Field></div>
@@ -232,6 +234,7 @@ export default function CandidateDetail() {
       </div>
 
       <CaptureInvestigateModal open={capture} onClose={() => setCapture(false)} videoId={v.id} hintDefault={c.celebrity_name ? `${c.celebrity_name} 영상 속 상품` : ''} onAdopt={async (it, cat) => { const p = await api.adoptSuggestion(v.id, { name: it.name, brand: it.brand || null, category: cat, subcategory: it.model_or_option || null, evidence: it.evidence }); await api.patchCandidate(c.id, { product_id: p.id }); q.reload() }} />
+      <CaptureOriginalModal open={captureOrig} onClose={() => setCaptureOrig(false)} candidateId={c.id} onResult={(mt) => { setOm(mt); q.reload() }} />
       {c.product && <OfferSearchModal open={offerSearch} onClose={() => setOfferSearch(false)} productId={c.product.id} initialQuery={`${c.product.brand || ''} ${c.product.name}`.trim()} onAdded={() => q.reload()} />}
       <div className="card p-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

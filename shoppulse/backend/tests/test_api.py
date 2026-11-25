@@ -588,3 +588,17 @@ def test_find_original_and_segment_from_transcript(client):
     client.patch(f"/api/videos/{short['id']}", json={"original_video_id": None})
     d = client.post(f"/api/candidates/{cid}/link-original", json={"video_id": orig["id"]}).json()
     assert d["original_video"]["id"] == orig["id"] and d["original_match"]["confidence"] == "manual"
+
+
+def test_find_original_by_image_without_keys_is_honest(client):
+    import io
+    cid = [c for c in client.get("/api/candidates").json()["items"] if c["is_short_candidate"]][0]["id"]
+    png = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fe0d2c6a2e0000000049454e44ae426082")
+    r = client.post(f"/api/candidates/{cid}/find-original-by-image", params={"use_thumbnail": False},
+                    files={"files": ("a.png", io.BytesIO(png), "image/png")})
+    assert r.status_code == 200
+    m = r.json()["match"]
+    assert m["method"] == "image" and not m.get("linked") and m["candidates"] == []
+    assert any("GOOGLE_VISION_API_KEY" in n for n in m["notes"]) and any("ANTHROPIC_API_KEY" in n for n in m["notes"])
+    # 이미지도 썸네일도 없으면 400
+    assert client.post(f"/api/candidates/{cid}/find-original-by-image", params={"use_thumbnail": False}).status_code == 400

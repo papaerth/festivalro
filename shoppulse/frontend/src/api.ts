@@ -104,6 +104,7 @@ export const api = {
   setProduced: (id: number, b: { produced: boolean; produced_url?: string | null }) => req<T.CandidateDetail>('PUT', `/api/candidates/${id}/produced`, b),
   computeOutlier: (id: number) => req<{ outlier: T.ComputedOutlier; quota_used: number }>('POST', `/api/videos/${id}/compute-outlier`),
   findOriginal: (id: number, use_api = true) => req<{ match: T.OriginalMatch; candidate: T.CandidateDetail }>('POST', `/api/candidates/${id}/find-original?use_api=${use_api}`),
+  findOriginalByImage: (id: number, files: File[], useThumbnail = true) => { const fd = new FormData(); files.forEach((f) => fd.append('files', f)); return req<{ match: T.OriginalMatch; candidate: T.CandidateDetail }>('POST', `/api/candidates/${id}/find-original-by-image?use_thumbnail=${useThumbnail}`, fd, true) },
   linkOriginal: (id: number, b: { video_id?: number; url_or_id?: string }) => req<T.CandidateDetail>('POST', `/api/candidates/${id}/link-original`, b),
   findSegment: (id: number, adopt = false) => req<{ proposal: T.SegmentProposal; candidate: T.CandidateDetail }>('POST', `/api/candidates/${id}/find-segment?adopt=${adopt}`),
   adoptSegment: (id: number, b: { start_seconds: number; end_seconds?: number | null; quote?: string | null; basis?: string; note?: string }) => req<T.CandidateDetail>('POST', `/api/candidates/${id}/adopt-segment`, b),
