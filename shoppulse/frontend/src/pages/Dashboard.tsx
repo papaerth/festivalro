@@ -6,6 +6,12 @@ import { Badge, ErrorBox, Spinner, Stat, toneFor, useToast } from '../components
 import type { BulkState } from '../types'
 import CandidateCard from '../components/CandidateCard'
 
+const SLOTS = [
+  { key: 'morning' as const, time: '11:00', label: '오전 11시', tone: 'bg-amber-600' },
+  { key: 'afternoon' as const, time: '17:00', label: '오후 5시', tone: 'bg-orange-600' },
+  { key: 'night' as const, time: '21:00', label: '밤 9시', tone: 'bg-indigo-700' },
+]
+
 export default function Dashboard() {
   const stats = useAsync(() => api.stats())
   const sources = useAsync(() => api.dataSources())
@@ -130,10 +136,46 @@ export default function Dashboard() {
 
       <div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="section-title">오늘의 Top 6 <span className="muted text-sm font-normal">· 소싱 점수 순 · 아직 안 만든 후보</span></h2>
+          <h2 className="section-title">오늘의 Top 6 <span className="muted text-sm font-normal">· 소싱 점수 순 · 아직 안 만든 후보 · 위 3칸은 시간대별 원픽</span></h2>
           <div className="flex gap-1">{(['beauty', 'living', 'food'] as const).map((k) => <button key={k} className={cat === k ? 'btn-primary' : 'btn-ghost'} onClick={() => setCat(k)}>{LABELS.category[k]}</button>)}</div>
         </div>
         {cands.data && cands.data.items.length === 0 && <div className="card p-6 text-sm muted">{LABELS.category[cat]} 후보가 없습니다. 「오늘 소싱 실행」으로 자동 발굴하거나 영상 상세에서 등록하세요.</div>}
+        {cands.data && cands.data.items.length > 0 && (() => {
+          // 시간대별 원픽: Top 6 안에서 추천 슬롯이 맞는 최고 점수 후보, 없으면 남은 후보 중 점수 최고(점수순 배정으로 표시)
+          const items = cands.data.items
+          const used = new Set<number>()
+          const picks = SLOTS.map((sl) => {
+            let pick = items.find((c) => !used.has(c.id) && c.recommended_slot === sl.key)
+            let how: 'slot' | 'fallback' | 'none' = 'slot'
+            if (!pick) { pick = items.find((c) => !used.has(c.id)); how = pick ? 'fallback' : 'none' }
+            if (pick) used.add(pick.id)
+            return { ...sl, pick, how }
+          })
+          return (
+            <div className="mb-4 grid gap-3 md:grid-cols-3">
+              {picks.map((p) => (
+                <div key={p.key} className="card overflow-hidden">
+                  <div className={`flex items-baseline justify-between px-4 py-3 text-white ${p.tone}`}>
+                    <div><div className="text-3xl font-black tracking-tight">{p.time}</div><div className="text-sm font-semibold opacity-90">{p.label} 원픽</div></div>
+                    <div className="text-right text-[11px] opacity-90">{LABELS.category[cat]}<br />{s.season?.weather?.status === 'ok' ? `${s.season.weather.label} ${s.season.weather.temperature}°C` : ''}</div>
+                  </div>
+                  {p.pick ? (
+                    <Link to={`/candidates/${p.pick.id}`} className="block p-3 hover:bg-stone-50 dark:hover:bg-stone-800/60">
+                      <div className="flex gap-3">
+                        {p.pick.video?.thumbnail_url && <img src={p.pick.video.thumbnail_url} alt="" className="h-16 w-28 shrink-0 rounded-lg object-cover" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} />}
+                        <div className="min-w-0">
+                          <div className="line-clamp-2 text-sm font-semibold leading-snug">{p.pick.video?.title}</div>
+                          <div className="mt-1 text-[11px] muted">{p.pick.celebrity_name || '연예인 미지정'} · {p.pick.score !== null ? `${p.pick.score}점` : '점수 없음'}{p.pick.grade_label ? ` · ${p.pick.grade_label}` : ''} · 조회 {fmt.compact(p.pick.video?.view_count)}</div>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-[11px] muted">{p.how === 'slot' ? (p.pick.slot_reason || '추천 시간대 일치') : `이 시간대로 추천된 후보가 없어 남은 후보 중 점수 최고를 배정했습니다 (추천 시간대: ${p.pick.recommended_slot ? LABELS.slot[p.pick.recommended_slot] : '미지정'})`}</div>
+                    </Link>
+                  ) : <div className="p-3 text-sm muted">이 시간대에 배정할 후보가 없습니다.</div>}
+                </div>
+              ))}
+            </div>
+          )
+        })()}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {(cands.data?.items || []).map((c, i) => <CandidateCard key={c.id} c={c} rank={i + 1} showReason />)}
         </div>
