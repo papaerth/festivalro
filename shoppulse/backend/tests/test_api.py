@@ -510,3 +510,9 @@ def test_computed_vph_and_outlier(client):
     assert abs(d["computed"]["vph_recent"]["value"] - 1000.0) < 5 and d["vph_source"] == "computed_recent"
     req = client.get("/api/videos/vidiq-request", params={"limit": 5}).json()
     assert req["count"] >= 1 and "vidiq_video_stats" in req["prompt"]
+
+
+def test_ai_suggest_falls_back_to_rule_without_key(client):
+    cid = client.get("/api/candidates").json()["items"][0]["id"]
+    r = client.post(f"/api/candidates/{cid}/scores/suggest", params={"mode": "ai"}).json()
+    assert r["scores"]["ai"] is not None and r["scores"]["ai"]["item_scores"]["hook"] is None  # 키 없음 → 규칙 제안

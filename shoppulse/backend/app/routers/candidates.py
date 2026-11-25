@@ -216,10 +216,38 @@ def add_score(cid: int, body: schemas.ScoreIn, db: Session = Depends(get_db)):
 
 
 @router.post("/{cid}/scores/suggest")
-def suggest_score(cid: int, db: Session = Depends(get_db)):
-    """실제 지표가 있을 때만 '성과' 항목 AI 제안을 만든다. 나머지 항목은 NULL(사람 평가 필요)."""
+def suggest_score(cid: int, mode: str = "ai", db: Session = Depends(get_db)):
+    """AI 제안 점수. mode=ai: Claude 가 6개 항목 모두 채점(성과 항목은 지표가 있으면 규칙값 우선).
+    mode=rule 또는 AI 키 없음: 규칙으로 '성과' 항목만 제안하고 나머지는 NULL."""
     c = get_or_404(db, SourcingCandidate, cid, "후보")
     ver = get_active_version(db)
+    from ..config import get_settings
+    if mode == "ai" and get_settings().anthropic_api_key:
+        from ..services.ai_scorer import score_with_ai
+        from ..services.metrics import latest_metrics
+        from ..services.shorts_planner import build_context
+        from ..services.claude_client import ClaudeError
+        graph = video_graph(c.video)
+        ev = serializers.evidence_summary(c.video)
+        perf_item = next((i for i in ver.config["items"] if i["key"] == "performance"), None)
+        perf = suggest_performance_score(c.video.metrics, graph["graph_type"], perf_item["max"] if perf_item else 20, evidence=ev)
+        ctx = build_context(c) | {"graph": graph, "evidence": ev, "view_count": c.video.view_count,
+                                  "metrics": {k: m.get("value") for k, m in latest_metrics(c.video).items()},
+                                  "computed": serializers.video_summary(c.video, with_graph=False).get("computed"),
+                                  "auto_discovery_note": c.notes}
+        try:
+            r = score_with_ai(c, ver.config, ctx, perf)
+        except ClaudeError as e:
+            raise HTTPException(502, f"AI 채점 실패: {e}")
+        except Exception as e:
+            raise HTTPException(502, f"AI 채점 실패: {e}")
+        total, grade = compute_total(r["item_scores"], ver.config)
+        s = SourcingScore(candidate_id=c.id, scoring_version_id=ver.id, scorer="ai", item_scores=r["item_scores"],
+                          rationale=r["rationale"] | {"_summary": r["summary"], "_model": r["model"]}, total=total, grade_key=grade)
+        db.add(s)
+        log(db, "candidate", c.id, "score", {"scorer": "ai", "total": total, "mode": "ai"})
+        db.commit()
+        return serializers.candidate_detail(c, ver.config)
     perf_item = next((i for i in ver.config["items"] if i["key"] == "performance"), None)
     graph = video_graph(c.video)
     item_scores = {i["key"]: None for i in ver.config["items"]}

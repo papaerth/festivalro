@@ -172,16 +172,17 @@ export default function CandidateDetail() {
             <h2 className="section-title">소싱 점수 <span className="muted text-sm font-normal">· {cfg.name}</span></h2>
             <div className="flex gap-2 text-sm">
               <span className="muted">AI 제안 {c.scores.ai?.total ?? '없음'} · 사람 {c.scores.human?.total ?? '없음'}</span>
-              <button className="btn-ghost text-xs" onClick={() => act(() => api.suggestScore(c.id), 'AI 제안 생성(지표 있는 항목만)')}>AI 제안 생성</button>
+              <button className="btn-primary text-xs" onClick={() => act(() => api.suggestScore(c.id), 'AI 가 6개 항목을 채점했습니다 (AI 점수)')}>AI 채점 생성</button>
             </div>
           </div>
-          <table className="w-full"><thead><tr><th className="th">항목</th><th className="th">배점</th><th className="th">AI 제안</th><th className="th">사람 점수</th><th className="th">근거</th></tr></thead>
+          {c.scores.ai?.rationale?._summary && <p className="mb-2 rounded-lg bg-stone-50 p-2 text-xs dark:bg-stone-800/60"><b>AI 총평:</b> {c.scores.ai.rationale._summary} <span className="muted">({c.scores.ai.rationale._model})</span></p>}
+          <table className="w-full"><thead><tr><th className="th">항목</th><th className="th">배점</th><th className="th">AI 점수</th><th className="th">사람 점수</th><th className="th">근거</th></tr></thead>
             <tbody>
               {cfg.items.map((i) => (
                 <tr key={i.key} className="border-t border-stone-100 dark:border-stone-800">
                   <td className="td"><div className="font-medium">{i.label}</div><div className="text-[11px] muted">{i.criteria}</div></td>
                   <td className="td tabular-nums">{i.max}</td>
-                  <td className="td tabular-nums">{c.scores.ai?.item_scores[i.key] ?? <span className="muted">없음</span>}<div className="text-[11px] muted max-w-[160px]">{c.scores.ai?.rationale?.[i.key]}</div></td>
+                  <td className="td tabular-nums">{c.scores.ai?.item_scores[i.key] ?? <span className="muted">없음</span>}<div className="text-[11px] muted max-w-[200px]">{c.scores.ai?.rationale?.[i.key]}</div></td>
                   <td className="td"><input className="input w-20" type="number" min={0} max={i.max} value={scores[i.key] ?? ''} onChange={(e) => setScores({ ...scores, [i.key]: e.target.value })} /></td>
                   <td className="td"><input className="input" value={rationale[i.key] ?? ''} onChange={(e) => setRationale({ ...rationale, [i.key]: e.target.value })} placeholder="판단 근거" /></td>
                 </tr>
@@ -189,7 +190,7 @@ export default function CandidateDetail() {
             </tbody></table>
           <div className="mt-3 flex items-center justify-between">
             <div className="text-sm">합계 <b className="tabular-nums">{sumEntered}</b> / 100 {allFilled ? '' : <span className="muted">(모든 항목을 채워야 총점·등급이 산출됩니다)</span>}</div>
-            <button className="btn-primary" onClick={() => act(() => api.addScore(c.id, { scorer: 'human', item_scores: Object.fromEntries(cfg.items.map((i) => [i.key, scores[i.key] === '' ? null : Number(scores[i.key])])), rationale }), '사람 점수 저장')}>사람 점수 저장</button>
+            <div className="flex gap-2">{c.scores.ai && <button className="btn-ghost" onClick={() => { const s2: Record<string, string> = {}, r2: Record<string, string> = {}; cfg.items.forEach((i) => { const v2 = c.scores.ai!.item_scores[i.key]; s2[i.key] = v2 === null || v2 === undefined ? '' : String(v2); r2[i.key] = c.scores.ai!.rationale?.[i.key] || '' }); setScores(s2); setRationale(r2) }}>AI 점수 불러와 수정</button>}<button className="btn-primary" onClick={() => act(() => api.addScore(c.id, { scorer: 'human', item_scores: Object.fromEntries(cfg.items.map((i) => [i.key, scores[i.key] === '' ? null : Number(scores[i.key])])), rationale }), '사람 점수 저장')}>사람 점수 저장</button></div>
           </div>
           <div className="mt-2 text-[11px] muted">등급: {cfg.grades.map((g) => `${g.min}+ ${g.label}`).join(' · ')} · 최종 표시 점수는 사람 점수가 있으면 사람 점수.</div>
           {c.scores.history.length > 0 && <details className="mt-2 text-xs"><summary className="cursor-pointer muted">점수 이력 {c.scores.history.length}건</summary><ul className="mt-1 space-y-0.5">{c.scores.history.map((s: Score) => <li key={s.id}>{fmt.datetime(s.created_at)} · {s.scorer === 'ai' ? 'AI' : '사람'} · {s.total ?? '총점 없음'} {s.grade_label ? `(${s.grade_label})` : ''}</li>)}</ul></details>}
