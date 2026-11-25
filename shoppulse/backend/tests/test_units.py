@@ -291,7 +291,7 @@ def test_audio_and_overlay_helpers(tmp_path, monkeypatch):
     from app.services.shorts_maker import EDL_SCHEMA, normalize_edl, plan_overlays
     from app.services.style_profile import normalize_style, style_guide
     st = normalize_style({"narration": {"enabled": 1, "rate": 9}, "sfx": {"enabled": True}, "bgm": {"mode": "이상", "volume": 5}, "popup": {"position": "x", "size": "large"}})
-    assert st["narration"]["rate"] == 1.4 and st["bgm"] == {"mode": "none", "volume": 0.35, "track": ""} and st["popup"] == {"position": "top_right", "size": "large"}
+    assert st["narration"]["rate"] == 1.4 and st["bgm"] == {"mode": "none", "volume": 0.35, "track": ""} and st["popup"] == {"position": "top_right", "size": "large", "motion": True}
     assert style_guide(st)["narration"] is True and normalize_style(None)["narration"]["enabled"] is False
     assert "narration" in EDL_SCHEMA["required"] and "product_popup_segment" in EDL_SCHEMA["required"]
     edl = normalize_edl({"hook": {"start": 1, "end": 3.5, "caption": ""}, "segments": [{"start": 10 + i * 5, "end": 14 + i * 5, "caption": ""} for i in range(5)],
@@ -327,3 +327,62 @@ def test_audio_and_overlay_helpers(tmp_path, monkeypatch):
     random.seed(3)
     nz = Image.new("RGB", (200, 120)); nz.putdata([(random.randint(0, 255),) * 3 for _ in range(200 * 120)]); nz.save(tmp_path / "n.png")
     assert prepare_overlay(tmp_path / "n.png", tmp_path / "n_cut.png")["method"] == "card"
+
+
+def test_elevenlabs_mid_narration_and_stickers(tmp_path, monkeypatch):
+    """ElevenLabs 요청 모양, 중간 내레이션·스티커 편집안 정리, 스티커 그림."""
+    import pytest
+    from app.config import get_settings
+    from app.services import audio_fx
+    from app.services.overlay_assets import STICKERS, draw_sticker
+    from app.services.shorts_maker import EDL_SCHEMA, normalize_edl
+    from app.services.style_profile import normalize_style, style_guide
+    st = normalize_style({"narration": {"enabled": True, "mid_count": 9}, "stickers": {"enabled": 1}, "popup": {"motion": False}})
+    assert st["narration"]["mid_count"] == 2 and st["stickers"] == {"enabled": True} and st["popup"]["motion"] is False
+    g = style_guide(st)
+    assert g["mid_narrations"] == 2 and g["stickers"] is True and style_guide(normalize_style({"narration": {"mid_count": 2}}))["mid_narrations"] == 0
+    assert {"mid_narrations", "stickers"} <= set(EDL_SCHEMA["required"]) and not any(k in json.dumps(EDL_SCHEMA) for k in ('"minimum"', '"maximum"', '"maxItems"'))
+    edl = normalize_edl({"segments": [{"start": 10 + i * 5, "end": 14 + i * 5, "caption": ""} for i in range(5)],
+                         "mid_narrations": [{"segment": 2, "text": "  그런데 가격을 보고   놀랐다는데 "}, {"segment": "x", "text": "버림"}, {"text": ""}, {"start": 12.34, "text": "시각 지정"}],
+                         "stickers": [{"segment": 1, "type": "heart"}, {"segment": 2, "type": "없는것"}, {"start": 3, "type": "fire", "duration": 2}]}, 100, 25)
+    assert edl["mid_narrations"] == [{"text": "그런데 가격을 보고 놀랐다는데", "segment": 2}, {"text": "시각 지정", "start": 12.3}]
+    assert edl["stickers"] == [{"type": "heart", "segment": 1}, {"type": "fire", "start": 3.0, "duration": 2.0}]
+    for k in STICKERS:
+        p = draw_sticker(k, tmp_path / f"{k}.png")
+        assert p.exists() and p.stat().st_size > 1500
+    # ElevenLabs: 키가 있으면 가장 먼저 쓰고, 내 계정 목소리 목록에서 한국어·여성 목소리를 고른다
+    s = get_settings()
+    monkeypatch.setattr(s, "elevenlabs_api_key", "el-test-key")
+    audio_fx._eleven_cache.clear()
+    calls = []
+
+    class R:
+        def __init__(self, code, body=None, content=b""):
+            self.status_code, self._b, self.content, self.text = code, body, content, json.dumps(body or {})
+        def json(self):
+            return self._b
+
+    def fake_get(url, headers=None, timeout=None):
+        calls.append(("GET", url, headers))
+        return R(200, {"voices": [{"voice_id": "v_en", "name": "Adam", "labels": {"gender": "male", "language": "en"}},
+                                  {"voice_id": "v_ko", "name": "한국어 여성", "labels": {"gender": "female", "language": "ko"}}, {"name": "id 없음"}]})
+
+    def fake_post(url, params=None, headers=None, json=None, timeout=None):
+        calls.append(("POST", url, headers, params, json))
+        return R(200, content=b"ID3" + b"0" * 2000)
+
+    monkeypatch.setattr(audio_fx.httpx, "get", fake_get)
+    monkeypatch.setattr(audio_fx.httpx, "post", fake_post)
+    stt = audio_fx.tts_status()
+    assert stt["available"] and stt["provider"] == "elevenlabs" and stt["voice"] == "한국어 여성" and stt["voice_id"] == "v_ko"
+    got = audio_fx.synthesize("*십 년째* 쓴다는 물건", tmp_path / "n.wav", 1.12)
+    assert got["provider"] == "elevenlabs" and got["path"].endswith("n.mp3") and got["tempo"] == 1.12 and (tmp_path / "n.mp3").read_bytes().startswith(b"ID3")
+    post = [c for c in calls if c[0] == "POST"][0]
+    assert post[1] == "https://api.elevenlabs.io/v1/text-to-speech/v_ko" and post[2] == {"xi-api-key": "el-test-key"}
+    assert post[3] == {"output_format": "mp3_44100_128"} and post[4] == {"text": "십 년째 쓴다는 물건", "model_id": "eleven_multilingual_v2"}
+    assert calls[0][1].endswith("/v2/voices") and len([c for c in calls if c[0] == "GET"]) == 1  # 목록은 기억해 두고 다시 묻지 않는다
+    # 오류는 사유와 함께 알려 준다
+    monkeypatch.setattr(audio_fx.httpx, "post", lambda *a, **k: R(401, {"detail": {"status": "invalid_api_key", "message": "Invalid API key"}}))
+    with pytest.raises(audio_fx.TTSError, match="401.*Invalid API key.*API 키"):
+        audio_fx.synthesize("문장", tmp_path / "e.wav")
+    audio_fx._eleven_cache.clear()

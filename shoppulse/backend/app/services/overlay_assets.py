@@ -99,3 +99,58 @@ def prepare_overlay(src: Path, out: Path, kind: str = "product") -> dict:
     out.parent.mkdir(parents=True, exist_ok=True)
     res.save(out, "PNG")
     return {"method": method, "label": METHOD_LABEL[method], "width": res.width, "height": res.height}
+
+
+# ---------------------------------------------------------------- 내장 스티커(직접 그림 — 외부 이미지·이모지 글꼴을 쓰지 않는다)
+STICKERS = {"exclaim": "놀람(!)", "question": "궁금(?)", "heart": "마음에 듦(하트)", "star": "추천(별)", "sparkle": "반짝", "fire": "인기(불꽃)"}
+KINDS["sticker"] = "스티커"
+
+
+def _poly(draw, pts, fill):
+    draw.polygon([(round(x), round(y)) for x, y in pts], fill=fill)
+
+
+def draw_sticker(kind: str, out: Path, size: int = 260) -> Path:
+    """내장 스티커를 PNG 로 그린다(4배 크기로 그려 줄여서 가장자리를 매끈하게). 이미 있으면 다시 쓰지 않는다."""
+    import math
+    from PIL import Image, ImageDraw
+    if kind not in STICKERS:
+        kind = "sparkle"
+    if out.exists() and out.stat().st_size > 500:
+        return out
+    S = 800
+    c = S / 2
+    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    star = lambda n, r1, r2, cx=c, cy=c, rot=-math.pi / 2: [(cx + (r1 if i % 2 == 0 else r2) * math.cos(rot + i * math.pi / n),  # noqa: E731
+                                                              cy + (r1 if i % 2 == 0 else r2) * math.sin(rot + i * math.pi / n)) for i in range(n * 2)]
+    if kind == "heart":
+        pts = []
+        for i in range(120):
+            t = i / 120 * 2 * math.pi
+            pts.append((c + 19.5 * 16 * math.sin(t) ** 3, c - 30 - 19.5 * (13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t))))
+        _poly(d, pts, (255, 59, 92, 255))
+        d.ellipse([c - 200, c - 230, c - 110, c - 150], fill=(255, 150, 170, 255))
+    elif kind == "star":
+        _poly(d, star(5, 350, 150), (255, 212, 0, 255))
+    elif kind == "sparkle":
+        _poly(d, star(4, 330, 85, c - 40, c + 30), (255, 244, 168, 255))
+        _poly(d, star(4, 150, 40, c + 230, c - 220), (255, 255, 255, 255))
+    elif kind == "exclaim":
+        _poly(d, star(12, 370, 280), (255, 212, 0, 255))
+        d.rounded_rectangle([c - 42, c - 210, c + 42, c + 70], radius=40, fill=(20, 20, 20, 255))
+        d.ellipse([c - 50, c + 120, c + 50, c + 220], fill=(20, 20, 20, 255))
+    elif kind == "question":
+        d.ellipse([c - 340, c - 340, c + 340, c + 340], fill=(45, 140, 255, 255))
+        d.arc([c - 120, c - 220, c + 120, c + 20], start=180, end=90, fill=(255, 255, 255, 255), width=70)
+        d.rounded_rectangle([c - 35, c - 20, c + 35, c + 90], radius=30, fill=(255, 255, 255, 255))
+        d.ellipse([c - 48, c + 140, c + 48, c + 236], fill=(255, 255, 255, 255))
+    else:  # fire
+        drop = lambda a, b, cx, top: [(cx + a * (1 - math.sin(t)) * math.cos(t), top + b * (1 - math.sin(t))) for t in [i / 100 * 2 * math.pi for i in range(100)]]  # noqa: E731
+        _poly(d, drop(235, 350, c, 40), (255, 106, 0, 255))
+        _poly(d, drop(135, 210, c, 300), (255, 212, 0, 255))
+    res = _sticker(img, 26)
+    res.thumbnail((size, size))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    res.save(out, "PNG")
+    return out

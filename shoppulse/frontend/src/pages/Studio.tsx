@@ -4,7 +4,7 @@ import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
 import { Badge, ErrorBox, Spinner, useToast } from '../components/ui'
 import CaptureOriginalModal from '../components/CaptureOriginal'
-import type { EdlClip, EdlOverlay, StudioRender, StudioState } from '../types'
+import type { EdlClip, EdlOverlay, EdlSticker, MidNarration, StudioRender, StudioState } from '../types'
 
 const ts = (sec: number | null | undefined) => (sec === null || sec === undefined ? '' : `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`)
 const toSec = (t: string) => { const p = t.trim().split(':').map(Number); if (p.some(isNaN)) return NaN; return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p.length === 2 ? p[0] * 60 + p[1] : p[0] }
@@ -19,10 +19,10 @@ export default function Studio() {
   const [hint, setHint] = useState('')
   const [upPct, setUpPct] = useState<number | null>(null)
   const [capture, setCapture] = useState(false)
-  const [edit, setEdit] = useState<{ hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; end_caption: string; narration: string; overlays: EdlOverlay[] } | null>(null)
+  const [edit, setEdit] = useState<{ hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; end_caption: string; narration: string; overlays: EdlOverlay[]; mid_narrations: MidNarration[]; stickers: EdlSticker[] } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const assetRef = useRef<HTMLInputElement>(null)
-  const [assetKind, setAssetKind] = useState<'product' | 'logo'>('product')
+  const [assetKind, setAssetKind] = useState<'product' | 'logo' | 'sticker'>('product')
   const s = q.data
   const latest: StudioRender | undefined = s?.renders[0]
   const busy = latest && (latest.status === 'queued' || latest.status === 'running')
@@ -34,7 +34,7 @@ export default function Studio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, cid])
   useEffect(() => {
-    if (latest?.status === 'done' && latest.edl) setEdit({ hook: latest.edl.hook, segments: latest.edl.segments, title_lines: latest.edl.title_lines, credit: latest.edl.credit, end_caption: latest.edl.end_caption || '', narration: latest.edl.narration || '', overlays: latest.edl.overlays || [] })
+    if (latest?.status === 'done' && latest.edl) setEdit({ hook: latest.edl.hook, segments: latest.edl.segments, title_lines: latest.edl.title_lines, credit: latest.edl.credit, end_caption: latest.edl.end_caption || '', narration: latest.edl.narration || '', overlays: latest.edl.overlays || [], mid_narrations: latest.edl.mid_narrations || [], stickers: latest.edl.stickers || [] })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latest?.id, latest?.status])
 
@@ -100,12 +100,13 @@ export default function Studio() {
         <p className="mb-2 text-xs muted">올린 사진은 배경을 지워(누끼) 흰 테두리 스티커로 만들고, 영상에서 상품이 나오는 순간에 톡 튀어나오게 합니다. 흰 배경의 쇼핑몰 상품 사진이나 배경이 투명한 PNG 가 가장 깔끔합니다. 사용 권한이 있는 이미지만 올려 주세요.</p>
         <input ref={assetRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) act(() => api.studioAddAsset(cid, f, assetKind), '사진을 올렸습니다') }} />
         <div className="flex flex-wrap items-center gap-3">
-          <button className="btn-ghost border border-stone-300 dark:border-stone-600" disabled={s.assets.length >= 4} onClick={() => { setAssetKind('product'); setTimeout(() => assetRef.current?.click(), 0) }}>+ 상품 사진</button>
-          <button className="btn-ghost border border-stone-300 dark:border-stone-600" disabled={s.assets.length >= 4} onClick={() => { setAssetKind('logo'); setTimeout(() => assetRef.current?.click(), 0) }}>+ 브랜드 로고</button>
+          <button className="btn-ghost border border-stone-300 dark:border-stone-600" disabled={s.assets.length >= 6} onClick={() => { setAssetKind('product'); setTimeout(() => assetRef.current?.click(), 0) }}>+ 상품 사진</button>
+          <button className="btn-ghost border border-stone-300 dark:border-stone-600" disabled={s.assets.length >= 6} onClick={() => { setAssetKind('logo'); setTimeout(() => assetRef.current?.click(), 0) }}>+ 브랜드 로고</button>
+          <button className="btn-ghost border border-stone-300 dark:border-stone-600" disabled={s.assets.length >= 6} onClick={() => { setAssetKind('sticker'); setTimeout(() => assetRef.current?.click(), 0) }}>+ 내 스티커</button>
           {s.assets.map((a) => (
             <div key={a.id} className="flex items-center gap-2 rounded-xl border border-stone-200 p-1.5 pr-3 text-xs dark:border-stone-700">
               <img src={a.url} alt="" className="h-14 w-14 rounded-lg bg-stone-700 object-contain" />
-              <div><div className="font-semibold">{a.kind === 'logo' ? '로고' : '상품 사진'}</div><div className="muted">{a.method_label}</div></div>
+              <div><div className="font-semibold">{a.kind === 'logo' ? '로고' : a.kind === 'sticker' ? '스티커' : '상품 사진'}</div><div className="muted">{a.method_label}</div></div>
               <button className="text-red-600" title="지우기" onClick={() => act(() => api.studioDeleteAsset(cid, a.id), '지웠습니다')}>✕</button>
             </div>
           ))}
@@ -128,7 +129,7 @@ export default function Studio() {
             {s.styles.filter((x) => x.status === 'learning').map((x) => <span key={x.id} className="rounded-xl bg-stone-100 px-3 py-2 text-xs muted dark:bg-stone-800">「{x.name}」 학습 중…</span>)}
             <Link to="/styles" className="btn-ghost text-xs">+ 레퍼런스 채널 추가·관리</Link>
           </div>
-          <p className="mt-1 text-[11px] muted">🔊 AI 음성 내레이션: {s.tts.available ? `사용 가능 (${s.tts.provider === 'google' ? 'Google 음성' : 'Windows 내장 음성'}${s.tts.voice ? ' · ' + s.tts.voice : ''})` : `사용 불가 — ${s.tts.note}`} · 내레이션·효과음·배경음악은 스타일에서 켠 경우에 들어갑니다.</p>
+          <p className="mt-1 text-[11px] muted">🔊 AI 음성 내레이션: {s.tts.available ? `사용 가능 (${s.tts.provider === 'elevenlabs' ? 'ElevenLabs' : s.tts.provider === 'google' ? 'Google 음성' : 'Windows 내장 음성'}${s.tts.voice ? ' · ' + s.tts.voice : ''})` : `사용 불가 — ${s.tts.note}`} · 내레이션·효과음·배경음악은 스타일에서 켠 경우에 들어갑니다.</p>
           <p className="mt-1 text-[11px] muted">{s.styles.length === 0 ? '레퍼런스 채널을 3~4개 등록해 두면, 그 채널의 편집 방식(화면 배치·자막 모양·후킹 방식·컷 속도)으로 만드는 버튼이 여기에 생깁니다.' : '편집 방식만 따라 하고 문구·장면은 베끼지 않습니다. 스타일마다 우리만의 차별점(킥)이 함께 적용됩니다.'}</p>
         </div>
         {busy && latest && <div className="mt-3"><div className="flex justify-between text-sm"><span>{latest.step}</span><span className="tabular-nums">{latest.progress}%</span></div><div className="mt-1 h-2 w-full overflow-hidden rounded bg-stone-200 dark:bg-stone-700"><div className="h-full bg-emerald-600 transition-all" style={{ width: `${latest.progress}%` }} /></div></div>}
@@ -144,7 +145,7 @@ export default function Studio() {
               <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={!!c.produced_at} onChange={(e) => api.setProduced(cid, { produced: e.target.checked }).then(() => q.reload())} /> 올렸음(제작함)</label>
             </div>
             <div className="mt-1 text-[11px] muted">{latest.output_info?.duration}초 · {latest.output_info?.width}×{latest.output_info?.height} · {((latest.output_info?.size || 0) / 1024 / 1024).toFixed(1)}MB · 스타일: {usedStyle ? `「${usedStyle}」` : '기본'} · 편집 근거: {latest.decided_by}</div>
-            {latest.edl.audio && (latest.edl.audio.narration || latest.edl.audio.bgm || latest.edl.audio.sfx?.length) ? <div className="mt-1 text-[11px] muted">🔊 {[latest.edl.audio.narration ? `내레이션(${latest.edl.audio.narration})` : null, latest.edl.audio.sfx?.length ? `효과음 ${latest.edl.audio.sfx.length}개` : null, latest.edl.audio.bgm ? `배경음악(${latest.edl.audio.bgm})` : null].filter(Boolean).join(' · ')}</div> : null}
+            {latest.edl.audio && (latest.edl.audio.narration_count || latest.edl.audio.bgm || latest.edl.audio.sfx?.length) ? <div className="mt-1 text-[11px] muted">🔊 {[latest.edl.audio.narration_count ? `내레이션 ${latest.edl.audio.narration_count}문장(${latest.edl.audio.voice})` : null, latest.edl.audio.sfx?.length ? `효과음 ${latest.edl.audio.sfx.length}개` : null, latest.edl.audio.bgm ? `배경음악(${latest.edl.audio.bgm})` : null].filter(Boolean).join(' · ')}</div> : null}
           </div>
           <div className="space-y-4">
             {(latest.notes.length > 0 || latest.edl.reason) && <div className="card p-4 text-sm"><h3 className="mb-1 font-semibold">확인할 점</h3>{latest.edl.reason && <p className="text-xs muted">구성 이유: {latest.edl.reason}</p>}{latest.edl.quote_seen && <p className="mt-1 text-xs">화면에서 읽은 말: “{latest.edl.quote_seen}”</p>}<ul className="mt-1 list-disc pl-5 text-xs text-amber-700 dark:text-amber-300">{latest.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
@@ -159,10 +160,26 @@ export default function Studio() {
                 <div className="mt-2 flex items-center gap-2"><button className="btn-ghost px-2 py-1 text-xs" onClick={() => { const last = edit.segments[edit.segments.length - 1]; setEdit({ ...edit, segments: [...edit.segments, { start: last.end + 1, end: last.end + 6, caption: '' }] }) }}>+ 구간 추가</button><input className="input flex-1 text-xs" placeholder="출처 표기" value={edit.credit} onChange={(e) => setEdit({ ...edit, credit: e.target.value })} /></div>
                 <input className="input mt-2 text-xs" placeholder="AI 음성 내레이션 (선택, 첫 장면에서 읽어 줄 한 문장 · 예: ○○이 10년째 쓴다는 물건이 있다는데)" maxLength={60} value={edit.narration} onChange={(e) => setEdit({ ...edit, narration: e.target.value })} />
                 {edit.overlays.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">{edit.overlays.map((o, i) => (
-                  <label key={o.asset_id} className="flex items-center gap-1">{o.kind === 'logo' ? '로고' : '상품 사진'} 등장
+                  <label key={o.asset_id} className="flex items-center gap-1">{o.kind === 'logo' ? '로고' : o.kind === 'sticker' ? '내 스티커' : '상품 사진'} 등장
                     <input type="number" step={0.5} min={0} className="input w-20" value={o.start} onChange={(e) => setEdit({ ...edit, overlays: edit.overlays.map((x, j) => (j === i ? { ...x, start: Number(e.target.value) } : x)) })} />초부터
                     <input type="number" step={0.5} min={1} max={8} className="input w-16" value={o.duration} onChange={(e) => setEdit({ ...edit, overlays: edit.overlays.map((x, j) => (j === i ? { ...x, duration: Number(e.target.value) } : x)) })} />초 동안
                   </label>))}<span className="muted">(완성 영상 기준 시각)</span></div>}
+                <div className="mt-2 space-y-1 text-xs">
+                  {edit.mid_narrations.map((m, i) => (
+                    <div key={i} className="flex items-center gap-2"><span className="whitespace-nowrap">중간 내레이션</span>
+                      <select className="input w-24" value={m.segment ?? 0} onChange={(e) => setEdit({ ...edit, mid_narrations: edit.mid_narrations.map((x, j) => (j === i ? { text: x.text, segment: Number(e.target.value) } : x)) })}>{edit.segments.map((_, k) => <option key={k} value={k}>본편 {k + 1}</option>)}</select>
+                      <input className="input flex-1" maxLength={60} placeholder="그 컷에서 읽어 줄 한 문장 (원본 소리는 그동안 작아집니다)" value={m.text} onChange={(e) => setEdit({ ...edit, mid_narrations: edit.mid_narrations.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })} />
+                      <button className="text-red-600" onClick={() => setEdit({ ...edit, mid_narrations: edit.mid_narrations.filter((_, j) => j !== i) })}>✕</button></div>))}
+                  {edit.stickers.map((m, i) => (
+                    <div key={i} className="flex items-center gap-2"><span className="whitespace-nowrap">움직이는 스티커</span>
+                      <select className="input w-32" value={m.type} onChange={(e) => setEdit({ ...edit, stickers: edit.stickers.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)) })}>{STICKERS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+                      <input type="number" step={0.5} min={0} className="input w-20" value={m.start ?? 0} onChange={(e) => setEdit({ ...edit, stickers: edit.stickers.map((x, j) => (j === i ? { type: x.type, duration: x.duration, start: Number(e.target.value) } : x)) })} /><span>초에 등장</span>
+                      <button className="text-red-600" onClick={() => setEdit({ ...edit, stickers: edit.stickers.filter((_, j) => j !== i) })}>✕</button></div>))}
+                  <div className="flex gap-2">
+                    <button className="btn-ghost px-2 py-1 text-xs" disabled={edit.mid_narrations.length >= 3} onClick={() => setEdit({ ...edit, mid_narrations: [...edit.mid_narrations, { segment: Math.min(edit.segments.length - 1, 2), text: '' }] })}>+ 중간 내레이션</button>
+                    <button className="btn-ghost px-2 py-1 text-xs" disabled={edit.stickers.length >= 4} onClick={() => setEdit({ ...edit, stickers: [...edit.stickers, { type: 'exclaim', start: 5 }] })}>+ 움직이는 스티커</button>
+                  </div>
+                </div>
                 <input className="input mt-2 text-xs" placeholder="끝 질문 자막 (선택, 마지막 1.8초에 표시 · 예: 여러분이라면 살까요?)" maxLength={24} value={edit.end_caption} onChange={(e) => setEdit({ ...edit, end_caption: e.target.value })} />
                 <p className="mt-1 text-[11px] muted">시간은 원본 영상 기준 분:초(소수 가능, 예 12:31.5). 총 길이는 스타일 목표에 맞춰 자동 조정됩니다(기본 18~32초). 자막에서 강조할 단어는 *별표*로 감싸면 스타일의 강조색으로 표시됩니다.</p>
               </div>
@@ -196,6 +213,7 @@ function ClipRow({ label, clip, onChange, onRemove, original }: { label: string;
     </tr>
   )
 }
+const STICKERS = [['exclaim', '놀람 (!)'], ['question', '궁금 (?)'], ['heart', '하트'], ['star', '별'], ['sparkle', '반짝'], ['fire', '불꽃']] as const
 const tsf = (sec: number) => `${Math.floor(sec / 60)}:${(sec % 60).toFixed(1).padStart(4, '0')}`
 const toSecF = (t: string) => { const p = t.trim().split(':').map(Number); if (p.some(isNaN)) return NaN; return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p.length === 2 ? p[0] * 60 + p[1] : p[0] }
 void ts; void toSec

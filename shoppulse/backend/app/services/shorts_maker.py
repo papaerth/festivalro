@@ -27,6 +27,7 @@ from ..models import ShortsProject, ShortsRender, SourcingCandidate, utcnow
 log = logging.getLogger("shoppulse.shorts")
 W, H, FPS = 1080, 1920, 30
 HOOK_MIN, HOOK_MAX = 1.5, 3.5
+STICKER_TYPES = ("exclaim", "question", "heart", "star", "sparkle", "fire")
 TOTAL_MIN, TOTAL_MAX = 18.0, 32.0
 _caps_cache: dict[str, dict] = {}
 
@@ -209,6 +210,34 @@ def normalize_edl(edl: dict, duration: float, total_target: float | None = None)
     for k in ("overlays", "product_popup_segment", "audio"):
         if edl.get(k) is not None:
             out[k] = edl[k]
+    # 중간 내레이션(최대 3)·스티커(최대 4): 컷 번호(segment) 또는 완성 영상 기준 시각(start)로 적는다
+    mids = []
+    for m in (edl.get("mid_narrations") or [])[:6]:
+        txt = " ".join(str((m or {}).get("text") or "").split())[:60] if isinstance(m, dict) else ""
+        if txt:
+            item = {"text": txt}
+            for k in ("segment", "start"):
+                try:
+                    if m.get(k) is not None:
+                        item[k] = max(0, int(m[k])) if k == "segment" else max(0.0, round(float(m[k]), 1))
+                except (TypeError, ValueError):
+                    pass
+            if "segment" in item or "start" in item:
+                mids.append(item)
+    out["mid_narrations"] = mids[:3]
+    stk = []
+    for m in (edl.get("stickers") or [])[:8]:
+        if isinstance(m, dict) and m.get("type") in STICKER_TYPES:
+            item = {"type": m["type"]}
+            for k in ("segment", "start", "duration"):
+                try:
+                    if m.get(k) is not None:
+                        item[k] = max(0, int(m[k])) if k == "segment" else max(0.0, round(float(m[k]), 1))
+                except (TypeError, ValueError):
+                    pass
+            if "segment" in item or "start" in item:
+                stk.append(item)
+    out["stickers"] = stk[:4]
     out["total_seconds"] = round((out["hook"]["end"] - out["hook"]["start"] if out["hook"] else 0) + sum(x["end"] - x["start"] for x in merged), 2)
     return out
 
@@ -225,7 +254,7 @@ def rule_edl(start: float, end: float | None, duration: float, title: str) -> di
 
 EDL_SCHEMA = {
     "type": "object", "additionalProperties": False,
-    "required": ["hook", "segments", "title_lines", "end_caption", "narration", "product_popup_segment", "quote_seen", "reason", "cautions"],
+    "required": ["hook", "segments", "title_lines", "end_caption", "narration", "mid_narrations", "stickers", "product_popup_segment", "quote_seen", "reason", "cautions"],
     "properties": {
         "hook": {"type": "object", "additionalProperties": False, "required": ["start", "end", "caption"],
                  "properties": {"start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"}}},
@@ -234,6 +263,10 @@ EDL_SCHEMA = {
         "title_lines": {"type": "array", "items": {"type": "string"}},
         "end_caption": {"type": "string"},
         "narration": {"type": "string"}, "product_popup_segment": {"type": "integer"},
+        "mid_narrations": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["segment", "text"],
+                                                     "properties": {"segment": {"type": "integer"}, "text": {"type": "string"}}}},
+        "stickers": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["segment", "type"],
+                                               "properties": {"segment": {"type": "integer"}, "type": {"type": "string", "enum": ["exclaim", "question", "heart", "star", "sparkle", "fire"]}}}},
         "quote_seen": {"type": "string"}, "reason": {"type": "string"},
         "cautions": {"type": "array", "items": {"type": "string"}},
     },
@@ -304,7 +337,12 @@ def ai_edit(ff: str, src: str, info: dict, ctx: dict, rng: tuple[float, float], 
         "end_question 이 true 면 end_caption 에 시청자에게 던지는 짧은 질문(14자 이내)을 쓰고, 아니면 빈 문자열. 위 1~6의 사실 규칙이 항상 우선한다.\n"
         "8) narration: style_guide.narration 이 true 면 첫 장면에 AI 음성으로 읽을 한 문장(24자 이내, 3초 안에 읽히게)을 쓴다. narration_pattern 의 방식을 따르되 "
         "화면·자막에서 확인된 사실만으로 궁금증을 만든다(예: '[인물]이 [기간]째 쓴다는 [상품 종류]가 있다는데'). 인물이 하지 않은 말·효능·가격을 지어내지 않는다. false 면 빈 문자열. "
-        "9) product_popup_segment: 상품이 화면에 가장 또렷하게 보이거나 처음 소개되는 segments 의 번호(0부터). 상품 사진을 그때 띄운다. 모르면 0.")
+        "9) product_popup_segment: 상품이 화면에 가장 또렷하게 보이거나 처음 소개되는 segments 의 번호(0부터). 상품 사진을 그때 띄운다. 모르면 0.\n"
+        "10) mid_narrations: style_guide.mid_narrations 가 1 이상이면 그 수만큼까지, 영상 중간에 AI 음성으로 읽을 문장(각 22자 이내)과 넣을 컷 번호(segment, 0부터)를 준다. "
+        "그 컷의 원본 말소리는 작아지므로, 꼭 들어야 하는 대사 컷이 아니라 상품 클로즈업·사용 장면·자료 화면처럼 말이 중요하지 않은 컷에 넣는다. "
+        "내용은 화면에서 확인된 사실을 짚거나 다음 장면을 소개하는 말(예: '그런데 가격을 보고 더 놀랐다는데'). 첫 컷(0)과 마지막 컷은 피한다. 넣을 곳이 마땅치 않으면 빈 배열. 0 이면 빈 배열. "
+        "11) stickers: style_guide.stickers 가 true 면 최대 3개, 어울리는 컷에만 움직이는 스티커를 붙인다. type: exclaim=크게 놀라는 반응, question=궁금해하는 장면, "
+        "heart=마음에 들어 하는 장면, star=추천·1위·칭찬, sparkle=상품이 또렷이 드러나는 장면, fire=인기·품절 언급. 반응이나 상품이 실제로 보이는 컷에만 쓰고, 남발하지 않는다. false 면 빈 배열.")
     return create_json(system=system, max_tokens=2500 if fast else 1500, output_schema=EDL_SCHEMA, messages=[{"role": "user", "content": content}], timeout=300.0)
 
 
@@ -463,28 +501,53 @@ def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path,
         parts.append(f"[bg][fg]overlay=0:{fg_top}[base]")
     notes = []
     nin = n  # 다음 입력 번호
-    # 상품 사진·로고 팝업: 살짝 아래에서 올라오며 나타났다가 사라진다(자막보다 아래 층)
+    # 상품 사진·로고·스티커: 통통 튀어나오며(크기 반동) 살짝 흔들린다. motion=False 면 아래에서 올라오는 단순 등장(자막보다 아래 층)
     cur = "base"
     pop = st.get("popup") or DEFAULT_STYLE["popup"]
+    motion = bool(ex.get("motion", pop.get("motion", True)))
+    slot = 0
     for i, ov in enumerate(ex.get("overlays") or []):
         a0, b0 = max(0.0, float(ov["start"])), min(total, float(ov["end"]))
         if b0 - a0 < 0.6 or not Path(ov["path"]).exists():
             continue
-        kind = "logo" if ov.get("kind") == "logo" else "product"
-        w = POPUP_W[kind][pop["size"]]
+        kind = ov.get("kind") if ov.get("kind") in ("logo", "sticker") else "product"
         top = (330 if fill else fg_top + 36)
-        if kind == "logo":
-            x, y = "40", str(top)
-        elif pop["position"] == "top_left":
-            x, y = "40", str(top)
+        box_h = H * 0.5 if fill else fg_h
+        wmax = {"sticker": {"small": 150, "medium": 190, "large": 240}}.get(kind, POPUP_W.get(kind, POPUP_W["product"]))[pop["size"]]
+        hmax = int(box_h * {"logo": 0.42, "sticker": 0.36}.get(kind, 0.72))
+        try:
+            from PIL import Image
+            with Image.open(ov["path"]) as im:
+                iw, ih = im.size
+        except Exception:
+            iw, ih = wmax, wmax
+        k = min(wmax / iw, hmax / ih)
+        w, h = max(2, int(iw * k) // 2 * 2), max(2, int(ih * k) // 2 * 2)
+        if kind == "sticker":  # 자막(아래)·상품 사진(오른쪽 위)을 피해 왼쪽 가운데 → 오른쪽 가운데 → 왼쪽 위 순으로 돌아가며
+            fx, fy = [(0.17, 0.42), (0.83, 0.5), (0.2, 0.2)][slot % 3]
+            slot += 1
+            cx, cy = int(W * fx), int((top - 36) + box_h * fy)
+        elif kind == "logo" or pop["position"] == "top_left":
+            cx, cy = 40 + w // 2, top + h // 2
         elif pop["position"] == "center":
-            x, y = "(W-w)/2", str((H - w) // 2 if fill else fg_top + max(20, (fg_h - w) // 2))
+            cx, cy = W // 2, int((top - 36) + box_h / 2)
         else:
-            x, y = "W-w-40", str(top)
+            cx, cy = W - 40 - w // 2, top + h // 2
         args += ["-loop", "1", "-framerate", str(FPS), "-t", f"{total:.2f}", "-i", str(ov["path"])]
-        hmax = int((H * 0.36) if fill else max(240, fg_h * (0.42 if kind == "logo" else 0.72))) // 2 * 2  # 세로로 긴 사진이 화면을 덮지 않게
-        parts.append(f"[{nin}:v]scale={w}:{hmax}:force_original_aspect_ratio=decrease,format=rgba,fade=t=in:st={a0:.2f}:d=0.18:alpha=1,fade=t=out:st={b0 - 0.2:.2f}:d=0.2:alpha=1[ov{i}]")
-        parts.append(f"[{cur}][ov{i}]overlay=x={x}:y='{y}+46*(1-min(1,max(0,(t-{a0:.2f})/0.16)))':enable='between(t,{a0:.2f},{b0:.2f})'[pb{i}]")
+        out_fade = f"fade=t=out:st={b0 - 0.2:.2f}:d=0.2:alpha=1"
+        if motion:
+            amp = {"logo": 0.0, "sticker": 0.13}.get(kind, 0.045)  # 흔들림(라디안)
+            chain = f"[{nin}:v]format=rgba,scale={w}:{h}"
+            if amp:
+                dd = int(-(-((w * w + h * h) ** 0.5) // 2) * 2)
+                chain += f",pad=w={dd}:h={dd}:x=(ow-iw)/2:y=(oh-ih)/2:color=black@0,rotate=a='{amp}*sin(2*PI*0.9*(t-{a0:.2f}))':c=none"
+            tt = f"max(0,t-{a0:.2f})"
+            chain += f",scale=w='iw*max(0.04,1-exp(-9*{tt})*cos(14*{tt}))':h=-1:eval=frame,{out_fade}[ov{i}]"
+            parts.append(chain)
+            parts.append(f"[{cur}][ov{i}]overlay=x='{cx}-w/2':y='{cy}-h/2':eval=frame:enable='between(t,{a0:.2f},{b0:.2f})'[pb{i}]")
+        else:
+            parts.append(f"[{nin}:v]scale={w}:{h},format=rgba,fade=t=in:st={a0:.2f}:d=0.18:alpha=1,{out_fade}[ov{i}]")
+            parts.append(f"[{cur}][ov{i}]overlay=x={cx - w // 2}:y='{cy - h // 2}+46*(1-min(1,max(0,(t-{a0:.2f})/0.16)))':enable='between(t,{a0:.2f},{b0:.2f})'[pb{i}]")
         cur, nin = f"pb{i}", nin + 1
     if caps.get("ass"):
         (workdir / "subs.ass").write_text(build_ass(edl, font or default_font(), fg_top, fg_top + fg_h, st), encoding="utf-8")
@@ -494,20 +557,23 @@ def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path,
         notes.append("이 ffmpeg 에는 자막 굽기(libass)가 없어 제목·자막 없이 렌더링했습니다. winget install Gyan.FFmpeg 로 전체 버전을 설치하면 자막이 들어갑니다.")
     # 필터 그래프는 인자로 직접 넘긴다(-filter_complex_script 는 최신 ffmpeg 에서 제거됨). 경로는 작업 폴더 기준 상대경로라 이스케이프 불필요
     # 소리 섞기: 원본 소리(내레이션 동안은 작게) + AI 음성 + 효과음 + 배경음악
-    narr, bgm, sfx = ex.get("narration"), ex.get("bgm"), [x for x in (ex.get("sfx") or []) if x[0] in SFX and 0 <= x[1] < total]
+    narr = [x for x in (ex.get("narrations") or []) if 0 <= x["start"] < total - 0.5]
+    bgm, sfx = ex.get("bgm"), [x for x in (ex.get("sfx") or []) if x[0] in SFX and 0 <= x[1] < total]
     amap = "[ca]" if info["has_audio"] else None
     if narr or bgm or sfx:
         fmt = "aformat=sample_rates=48000:channel_layouts=stereo"
         if info["has_audio"]:
-            duck = f",volume=volume=0.22:enable='between(t,0,{narr['duration'] + 0.45:.2f})'" if narr else ""
+            win = "+".join(f"between(t,{max(0.0, x['start'] - 0.15):.2f},{x['start'] + x['duration'] + 0.3:.2f})" for x in narr)
+            duck = f",volume=volume=0.22:enable='{win}'" if narr else ""  # 내레이션이 나오는 동안만 원본 소리를 작게
             parts.append(f"[ca]{fmt}{duck}[a_base]")
         else:
             parts.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={total:.2f}[a_base]")
         mix = ["[a_base]"]
-        if narr:
-            args += ["-i", str(narr["path"])]
-            parts.append(f"[{nin}:a]aresample=48000,{fmt},volume=1.7,adelay=150:all=1[a_narr]")
-            mix.append("[a_narr]"); nin += 1
+        for j, x in enumerate(narr):
+            args += ["-i", str(x["path"])]
+            tempo = f"atempo={x['tempo']}," if x.get("tempo") and abs(x["tempo"] - 1) > 0.01 else ""
+            parts.append(f"[{nin}:a]{tempo}aresample=48000,{fmt},volume=1.7,adelay={int(x['start'] * 1000)}:all=1[a_narr{j}]")
+            mix.append(f"[a_narr{j}]"); nin += 1
         for j, (name, at) in enumerate(sfx):
             args += ["-f", "lavfi", "-t", str(SFX[name]["dur"]), "-i", SFX[name]["src"]]
             parts.append(f"[{nin}:a]{fmt},volume={SFX[name]['vol']},adelay={int(at * 1000)}:all=1[a_fx{j}]")
@@ -534,6 +600,10 @@ def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path,
     args += ["-r", str(FPS), "-movflags", "+faststart", str(out_path)]
     r = _run(args, cwd=str(workdir), timeout=1800)
     if r.returncode != 0 or not out_path.exists() or out_path.stat().st_size < 1000:
+        if motion and (ex.get("overlays")):  # 오래된 ffmpeg 는 움직이는 스티커를 못 그릴 수 있다 → 움직임 없이 다시
+            res = render(ff, caps, src, info, edl, out_path, workdir, font=font, style=style, extras=dict(ex, motion=False))
+            res["notes"].append("이 PC 의 ffmpeg 가 움직이는 스티커를 지원하지 않아 사진·스티커를 움직임 없이 넣었습니다.")
+            return res
         raise ShortsError("렌더링 실패: " + r.stderr[-600:])
     o = probe(ff, str(out_path))
     return {"duration": o["duration"], "width": o["width"], "height": o["height"], "size": o["size"], "notes": notes}
@@ -553,7 +623,7 @@ def plan_overlays(edl: dict, assets: list[dict]) -> list[dict]:
         first = max(0, min(len(starts) - 1, int(edl.get("product_popup_segment") or 0)))
     except (TypeError, ValueError):
         first = 0
-    out, nprod = [], 0
+    out, nprod, nstk = [], 0, 0
     for a in assets:
         o = have.get(a["id"])
         try:
@@ -563,6 +633,9 @@ def plan_overlays(edl: dict, assets: list[dict]) -> list[dict]:
         if start is None:
             if a.get("kind") == "logo":
                 start, dur = 0.3, max(1.5, min(2.6, (hook_len or 2.9) - 0.3))
+            elif a.get("kind") == "sticker":  # 내가 올린 스티커: 2컷마다 하나씩
+                start, dur = starts[min(len(starts) - 1, 1 + nstk * 2)] + 0.3, 1.8
+                nstk += 1
             else:
                 start, dur = starts[min(len(starts) - 1, first + nprod)] + 0.4, 2.8
                 nprod += 1
@@ -574,30 +647,75 @@ def plan_overlays(edl: dict, assets: list[dict]) -> list[dict]:
 
 def build_extras(edl: dict, assets: list[dict], style: dict | None, ff: str, workdir: Path, seed: int, notes: list[str]) -> dict:
     """렌더러에 넘길 소리·팝업 재료. 실패한 재료는 빼고 사유를 notes 에 적는다(영상은 계속 만든다)."""
-    from . import audio_fx
+    from . import audio_fx, overlay_assets
     extras: dict = {}
+    total = edl["total_seconds"]
+    hook_len = (edl["hook"]["end"] - edl["hook"]["start"]) if edl.get("hook") else 0.0
+    starts, t = [], hook_len  # 각 컷이 완성 영상에서 시작하는 시각
+    for sg in edl["segments"]:
+        starts.append(t)
+        t += sg["end"] - sg["start"]
+    seg_at = lambda i: starts[max(0, min(len(starts) - 1, int(i)))]  # noqa: E731
     by_id = {a["id"]: a for a in assets}
     edl["overlays"] = plan_overlays(edl, assets)
-    if edl["overlays"]:
-        extras["overlays"] = [{"path": by_id[o["asset_id"]]["cut_path"], "kind": o["kind"], "start": o["start"], "end": o["start"] + o["duration"]}
-                              for o in edl["overlays"]]
-    audio: dict = {}
-    if edl.get("narration"):
+    ovs = [{"path": by_id[o["asset_id"]]["cut_path"], "kind": o["kind"], "start": o["start"], "end": o["start"] + o["duration"]} for o in edl["overlays"]]
+    # 내장 스티커: 편집안에 적힌 것만(스타일에서 켜면 편집 AI 가 고른다). 사진과 같은 순간에 겹치지 않게 0.3초 뒤로
+    stk = []
+    for m in (edl.get("stickers") or []):
+        start = m["start"] if "start" in m else seg_at(m.get("segment", 0)) + 0.3
+        dur = max(1.0, min(4.0, float(m.get("duration") or 1.8)))
+        if start > total - 1.0:
+            continue
         try:
-            out = workdir / "narration.wav"
-            got = audio_fx.synthesize(edl["narration"], out, (style or {}).get("narration", {}).get("rate", 1.12))
-            dur = probe_audio(ff, str(out))
-            extras["narration"] = {"path": str(out), "duration": dur}
-            audio["narration"] = f"{got['provider']} · {got['voice']} · {dur:.1f}초"
+            path = overlay_assets.draw_sticker(m["type"], get_settings().media_dir / "work" / "stickers" / f"{m['type']}.png")
+        except Exception as e:
+            notes.append(f"스티커를 그리지 못했습니다: {str(e)[:100]}")
+            continue
+        stk.append({"type": m["type"], "start": round(start, 1), "duration": round(min(dur, total - start), 1)})
+        ovs.append({"path": str(path), "kind": "sticker", "start": start, "end": min(total, start + dur)})
+    edl["stickers"] = stk
+    if ovs:
+        extras["overlays"] = sorted(ovs, key=lambda o: o["start"])
+    # 내레이션: 첫 장면 한 문장 + 영상 중간 문장들. 서로 겹치지 않게 뒤로 밀고, 끝을 넘으면 뺀다
+    audio: dict = {}
+    lines = ([{"text": edl["narration"], "start": 0.15, "where": "첫 장면"}] if edl.get("narration") else [])
+    for m in (edl.get("mid_narrations") or []):
+        lines.append({"text": m["text"], "start": (m["start"] if "start" in m else seg_at(m.get("segment", 0)) + 0.15), "where": "중간", "ref": m})
+    lines.sort(key=lambda x: x["start"])
+    narrs, failed, cursor = [], None, 0.0
+    rate = (style or {}).get("narration", {}).get("rate", 1.12)
+    for k, ln in enumerate(lines):
+        start = max(ln["start"], cursor)
+        if start > total - 1.2:
+            notes.append(f"내레이션 「{ln['text'][:14]}…」은 넣을 자리가 없어 뺐습니다(영상 끝을 넘음).")
+            continue
+        try:
+            out = workdir / f"narration_{k}.wav"
+            got = audio_fx.synthesize(ln["text"], out, rate)
+            path = got.get("path") or str(out)
+            tempo = float(got.get("tempo") or 1.0)
+            dur = probe_audio(ff, path) / tempo
         except Exception as e:  # TTSError 포함: 음성이 없어도 영상은 만든다
-            notes.append(f"AI 음성 내레이션을 넣지 못했습니다: {str(e)[:200]}")
-            audio["narration"] = None
+            failed = str(e)[:200]
+            break
+        narrs.append({"path": path, "start": round(start, 2), "duration": round(dur, 2), "tempo": tempo})
+        cursor = start + dur + 0.4
+        if ln.get("ref") is not None:
+            ln["ref"]["start"] = round(start, 1)
+        audio["voice"] = f"{got['provider']} · {got['voice']}"
+    if failed:
+        notes.append(f"AI 음성 내레이션을 넣지 못했습니다: {failed}")
+        narrs = []
+    if lines:
+        audio["narration"] = (f"{audio.get('voice')} · {narrs[0]['duration']:.1f}초" if narrs and narrs[0]["start"] < 1 else None) if not failed else None
+        audio["narration_count"] = len(narrs)
+    if narrs:
+        extras["narrations"] = narrs
     if style and style["sfx"]["enabled"]:
-        hook_len = (edl["hook"]["end"] - edl["hook"]["start"]) if edl.get("hook") else 0.0
         fx = [("whoosh", max(0.0, hook_len - 0.25))] if hook_len else []
-        fx += [("pop", o["start"]) for o in edl["overlays"]]
+        fx += [("pop", o["start"]) for o in (extras.get("overlays") or [])][:6]
         if edl.get("end_caption"):
-            fx.append(("ding", max(0.0, edl["total_seconds"] - 1.8)))
+            fx.append(("ding", max(0.0, total - 1.8)))
         extras["sfx"], audio["sfx"] = fx, [x[0] for x in fx]
     if style and style["bgm"]["mode"] == "auto":
         path, desc = audio_fx.pick_bgm(ff, seed, style["bgm"].get("track") or None)

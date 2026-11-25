@@ -80,9 +80,17 @@ export default function Styles() {
           <h2 className="section-title">소리 재료 <span className="text-xs font-normal muted">· AI 음성 · 효과음 · 배경음악</span></h2>
           <div className="flex flex-wrap items-center gap-2">
             <b>🔊 AI 음성 내레이션</b>
-            {au.data.tts.available ? <Badge tone="green">{au.data.tts.provider === 'google' ? 'Google 음성' : 'Windows 내장 음성'} · {au.data.tts.voice}</Badge> : <Badge tone="red">사용 불가</Badge>}
+            {au.data.tts.available ? <Badge tone="green">{au.data.tts.provider === 'elevenlabs' ? 'ElevenLabs' : au.data.tts.provider === 'google' ? 'Google 음성' : 'Windows 내장 음성'} · {au.data.tts.voice}</Badge> : <Badge tone="red">사용 불가</Badge>}
             <button className="btn-ghost border border-stone-300 text-xs dark:border-stone-600" disabled={voiceBusy || !au.data.tts.available} onClick={testVoice}>{voiceBusy ? '만드는 중…' : '▶ 목소리 미리 듣기'}</button>
             {voiceUrl && <audio src={voiceUrl} controls autoPlay className="h-8" />}
+            {au.data.voices.length > 0 && (
+              <label className="flex items-center gap-2 text-xs">목소리
+                <select className="input w-64" disabled={au.data.voice_locked} value={au.data.tts.voice_id || ''} onChange={(e) => api.setVoice(e.target.value).then(() => { toast('목소리를 바꿨습니다'); setVoiceUrl(null); au.reload() }).catch((er) => toast(er.message, 'err'))}>
+                  {au.data.voices.map((v) => <option key={v.id} value={v.id}>{v.name}{v.gender ? ` · ${v.gender === 'female' ? '여성' : v.gender === 'male' ? '남성' : v.gender}` : ''}{v.language ? ` · ${v.language}` : ''}</option>)}
+                </select>
+                {au.data.voice_locked && <span className="muted">(.env 의 ELEVENLABS_VOICE_ID 로 고정됨)</span>}
+              </label>)}
+            {au.data.voices_error && <span className="w-full text-xs text-red-600">{au.data.voices_error}</span>}
             <span className="w-full text-xs muted">{au.data.tts.note}</span>
           </div>
           <div>
@@ -136,7 +144,7 @@ function StyleCard({ s, onChange, toast }: { s: RefStyle; onChange: () => void; 
             <div><b>자막</b> · {p.caption.enabled ? <>{CAP_POS[p.caption.position]} · {SIZE[p.caption.size]} <Swatch c={p.caption.color} />{p.caption.box ? ' · 박스' : ''} · {p.caption.tone}{p.caption.highlight_color ? <> · 강조 <Swatch c={p.caption.highlight_color} /></> : null}</> : '없음'}</div>
             <div><b>후킹</b> · 처음 {p.hook.seconds}초 · {p.hook.pattern}{p.hook.zoom_punch ? ' · 확대 강조' : ''}</div>
             <div><b>속도</b> · 총 {p.pacing.total_seconds}초 · 본편 {p.pacing.segments}컷 · 컷당 최대 {p.pacing.max_clip_seconds}초{p.pacing.note ? ` · ${p.pacing.note}` : ''}</div>
-            <div><b>소리</b> · 내레이션 {p.narration?.enabled ? '켬' : '끔'} · 효과음 {p.sfx?.enabled ? '켬' : '끔'} · 배경음악 {p.bgm?.mode === 'auto' ? `켬(크기 ${Math.round((p.bgm.volume || 0) * 100)}%)` : '끔'}</div>
+            <div><b>소리</b> · 내레이션 {p.narration?.enabled ? `켬${p.narration.mid_count ? `(+중간 ${p.narration.mid_count}문장)` : ''}` : '끔'} · 스티커 {p.stickers?.enabled ? '켬' : '끔'} · 효과음 {p.sfx?.enabled ? '켬' : '끔'} · 배경음악 {p.bgm?.mode === 'auto' ? `켬(크기 ${Math.round((p.bgm.volume || 0) * 100)}%)` : '끔'}</div>
             {p.title.patterns.length > 0 && <div><b>제목 구조</b> · {p.title.patterns.join(' / ')}</div>}
           </div>
           <div className="space-y-1">
@@ -166,6 +174,9 @@ function StyleCard({ s, onChange, toast }: { s: RefStyle; onChange: () => void; 
             <label className="flex items-center gap-2"><input type="checkbox" checked={p.title.box} onChange={(e) => set((d) => { d.title.box = e.target.checked })} /> 제목 박스</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={p.hook.zoom_punch} onChange={(e) => set((d) => { d.hook.zoom_punch = e.target.checked })} /> 후킹 컷 확대 강조</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={!!p.narration?.enabled} onChange={(e) => set((d) => { d.narration = { ...(d.narration || { rate: 1.12, pattern: '' }), enabled: e.target.checked } })} /> AI 음성 내레이션(첫 장면 한 문장)</label>
+            <label>영상 중간 내레이션<select className="input mt-0.5" value={p.narration?.mid_count ?? 0} onChange={(e) => set((d) => { d.narration = { ...(d.narration || { enabled: true, rate: 1.12, pattern: '' }), mid_count: Number(e.target.value) } })}><option value={0}>넣지 않음</option><option value={1}>1문장</option><option value={2}>2문장</option></select></label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={!!p.stickers?.enabled} onChange={(e) => set((d) => { d.stickers = { enabled: e.target.checked } })} /> 움직이는 스티커(반응·상품 장면)</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={p.popup?.motion !== false} onChange={(e) => set((d) => { d.popup = { ...(d.popup || { position: 'top_right', size: 'medium' }), motion: e.target.checked } })} /> 사진·스티커 통통 튀는 움직임</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={!!p.sfx?.enabled} onChange={(e) => set((d) => { d.sfx = { enabled: e.target.checked } })} /> 효과음(휙·팝·딩)</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={p.bgm?.mode === 'auto'} onChange={(e) => set((d) => { d.bgm = { ...(d.bgm || { volume: 0.1, track: '' }), mode: e.target.checked ? 'auto' : 'none' } })} /> 배경음악</label>
             <label>배경음악 크기 ({Math.round((p.bgm?.volume ?? 0.1) * 100)}%)<input type="range" min={0.03} max={0.35} step={0.01} className="mt-2 w-full" value={p.bgm?.volume ?? 0.1} onChange={(e) => set((d) => { d.bgm = { ...(d.bgm || { mode: 'none', track: '' }), volume: Number(e.target.value) } })} /></label>

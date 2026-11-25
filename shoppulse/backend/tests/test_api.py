@@ -848,6 +848,7 @@ def test_narration_sfx_bgm_and_popups_end_to_end(client, tmp_path, monkeypatch):
     au = client.get("/api/styles/audio").json()
     assert au["tts"]["available"] is False and au["bgm"] == [] and "권한" in au["note"]
     assert client.post("/api/styles/tts-test", data={"text": "테스트"}).status_code == 400  # 음성 없음 → 사유 안내
+    assert au["voices"] == [] and client.put("/api/styles/voice", json={"value": "v_x"}).status_code == 400  # ElevenLabs 키 없음
     tone = tmp_path / "my song.wav"
     subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-t", "3", "-i", "sine=frequency=330", str(tone)], check=True)
     with tone.open("rb") as f:
@@ -907,16 +908,27 @@ def test_narration_sfx_bgm_and_popups_end_to_end(client, tmp_path, monkeypatch):
         return {"provider": "test", "voice": "가짜 음성"}
     monkeypatch.setattr(audio_fx, "synthesize", fake)
     edl["overlays"] = [{"asset_id": st["assets"][0]["id"], "start": 9, "duration": 3}]
+    # 영상 중간 내레이션 2문장(하나는 영상 끝을 넘겨 빠진다) + 움직이는 스티커 2개 + 내가 올린 스티커 1개
+    edl["mid_narrations"] = [{"segment": 3, "text": "그런데 가격을 보고 더 놀랐다는데"}, {"start": 19.5, "text": "너무 늦은 문장"}]
+    edl["stickers"] = [{"segment": 1, "type": "heart"}, {"start": 14, "type": "exclaim", "duration": 2}]
+    with logo.open("rb") as f:
+        st = client.post(f"/api/studio/{cid}/assets", files={"file": ("my_sticker.png", f, "image/png")}, data={"kind": "sticker"}).json()
+    assert [a["kind"] for a in st["assets"]] == ["product", "logo", "sticker"]
     client.post(f"/api/studio/{cid}/rerender", json=edl)
     r2 = wait()
     assert r2["status"] == "done", r2
+    assert r2["edl"]["audio"]["narration_count"] == 2 and any("넣을 자리가 없어" in n for n in r2["notes"])
+    assert r2["edl"]["mid_narrations"][0] == {"text": "그런데 가격을 보고 더 놀랐다는데", "segment": 3, "start": 10.2}
+    assert r2["edl"]["stickers"] == [{"type": "heart", "start": 5.3, "duration": 1.8}, {"type": "exclaim", "start": 14.0, "duration": 2.0}]
+    assert not any("움직임 없이" in n for n in r2["notes"])  # 움직이는 스티커가 그대로 렌더링됐다
+    assert r2["edl"]["audio"]["sfx"].count("pop") == 5
     assert r2["edl"]["audio"]["narration"].startswith("test · 가짜 음성 · 2.0") and r2["edl"]["narration"].startswith("이 배우가")
-    assert {o["kind"]: o["start"] for o in r2["edl"]["overlays"]} == {"product": 9.0, "logo": 0.3}
+    assert {o["kind"]: o["start"] for o in r2["edl"]["overlays"]} == {"product": 9.0, "logo": 0.3, "sticker": 5.3}
     probe = subprocess.run([ff, "-hide_banner", "-i", str(sorted((__import__("app.config", fromlist=["x"]).get_settings().media_dir / "renders").glob(f"shorts_c{cid}_*.mp4"),
                             key=lambda p: p.stat().st_mtime)[-1])], capture_output=True, text=True).stderr
     assert "Audio:" in probe and "1080x1920" in probe and abs(r2["output_info"]["duration"] - r2["edl"]["total_seconds"]) < 0.6
     # 정리
     st = client.delete(f"/api/studio/{cid}/assets/{st['assets'][0]['id']}").json()
-    assert len(st["assets"]) == 1
+    assert len(st["assets"]) == 2
     assert client.delete("/api/styles/bgm/my song.wav").json()["bgm"] == []
     client.delete(f"/api/styles/{sid}")

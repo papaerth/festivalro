@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     coupang_secret_key: str = ""
     google_vision_api_key: str = ""  # 캡처로 원본 찾기(Google Cloud Vision Web Detection)
     google_tts_api_key: str = ""  # AI 음성 내레이션(Google Cloud Text-to-Speech). 비우면 GOOGLE_VISION_API_KEY → Windows 내장 음성 순
-    shoppulse_tts_provider: str = "auto"  # auto / google / windows / off
+    elevenlabs_api_key: str = ""  # ElevenLabs 음성(구독 계정의 API 키). 있으면 가장 먼저 쓴다
+    elevenlabs_voice_id: str = ""  # 비우면 화면(편집 스타일 → 소리 재료)에서 고른 목소리, 그것도 없으면 계정의 첫 목소리
+    elevenlabs_model: str = "eleven_multilingual_v2"  # 한국어를 지원하는 모델
+    shoppulse_tts_provider: str = "auto"  # auto / elevenlabs / google / windows / off
     shoppulse_tts_voice: str = ""  # 음성 이름(비우면 Google ko-KR-Neural2-A, Windows 는 한국어 여성 음성 자동 선택)
     shoppulse_ffmpeg: str = ""  # ffmpeg 실행 파일 경로(비우면 PATH → imageio-ffmpeg 내장본 순으로 찾음)
     shoppulse_browser: str = "chrome"  # start.bat 가 여는 브라우저: chrome / edge / default

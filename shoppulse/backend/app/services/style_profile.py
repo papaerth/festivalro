@@ -14,10 +14,11 @@ DEFAULT_STYLE: dict = {
     "pacing": {"total_seconds": 26.0, "segments": 2, "max_clip_seconds": 14.0, "note": ""},
     "credit": {"enabled": True},
     "footer": {"text": "", "color": "#FFFFFF"},
-    "narration": {"enabled": False, "rate": 1.12, "pattern": "첫 장면에 얹는 한 문장: 누가·무엇을 궁금하게 소개"},
+    "narration": {"enabled": False, "rate": 1.12, "pattern": "첫 장면에 얹는 한 문장: 누가·무엇을 궁금하게 소개", "mid_count": 0},
+    "stickers": {"enabled": False},
     "sfx": {"enabled": False},
     "bgm": {"mode": "none", "volume": 0.1, "track": ""},
-    "popup": {"position": "top_right", "size": "medium"},
+    "popup": {"position": "top_right", "size": "medium", "motion": True},
     "end_question": False,
     "kick": [],
 }
@@ -51,8 +52,8 @@ def normalize_style(raw: dict | None) -> dict:
     """AI·사람이 준 스타일을 렌더러가 안전하게 쓸 수 있는 범위로 정리(없는 값은 기본값)."""
     raw = raw or {}
     d = DEFAULT_STYLE
-    lay, ti, ca, ho, pa, fo, na, sf, bg, po = (raw.get(k) or {} for k in (
-        "layout", "title", "caption", "hook", "pacing", "footer", "narration", "sfx", "bgm", "popup"))
+    lay, ti, ca, ho, pa, fo, na, sf, bg, po, sk = (raw.get(k) or {} for k in (
+        "layout", "title", "caption", "hook", "pacing", "footer", "narration", "sfx", "bgm", "popup", "stickers"))
     return {
         "summary": str(raw.get("summary") or d["summary"])[:400],
         "layout": {"mode": _enum(lay.get("mode"), ("blur_bg", "crop_fill", "color_bg"), "blur_bg"),
@@ -82,12 +83,14 @@ def normalize_style(raw: dict | None) -> dict:
         "footer": {"text": str(fo.get("text") or "").replace("\n", " ").strip()[:40], "color": hex_ok(fo.get("color"), "#FFFFFF")},
         # 소리·팝업: AI 음성 한 문장, 합성 효과음, 배경음악(auto=내 보관함→내장 반주), 상품 사진·로고가 뜨는 자리
         "narration": {"enabled": bool(na.get("enabled", False)), "rate": round(_num(na.get("rate"), 0.9, 1.4, 1.12), 2),
-                      "pattern": str(na.get("pattern") or d["narration"]["pattern"])[:200]},
+                      "pattern": str(na.get("pattern") or d["narration"]["pattern"])[:200],
+                      "mid_count": int(_num(na.get("mid_count"), 0, 2, 0))},  # 영상 중간에 넣는 내레이션 문장 수
+        "stickers": {"enabled": bool(sk.get("enabled", False))},  # 반응·상품 장면에 움직이는 스티커
         "sfx": {"enabled": bool(sf.get("enabled", False))},
         "bgm": {"mode": _enum(bg.get("mode"), ("none", "auto"), "none"), "volume": round(_num(bg.get("volume"), 0.03, 0.35, 0.1), 2),
                 "track": str(bg.get("track") or "")[:200]},
         "popup": {"position": _enum(po.get("position"), ("top_right", "top_left", "center"), "top_right"),
-                  "size": _enum(po.get("size"), ("small", "medium", "large"), "medium")},
+                  "size": _enum(po.get("size"), ("small", "medium", "large"), "medium"), "motion": bool(po.get("motion", True))},
         "end_question": bool(raw.get("end_question", False)),
         "kick": [str(x)[:120] for x in (raw.get("kick") or [])][:5],
     }
@@ -102,4 +105,5 @@ def style_guide(style: dict) -> dict:
             "max_clip_seconds": style["pacing"]["max_clip_seconds"], "pacing_note": style["pacing"]["note"],
             "own_twist": style["kick"], "end_question": style["end_question"],
             "highlight_keyword": bool(style["caption"]["highlight_color"]),
-            "narration": style["narration"]["enabled"], "narration_pattern": style["narration"]["pattern"]}
+            "narration": style["narration"]["enabled"], "narration_pattern": style["narration"]["pattern"],
+            "mid_narrations": style["narration"]["mid_count"] if style["narration"]["enabled"] else 0, "stickers": style["stickers"]["enabled"]}

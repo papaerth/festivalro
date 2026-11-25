@@ -62,7 +62,14 @@ def list_styles(db: Session = Depends(get_db)):
 def audio_status():
     """내레이션 음성 상태와 배경음악 보관함."""
     from ..services import audio_fx
-    return {"tts": audio_fx.tts_status(), "bgm": audio_fx.bgm_library(),
+    voices, verr = [], None
+    if get_settings().elevenlabs_api_key:
+        try:
+            voices = audio_fx.elevenlabs_voices()
+        except audio_fx.TTSError as e:
+            verr = str(e)
+    return {"tts": audio_fx.tts_status(), "bgm": audio_fx.bgm_library(), "voices": voices, "voices_error": verr,
+            "voice_locked": bool(get_settings().elevenlabs_voice_id),
             "note": "배경음악은 직접 사용 권한이 있는 곡만 넣어 주세요(예: 유튜브 오디오 보관함). 보관함이 비어 있으면 단순한 내장 합성 반주를 씁니다. 효과음은 프로그램이 직접 합성합니다."}
 
 
@@ -106,18 +113,40 @@ def delete_bgm(name: str):
     return {"bgm": audio_fx.bgm_library()}
 
 
+@router.put("/voice")
+def set_voice(body: schemas.SettingIn, db: Session = Depends(get_db)):
+    """ElevenLabs 목소리 고르기(내 계정의 목소리 목록에 있는 것만)."""
+    from ..models import UserSetting
+    from ..services import audio_fx
+    vid = str(body.value or "").strip()
+    try:
+        ok = any(v["id"] == vid for v in audio_fx.elevenlabs_voices())
+    except audio_fx.TTSError as e:
+        raise HTTPException(400, str(e))
+    if not ok:
+        raise HTTPException(400, "내 ElevenLabs 계정의 목소리 목록에 없는 목소리입니다")
+    st = db.get(UserSetting, "elevenlabs_voice_id")
+    if st:
+        st.value = {"value": vid}
+    else:
+        db.add(UserSetting(key="elevenlabs_voice_id", value={"value": vid}))
+    db.commit()
+    return {"tts": audio_fx.tts_status()}
+
+
 @router.post("/tts-test")
-def tts_test(text: str = Form("이 목소리로 첫 장면을 소개합니다")):
+def tts_test(text: str = Form("이 목소리로 첫 장면을 소개합니다"), voice_id: str = Form("")):
     """내레이션 목소리 미리 듣기."""
     import uuid
     from fastapi.responses import FileResponse
     from ..services import audio_fx
     out = get_settings().media_dir / "work" / f"tts_test_{uuid.uuid4().hex[:8]}.wav"
     try:
-        audio_fx.synthesize(text[:80], out)
+        got = audio_fx.synthesize(text[:80], out, voice_id=voice_id or None)
     except audio_fx.TTSError as e:
         raise HTTPException(400, str(e))
-    return FileResponse(out, media_type="audio/wav")
+    path = Path(got.get("path") or out)
+    return FileResponse(path, media_type="audio/mpeg" if path.suffix == ".mp3" else "audio/wav")
 
 
 @router.get("/export")

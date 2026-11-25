@@ -246,6 +246,8 @@ class EdlIn(BaseModel):
     end_caption: str = ""
     narration: str = ""
     overlays: list[dict] = []
+    mid_narrations: list[dict] = []
+    stickers: list[dict] = []
     style_id: int | None = None
 
 

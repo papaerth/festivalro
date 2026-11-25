@@ -208,7 +208,7 @@ def delete_source(cid: int, db: Session = Depends(get_db)):
         db.commit()
 
 
-MAX_ASSETS, MAX_ASSET_BYTES = 4, 15 * 1024 * 1024
+MAX_ASSETS, MAX_ASSET_BYTES = 6, 15 * 1024 * 1024
 
 
 @router.post("/{cid}/assets")
@@ -217,7 +217,7 @@ def add_asset(cid: int, file: UploadFile = File(...), kind: str = Form("product"
     import uuid
     c = get_or_404(db, SourcingCandidate, cid, "후보")
     if kind not in overlay_assets.KINDS:
-        raise HTTPException(400, "종류는 product(상품 사진) 또는 logo(로고)입니다")
+        raise HTTPException(400, "종류는 product(상품 사진), logo(로고), sticker(스티커) 중 하나입니다")
     ext = Path(file.filename or "").suffix.lower()
     if ext not in overlay_assets.IMAGE_EXT:
         raise HTTPException(400, "이미지 파일(png, jpg, webp)만 올릴 수 있습니다")

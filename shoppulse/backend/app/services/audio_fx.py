@@ -1,6 +1,6 @@
 """소리 재료: AI 음성 내레이션(TTS) · 효과음(ffmpeg 로 합성) · 배경음악(내 보관함 또는 내장 합성 반주).
 
-- 내레이션: ① Google Cloud Text-to-Speech(키가 있으면, 자연스러운 한국어 여성 음성) ② Windows 내장 한국어 음성(키 없이, 무료)
+- 내레이션: ① ElevenLabs(구독 계정의 API 키, 내 계정의 목소리) ② Google Cloud Text-to-Speech ③ Windows 내장 한국어 음성(키 없이, 무료)
 - 효과음: 저작권 걱정이 없도록 파일을 싣지 않고 ffmpeg 로 그 자리에서 합성한다(팝·휙·딩).
 - 배경음악: 사용자가 보관함(data/media/bgm)에 넣은 파일을 쓰고, 없으면 단순한 내장 합성 반주를 쓴다. 음악 파일을 내려받지 않는다.
 """
@@ -47,7 +47,7 @@ $s.Dispose()
 Write-Output ("VOICE=" + $v.Name)
 """
 _NO_KO_VOICE = ("이 PC 에 한국어 음성이 없습니다. Windows 설정 → 시간 및 언어 → 음성 → 「음성 추가」에서 한국어를 추가하거나, "
-                ".env 에 GOOGLE_TTS_API_KEY 를 넣어 Google 음성을 쓰세요.")
+                ".env 에 ELEVENLABS_API_KEY 나 GOOGLE_TTS_API_KEY 를 넣어 주세요.")
 _win_voice_cache: dict = {}
 
 
@@ -90,12 +90,107 @@ def _google_key() -> str:
     return s.google_tts_api_key or s.google_vision_api_key
 
 
+# ---- ElevenLabs (공식 API: POST /v1/text-to-speech/{voice_id}, 헤더 xi-api-key, 응답은 mp3 소리 데이터)
+ELEVEN_BASE = "https://api.elevenlabs.io"
+_eleven_cache: dict = {}
+
+
+def _eleven_error(r) -> str:
+    try:
+        d = r.json().get("detail")
+        msg = d.get("message") if isinstance(d, dict) else str(d)
+    except Exception:
+        msg = (r.text or "")[:200]
+    hint = {401: " (API 키를 확인하세요)", 402: " (요금제·잔여 글자 수를 확인하세요)", 429: " (요청이 너무 많거나 잔여 글자 수가 부족합니다)"}.get(r.status_code, "")
+    return f"ElevenLabs 오류({r.status_code}): {str(msg)[:200]}{hint}"
+
+
+def elevenlabs_voices(force: bool = False) -> list[dict]:
+    """내 ElevenLabs 계정에서 쓸 수 있는 목소리 목록(10분 동안 기억). 실패하면 TTSError."""
+    import time
+    key = get_settings().elevenlabs_api_key
+    if not key:
+        return []
+    if not force and _eleven_cache.get("voices") is not None and time.time() - _eleven_cache.get("at", 0) < 600:
+        return _eleven_cache["voices"]
+    last = "목소리 목록을 가져오지 못했습니다."
+    for path in ("/v2/voices", "/v1/voices"):  # v2 가 현재 주소, v1 은 예전 주소(예비)
+        try:
+            r = httpx.get(ELEVEN_BASE + path, headers={"xi-api-key": key}, timeout=30.0)
+        except httpx.HTTPError as e:
+            raise TTSError(f"ElevenLabs 에 연결하지 못했습니다: {str(e)[:120]}")
+        if r.status_code == 200:
+            out = []
+            for v in (r.json().get("voices") or []):
+                lab = v.get("labels") if isinstance(v.get("labels"), dict) else {}
+                if v.get("voice_id"):
+                    out.append({"id": v["voice_id"], "name": v.get("name") or v["voice_id"], "category": v.get("category"),
+                                "gender": lab.get("gender"), "language": lab.get("language"), "accent": lab.get("accent")})
+            _eleven_cache.update(voices=out, at=time.time())
+            return out
+        last = _eleven_error(r)
+        if r.status_code in (401, 403):
+            break
+    raise TTSError(last)
+
+
+def _stored(key: str):
+    """화면에서 저장한 설정값(user_settings)."""
+    from ..database import SessionLocal
+    from ..models import UserSetting
+    try:
+        with SessionLocal() as db:
+            st = db.get(UserSetting, key)
+            return st.value.get("value") if st else None
+    except Exception:
+        return None
+
+
+def elevenlabs_voice() -> dict | None:
+    """쓸 목소리: .env 지정 → 화면에서 고른 것 → 계정 목록에서 한국어·여성 우선 → 첫 번째."""
+    vid = get_settings().elevenlabs_voice_id or _stored("elevenlabs_voice_id")
+    try:
+        voices = elevenlabs_voices()
+    except TTSError:
+        voices = []
+    if vid:
+        return next((v for v in voices if v["id"] == vid), {"id": vid, "name": vid})
+    if not voices:
+        return None
+    score = lambda v: (str(v.get("language") or "").lower() in ("ko", "korean"), str(v.get("gender") or "").lower() == "female")  # noqa: E731
+    return max(voices, key=score)
+
+
+def _elevenlabs_tts(text: str, out: Path, rate: float, voice_id: str | None = None) -> dict:
+    s = get_settings()
+    v = {"id": voice_id, "name": voice_id} if voice_id else elevenlabs_voice()
+    if not v:
+        raise TTSError("ElevenLabs 계정에 쓸 수 있는 목소리가 없습니다. 「편집 스타일 → 소리 재료」에서 목소리를 고르거나 .env 의 ELEVENLABS_VOICE_ID 를 적어 주세요.")
+    try:
+        r = httpx.post(f"{ELEVEN_BASE}/v1/text-to-speech/{v['id']}", params={"output_format": "mp3_44100_128"},
+                       headers={"xi-api-key": s.elevenlabs_api_key}, json={"text": text, "model_id": s.elevenlabs_model or "eleven_multilingual_v2"}, timeout=60.0)
+    except httpx.HTTPError as e:
+        raise TTSError(f"ElevenLabs 에 연결하지 못했습니다: {str(e)[:120]}")
+    if r.status_code != 200 or len(r.content) < 800:
+        raise TTSError(_eleven_error(r) if r.status_code != 200 else "ElevenLabs 응답에 소리가 없습니다.")
+    path = out.with_suffix(".mp3")
+    path.write_bytes(r.content)
+    # 말 빠르기는 API 값에 의존하지 않고 우리 쪽에서 맞춘다(tempo: 렌더링 때 그만큼 빠르게 재생)
+    return {"provider": "elevenlabs", "voice": v.get("name") or v["id"], "path": str(path), "tempo": round(max(1.0, min(1.25, rate)), 2)}
+
+
 def tts_status() -> dict:
-    """지금 쓸 수 있는 내레이션 음성. provider: google | windows | None"""
+    """지금 쓸 수 있는 내레이션 음성. provider: elevenlabs | google | windows | None"""
     s = get_settings()
     pref = (s.shoppulse_tts_provider or "auto").lower()
     if pref == "off":
         return {"available": False, "provider": None, "note": "내레이션이 꺼져 있습니다(.env 의 SHOPPULSE_TTS_PROVIDER=off)."}
+    if pref in ("auto", "elevenlabs") and s.elevenlabs_api_key:
+        v = elevenlabs_voice()
+        return {"available": True, "provider": "elevenlabs", "voice": (v or {}).get("name") or "목소리를 골라 주세요", "voice_id": (v or {}).get("id"),
+                "note": "ElevenLabs 음성(내 구독 계정). 문장은 ElevenLabs 로 전송되고 계정의 글자 수가 차감됩니다."}
+    if pref == "elevenlabs":
+        return {"available": False, "provider": None, "note": "ELEVENLABS_API_KEY 가 없습니다. .env 에 넣고 다시 실행하세요."}
     if pref in ("auto", "google") and _google_key():
         return {"available": True, "provider": "google", "voice": s.shoppulse_tts_voice or DEFAULT_GOOGLE_VOICE,
                 "note": "Google Cloud 음성(자연스러운 한국어 여성 음성). 문장은 Google 로 전송됩니다."}
@@ -104,9 +199,9 @@ def tts_status() -> dict:
     w = windows_voice()
     if w.get("available"):
         return {"available": True, "provider": "windows", "voice": w["voice"],
-                "note": "Windows 내장 한국어 음성(무료·오프라인). 더 자연스러운 목소리를 원하면 .env 에 GOOGLE_TTS_API_KEY 를 넣으세요."}
+                "note": "Windows 내장 한국어 음성(무료·오프라인). 더 자연스러운 목소리는 .env 에 ELEVENLABS_API_KEY(구독 중이면) 또는 GOOGLE_TTS_API_KEY 를 넣으세요."}
     return {"available": False, "provider": None,
-            "note": w.get("reason") if sys.platform.startswith("win") else "내레이션 음성이 없습니다. Windows 에서는 내장 한국어 음성을, 그 밖에는 GOOGLE_TTS_API_KEY 를 사용합니다."}
+            "note": w.get("reason") if sys.platform.startswith("win") else "내레이션 음성이 없습니다. .env 에 ELEVENLABS_API_KEY 또는 GOOGLE_TTS_API_KEY 를 넣거나, Windows 에서는 내장 한국어 음성을 사용합니다."}
 
 
 def _google_tts(text: str, out: Path, rate: float) -> dict:
@@ -150,8 +245,8 @@ def _windows_tts(text: str, out: Path, rate: float) -> dict:
     return {"provider": "windows", "voice": (r.stdout or "").split("VOICE=", 1)[-1].strip().splitlines()[0] if "VOICE=" in (r.stdout or "") else "Windows"}
 
 
-def synthesize(text: str, out: Path, rate: float = 1.12) -> dict:
-    """문장을 음성 파일(wav)로. 실패하면 TTSError(사유 포함) — 호출하는 쪽은 내레이션 없이 계속 만든다."""
+def synthesize(text: str, out: Path, rate: float = 1.12, voice_id: str | None = None) -> dict:
+    """문장을 음성 파일로(결과의 path 가 있으면 그 파일, 없으면 out). 실패하면 TTSError(사유 포함) — 호출하는 쪽은 내레이션 없이 계속 만든다."""
     text = " ".join((text or "").replace("*", "").split())[:120]
     if not text:
         raise TTSError("내레이션 문장이 비어 있습니다.")
@@ -159,6 +254,8 @@ def synthesize(text: str, out: Path, rate: float = 1.12) -> dict:
     if not st["available"]:
         raise TTSError(st["note"])
     out.parent.mkdir(parents=True, exist_ok=True)
+    if st["provider"] == "elevenlabs":
+        return _elevenlabs_tts(text, out, rate, voice_id)
     return _google_tts(text, out, rate) if st["provider"] == "google" else _windows_tts(text, out, rate)
 
 
