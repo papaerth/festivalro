@@ -162,3 +162,16 @@ def test_claude_client_http_fallback(monkeypatch):
     assert captured["headers"]["x-api-key"] == "test-key" and captured["body"]["output_config"]["format"]["type"] == "json_schema"
     assert cc.transport_status()["transport"] == "http"
     monkeypatch.setattr(get_settings(), "anthropic_api_key", "")
+
+
+def test_structured_output_schemas_avoid_unsupported_keywords():
+    """Claude 구조화 출력은 integer 의 minimum/maximum, array 의 maxItems 등을 거부한다."""
+    from app.services.ai_scorer import _schema
+    from app.services.product_identifier import INVESTIGATE_SCHEMA, SUGGESTION_SCHEMA
+    from app.services.shorts_planner import PLAN_SCHEMA
+    import json
+    banned = ("minimum", "maximum", "maxItems", "minItems", "minLength", "maxLength", "pattern", "format")
+    for sch in (_schema([{"key": "a", "max": 25}, {"key": "performance", "max": 20}]), INVESTIGATE_SCHEMA, SUGGESTION_SCHEMA, PLAN_SCHEMA):
+        text = json.dumps(sch)
+        for b in banned:
+            assert f'"{b}"' not in text, f"{b} in schema"

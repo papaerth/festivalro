@@ -14,8 +14,9 @@ from .product_identifier import AINotConfigured
 def _schema(items: list[dict]) -> dict:
     props = {}
     for it in items:
+        # 구조화 출력 스키마는 integer 의 minimum/maximum 을 지원하지 않으므로 설명으로 범위를 알리고 코드에서 잘라낸다
         props[it["key"]] = {"type": "object", "additionalProperties": False, "required": ["score", "rationale"],
-                            "properties": {"score": {"type": "integer", "minimum": 0, "maximum": it["max"]},
+                            "properties": {"score": {"type": "integer", "description": f"0부터 {it['max']}까지의 정수"},
                                            "rationale": {"type": "string"}}}
     return {"type": "object", "additionalProperties": False, "required": list(props) + ["summary"],
             "properties": {**props, "summary": {"type": "string"}}}

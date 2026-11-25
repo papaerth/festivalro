@@ -123,7 +123,7 @@ INVESTIGATE_SCHEMA = {
                     "features": {"type": "string"},
                     "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
                     "evidence": {"type": "string"},
-                    "search_queries": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
+                    "search_queries": {"type": "array", "items": {"type": "string"}, "description": "최대 3개"},
                 },
             },
         },

@@ -49,7 +49,8 @@ export default function DataPage() {
             <p className="muted">전체 기간 조회수 그래프(게시일부터)는 vidIQ 가 보유한 과거 일별 기록으로만 채울 수 있습니다. 아래 버튼으로 후보 영상 ID 목록과 요청 문구를 만들어 vidIQ 가 연결된 ChatGPT/Claude 대화에 붙여넣으세요. 영상 1개당 vidIQ 크레딧 5.</p>
             <div className="mt-2 flex items-center gap-2"><span className="muted">관측이 적은 후보 영상부터 최대</span><input type="number" className="input w-20" value={vqLimit} min={1} max={200} onChange={(e) => setVqLimit(Number(e.target.value))} /><span className="muted">개</span><button className="btn-primary" onClick={async () => { try { setVq(await api.vidiqRequest(vqLimit, true)) } catch (e: any) { toast(e.message, 'err') } }}>요청 문구 만들기</button></div>
             {vq && <div className="mt-2">
-              <div className="mb-1 flex items-center justify-between"><span>영상 {vq.count}개</span><button className="btn-ghost px-2 py-1" onClick={() => { navigator.clipboard.writeText(vq.prompt).then(() => toast('요청 문구 복사됨')) }}>문구 복사</button></div>
+              <div className="mb-1 flex items-center justify-between"><span>영상 {vq.count}개</span><div className="flex gap-1"><button className="btn-primary px-2 py-1" onClick={() => { navigator.clipboard.writeText(vq.video_ids.join('\n')).then(() => toast(`영상 ID ${vq.count}개 복사됨 — 채팅에 붙여넣으세요`)) }}>ID만 복사</button><button className="btn-ghost px-2 py-1" onClick={() => { navigator.clipboard.writeText(vq.prompt).then(() => toast('요청 문구 복사됨')) }}>문구 전체 복사</button></div></div>
+              <textarea className="input mb-2 font-mono text-[11px]" rows={4} readOnly value={vq.video_ids.join('\n')} />
               <textarea className="input font-mono text-[11px]" rows={8} readOnly value={vq.prompt} />
               <p className="mt-1 muted">{vq.note}</p>
             </div>}
