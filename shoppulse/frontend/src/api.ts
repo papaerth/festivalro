@@ -126,7 +126,7 @@ export const api = {
   studio: (id: number) => req<T.StudioState>('GET', `/api/studio/${id}`),
   studioOriginal: (id: number, url_or_id: string) => req<T.StudioState>('POST', `/api/studio/${id}/original`, { url_or_id }),
   studioMake: (id: number, hint?: string, styleId?: number | null) => { const fd = new FormData(); if (hint) fd.append('hint', hint); if (styleId) fd.append('style_id', String(styleId)); return req<T.StudioState>('POST', `/api/studio/${id}/make`, fd, true) },
-  studioRerender: (id: number, edl: { hook: T.EdlClip | null; segments: T.EdlClip[]; title_lines: string[]; credit: string; end_caption?: string; narration?: string; overlays?: T.EdlOverlay[]; mid_narrations?: T.MidNarration[]; stickers?: T.EdlSticker[] }) => req<T.StudioState>('POST', `/api/studio/${id}/rerender`, edl),
+  studioRerender: (id: number, edl: { hook: T.EdlClip | null; segments: T.EdlClip[]; title_lines: string[]; credit: string; end_caption?: string; narration?: string; overlays?: T.EdlOverlay[]; mid_narrations?: T.MidNarration[]; stickers?: T.EdlSticker[]; pips?: T.EdlPip[] }) => req<T.StudioState>('POST', `/api/studio/${id}/rerender`, edl),
   styles: () => req<{ styles: T.RefStyle[]; default: T.StyleProfile; note: string }>('GET', '/api/styles'),
   styleCreate: (name: string, channel_url: string, files: File[]) => { const fd = new FormData(); fd.append('name', name); fd.append('channel_url', channel_url); files.forEach((f) => fd.append('files', f)); return req<T.RefStyle>('POST', '/api/styles', fd, true) },
   styleRelearn: (id: number, files: File[]) => { const fd = new FormData(); files.forEach((f) => fd.append('files', f)); return req<T.RefStyle>('POST', `/api/styles/${id}/relearn`, fd, true) },

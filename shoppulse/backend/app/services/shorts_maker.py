@@ -238,6 +238,24 @@ def normalize_edl(edl: dict, duration: float, total_target: float | None = None)
             if "segment" in item or "start" in item:
                 stk.append(item)
     out["stickers"] = stk[:4]
+    # 원형 작은 화면(최대 2): 뜰 컷(segment) 또는 시각(start), 원 안에 보여 줄 원본 시각(src_start), 얼굴 위치(focus)
+    pips = []
+    for m in (edl.get("pips") or [])[:6]:
+        try:
+            item = {"src_start": round(max(0.0, min(float(m["src_start"]), max(0.0, duration - 1.5))), 1),
+                    "focus": m.get("focus") if m.get("focus") in ("left", "center", "right") else "center"}
+            if m.get("start") is not None:
+                item["start"] = max(0.0, round(float(m["start"]), 1))
+            elif m.get("segment") is not None:
+                item["segment"] = max(0, int(m["segment"]))
+            else:
+                continue
+            if m.get("duration") is not None:
+                item["duration"] = max(1.2, min(6.0, round(float(m["duration"]), 1)))
+            pips.append(item)
+        except (TypeError, ValueError, KeyError, AttributeError):
+            continue
+    out["pips"] = pips[:2]
     out["total_seconds"] = round((out["hook"]["end"] - out["hook"]["start"] if out["hook"] else 0) + sum(x["end"] - x["start"] for x in merged), 2)
     return out
 
@@ -254,7 +272,7 @@ def rule_edl(start: float, end: float | None, duration: float, title: str) -> di
 
 EDL_SCHEMA = {
     "type": "object", "additionalProperties": False,
-    "required": ["hook", "segments", "title_lines", "end_caption", "narration", "mid_narrations", "stickers", "product_popup_segment", "quote_seen", "reason", "cautions"],
+    "required": ["hook", "segments", "title_lines", "end_caption", "narration", "mid_narrations", "stickers", "pips", "product_popup_segment", "quote_seen", "reason", "cautions"],
     "properties": {
         "hook": {"type": "object", "additionalProperties": False, "required": ["start", "end", "caption"],
                  "properties": {"start": {"type": "number"}, "end": {"type": "number"}, "caption": {"type": "string"}}},
@@ -265,6 +283,9 @@ EDL_SCHEMA = {
         "narration": {"type": "string"}, "product_popup_segment": {"type": "integer"},
         "mid_narrations": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["segment", "text"],
                                                      "properties": {"segment": {"type": "integer"}, "text": {"type": "string"}}}},
+        "pips": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["segment", "src_start", "focus"],
+                                           "properties": {"segment": {"type": "integer"}, "src_start": {"type": "number"},
+                                                          "focus": {"type": "string", "enum": ["left", "center", "right"]}}}},
         "stickers": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["segment", "type"],
                                                "properties": {"segment": {"type": "integer"}, "type": {"type": "string", "enum": ["exclaim", "question", "heart", "star", "sparkle", "fire"]}}}},
         "quote_seen": {"type": "string"}, "reason": {"type": "string"},
@@ -342,7 +363,10 @@ def ai_edit(ff: str, src: str, info: dict, ctx: dict, rng: tuple[float, float], 
         "그 컷의 원본 말소리는 작아지므로, 꼭 들어야 하는 대사 컷이 아니라 상품 클로즈업·사용 장면·자료 화면처럼 말이 중요하지 않은 컷에 넣는다. "
         "내용은 화면에서 확인된 사실을 짚거나 다음 장면을 소개하는 말(예: '그런데 가격을 보고 더 놀랐다는데'). 첫 컷(0)과 마지막 컷은 피한다. 넣을 곳이 마땅치 않으면 빈 배열. 0 이면 빈 배열. "
         "11) stickers: style_guide.stickers 가 true 면 최대 3개, 어울리는 컷에만 움직이는 스티커를 붙인다. type: exclaim=크게 놀라는 반응, question=궁금해하는 장면, "
-        "heart=마음에 들어 하는 장면, star=추천·1위·칭찬, sparkle=상품이 또렷이 드러나는 장면, fire=인기·품절 언급. 반응이나 상품이 실제로 보이는 컷에만 쓰고, 남발하지 않는다. false 면 빈 배열.")
+        "heart=마음에 들어 하는 장면, star=추천·1위·칭찬, sparkle=상품이 또렷이 드러나는 장면, fire=인기·품절 언급. 반응이나 상품이 실제로 보이는 컷에만 쓰고, 남발하지 않는다. false 면 빈 배열.\n"
+        "12) pips: style_guide.pip 가 true 면 최대 2개. 상품(음식)을 보여 주는 컷 위에, 다른 순간의 인물 반응(놀라거나 감탄하는 얼굴)을 원형 작은 화면으로 함께 보여 준다. "
+        "segment=원이 뜰 컷 번호, src_start=원 안에 보여 줄 반응 장면의 원본 시각(초, 제공된 칸의 시각 범위 안), focus=그 장면에서 얼굴이 화면의 left/center/right 중 어디에 있는지. "
+        "그 컷 자체에 이미 같은 얼굴이 크게 나오면 넣지 않는다. 반응 장면이 뚜렷하지 않으면 빈 배열. false 면 빈 배열.")
     return create_json(system=system, max_tokens=2500 if fast else 1500, output_schema=EDL_SCHEMA, messages=[{"role": "user", "content": content}], timeout=300.0)
 
 
@@ -359,14 +383,21 @@ def _ass_text(s: str) -> str:
 _STAR = re.compile(r"\*([^*]{1,20})\*")
 
 
-def _ass_caption(s: str, highlight: str = "") -> str:
-    """자막 한 줄. *단어* 는 강조색으로(강조색이 없는 스타일이면 별표만 지운다)."""
+BOUNCE = "{\\fscx62\\fscy62\\t(0,110,\\fscx112\\fscy112)\\t(110,210,\\fscx100\\fscy100)}"  # 작게 → 살짝 크게 → 제자리(0.2초)
+
+
+def _ass_caption(s: str, highlight: str = "", base: str = "", bounce: bool = False) -> str:
+    """자막 한 줄. *단어* 는 강조색으로(강조색이 없는 스타일이면 별표만 지운다). bounce 면 나타날 때 통통 튄다.
+    강조가 끝나면 원래 글자색(base)으로 되돌린다 — \\r 로 초기화하면 튀는 움직임까지 지워지기 때문."""
     from .style_profile import ass_color
     t = _ass_text(s)
     if not highlight:
-        return _STAR.sub(r"\1", t)
-    c = ass_color(highlight)
-    return _STAR.sub(lambda m: "{\\c&H" + c[4:] + "&}" + m.group(1) + "{\\r}", t)
+        t = _STAR.sub(r"\1", t)
+    else:
+        c = ass_color(highlight)
+        back = ("{\\c&H" + ass_color(base)[4:] + "&}") if base else "{\\r}"
+        t = _STAR.sub(lambda m: "{\\c&H" + c[4:] + "&}" + m.group(1) + back, t)
+    return (BOUNCE + t) if bounce and t else t
 
 
 def default_font() -> str:
@@ -421,6 +452,7 @@ Style: Footer,{font},46,{ass_color((st.get("footer") or {}).get("color", "#FFFFF
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     ev = []
+    hi, bounce = ca.get("highlight_color", ""), bool(ca.get("bounce", False))
     if ti["enabled"] and edl.get("title_lines"):
         lines = [_ass_text(x) for x in edl["title_lines"]]
         if len(lines) > 1 and ti.get("second_line_color"):
@@ -430,7 +462,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if edl.get("hook"):
         hl = edl["hook"]["end"] - edl["hook"]["start"]
         if edl["hook"].get("caption"):
-            ev.append(f"Dialogue: 2,{_ass_time(0)},{_ass_time(hl)},Hook,,0,0,0,,{_ass_caption(edl['hook']['caption'], ca.get('highlight_color', ''))}")
+            ev.append(f"Dialogue: 2,{_ass_time(0)},{_ass_time(hl)},Hook,,0,0,0,,{_ass_caption(edl['hook']['caption'], hi, ho['caption_color'], bounce)}")
         t = hl
     end_cap = edl.get("end_caption") or ""
     end_from = total - 1.8 if end_cap else total
@@ -439,10 +471,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if ca["enabled"] and sg.get("caption"):
             a, b = t + 0.05, min(t + ln - 0.05, end_from)
             if b - a > 0.4:
-                ev.append(f"Dialogue: 2,{_ass_time(a)},{_ass_time(b)},Cap,,0,0,0,,{_ass_caption(sg['caption'], ca.get('highlight_color', ''))}")
+                ev.append(f"Dialogue: 2,{_ass_time(a)},{_ass_time(b)},Cap,,0,0,0,,{_ass_caption(sg['caption'], hi, ca['color'], bounce)}")
         t += ln
     if end_cap:
-        ev.append(f"Dialogue: 3,{_ass_time(end_from)},{_ass_time(total)},Hook,,0,0,0,,{_ass_text(end_cap)}")
+        ev.append(f"Dialogue: 3,{_ass_time(end_from)},{_ass_time(total)},Hook,,0,0,0,,{_ass_caption(end_cap, hi, ho['caption_color'], bounce)}")
     footer = (st.get("footer") or {}).get("text") or ""
     if footer and not full:
         ev.append(f"Dialogue: 0,{_ass_time(0)},{_ass_time(total)},Footer,,0,0,0,,{_ass_text(footer)}")
@@ -508,36 +540,60 @@ def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path,
     slot = 0
     for i, ov in enumerate(ex.get("overlays") or []):
         a0, b0 = max(0.0, float(ov["start"])), min(total, float(ov["end"]))
-        if b0 - a0 < 0.6 or not Path(ov["path"]).exists():
+        kind = ov.get("kind") if ov.get("kind") in ("logo", "sticker", "pip") else "product"
+        if b0 - a0 < 0.6 or (kind != "pip" and not Path(ov["path"]).exists()):
             continue
-        kind = ov.get("kind") if ov.get("kind") in ("logo", "sticker") else "product"
         top = (330 if fill else fg_top + 36)
         box_h = H * 0.5 if fill else fg_h
-        wmax = {"sticker": {"small": 150, "medium": 190, "large": 240}}.get(kind, POPUP_W.get(kind, POPUP_W["product"]))[pop["size"]]
-        hmax = int(box_h * {"logo": 0.42, "sticker": 0.36}.get(kind, 0.72))
-        try:
-            from PIL import Image
-            with Image.open(ov["path"]) as im:
-                iw, ih = im.size
-        except Exception:
-            iw, ih = wmax, wmax
-        k = min(wmax / iw, hmax / ih)
-        w, h = max(2, int(iw * k) // 2 * 2), max(2, int(ih * k) // 2 * 2)
-        if kind == "sticker":  # 자막(아래)·상품 사진(오른쪽 위)을 피해 왼쪽 가운데 → 오른쪽 가운데 → 왼쪽 위 순으로 돌아가며
-            fx, fy = [(0.17, 0.42), (0.83, 0.5), (0.2, 0.2)][slot % 3]
-            slot += 1
-            cx, cy = int(W * fx), int((top - 36) + box_h * fy)
-        elif kind == "logo" or pop["position"] == "top_left":
-            cx, cy = 40 + w // 2, top + h // 2
-        elif pop["position"] == "center":
-            cx, cy = W // 2, int((top - 36) + box_h / 2)
+        used = 1
+        if kind == "pip":
+            # 원형 작은 화면: 원본의 다른 순간(반응 얼굴 등)을 정사각형으로 잘라 원 안에, 흰 테두리와 함께
+            from .overlay_assets import pip_parts
+            dia = {"small": 250, "medium": 310, "large": 370}[pop["size"]]
+            side = int(min(sw, sh) * 0.62) // 2 * 2
+            fxr = {"left": 0.27, "right": 0.73}.get(ov.get("focus"), 0.5)
+            px = max(0, min(sw - side, int(sw * fxr - side / 2)))
+            py = max(0, min(sh - side, int(sh * 0.42 - side / 2)))
+            mask, ring = pip_parts(workdir, dia)
+            args += ["-ss", f"{float(ov['src_start']):.2f}", "-t", f"{b0 - a0 + 0.2:.2f}", "-i", src,
+                     "-loop", "1", "-framerate", str(FPS), "-t", f"{total:.2f}", "-i", str(mask),
+                     "-loop", "1", "-framerate", str(FPS), "-t", f"{total:.2f}", "-i", str(ring)]
+            w = h = dia + 16
+            parts.append(f"[{nin}:v]fps={FPS},setpts=PTS-STARTPTS,scale={sw}:{sh},setsar=1,crop={side}:{side}:{px}:{py},scale={dia}:{dia},format=rgba,"
+                         f"tpad=start_duration={a0:.2f}:stop_mode=clone:stop_duration=1[pv{i}]")
+            parts.append(f"[{nin + 1}:v]format=gray,scale={dia}:{dia}[pm{i}]")
+            parts.append(f"[pv{i}][pm{i}]alphamerge,pad={w}:{h}:8:8:color=black@0[pa{i}]")
+            parts.append(f"[{nin + 2}:v]format=rgba,scale={w}:{h}[pr{i}]")
+            parts.append(f"[pa{i}][pr{i}]overlay=0:0:format=auto[pc{i}]")
+            srcl, base_chain, used = f"[pc{i}]", "format=rgba", 3
+            cx, cy = 40 + w // 2, top + h // 2  # 화면 왼쪽 위(자막·상품 사진과 겹치지 않는 자리)
         else:
-            cx, cy = W - 40 - w // 2, top + h // 2
-        args += ["-loop", "1", "-framerate", str(FPS), "-t", f"{total:.2f}", "-i", str(ov["path"])]
+            wmax = {"sticker": {"small": 150, "medium": 190, "large": 240}}.get(kind, POPUP_W.get(kind, POPUP_W["product"]))[pop["size"]]
+            hmax = int(box_h * {"logo": 0.42, "sticker": 0.36}.get(kind, 0.72))
+            try:
+                from PIL import Image
+                with Image.open(ov["path"]) as im:
+                    iw, ih = im.size
+            except Exception:
+                iw, ih = wmax, wmax
+            k = min(wmax / iw, hmax / ih)
+            w, h = max(2, int(iw * k) // 2 * 2), max(2, int(ih * k) // 2 * 2)
+            if kind == "sticker":  # 자막(아래)·상품 사진(오른쪽 위)을 피해 왼쪽 가운데 → 오른쪽 가운데 → 왼쪽 위 순으로 돌아가며
+                fx, fy = [(0.17, 0.42), (0.83, 0.5), (0.2, 0.2)][slot % 3]
+                slot += 1
+                cx, cy = int(W * fx), int((top - 36) + box_h * fy)
+            elif kind == "logo" or pop["position"] == "top_left":
+                cx, cy = 40 + w // 2, top + h // 2
+            elif pop["position"] == "center":
+                cx, cy = W // 2, int((top - 36) + box_h / 2)
+            else:
+                cx, cy = W - 40 - w // 2, top + h // 2
+            args += ["-loop", "1", "-framerate", str(FPS), "-t", f"{total:.2f}", "-i", str(ov["path"])]
+            srcl, base_chain = f"[{nin}:v]", f"format=rgba,scale={w}:{h}"
         out_fade = f"fade=t=out:st={b0 - 0.2:.2f}:d=0.2:alpha=1"
         if motion:
-            amp = {"logo": 0.0, "sticker": 0.13}.get(kind, 0.045)  # 흔들림(라디안)
-            chain = f"[{nin}:v]format=rgba,scale={w}:{h}"
+            amp = {"logo": 0.0, "pip": 0.0, "sticker": 0.13}.get(kind, 0.045)  # 흔들림(라디안)
+            chain = srcl + base_chain
             if amp:
                 dd = int(-(-((w * w + h * h) ** 0.5) // 2) * 2)
                 chain += f",pad=w={dd}:h={dd}:x=(ow-iw)/2:y=(oh-ih)/2:color=black@0,rotate=a='{amp}*sin(2*PI*0.9*(t-{a0:.2f}))':c=none"
@@ -546,9 +602,9 @@ def render(ff: str, caps: dict, src: str, info: dict, edl: dict, out_path: Path,
             parts.append(chain)
             parts.append(f"[{cur}][ov{i}]overlay=x='{cx}-w/2':y='{cy}-h/2':eval=frame:enable='between(t,{a0:.2f},{b0:.2f})'[pb{i}]")
         else:
-            parts.append(f"[{nin}:v]scale={w}:{h},format=rgba,fade=t=in:st={a0:.2f}:d=0.18:alpha=1,{out_fade}[ov{i}]")
+            parts.append(f"{srcl}{base_chain},fade=t=in:st={a0:.2f}:d=0.18:alpha=1,{out_fade}[ov{i}]")
             parts.append(f"[{cur}][ov{i}]overlay=x={cx - w // 2}:y='{cy - h // 2}+46*(1-min(1,max(0,(t-{a0:.2f})/0.16)))':enable='between(t,{a0:.2f},{b0:.2f})'[pb{i}]")
-        cur, nin = f"pb{i}", nin + 1
+        cur, nin = f"pb{i}", nin + used
     if caps.get("ass"):
         (workdir / "subs.ass").write_text(build_ass(edl, font or default_font(), fg_top, fg_top + fg_h, st), encoding="utf-8")
         parts.append(f"[{cur}]ass=subs.ass,setsar=1[vout]")  # 화소 비율 1:1 고정(아니면 플레이어에서 눌려 보인다)
@@ -674,6 +730,16 @@ def build_extras(edl: dict, assets: list[dict], style: dict | None, ff: str, wor
         stk.append({"type": m["type"], "start": round(start, 1), "duration": round(min(dur, total - start), 1)})
         ovs.append({"path": str(path), "kind": "sticker", "start": start, "end": min(total, start + dur)})
     edl["stickers"] = stk
+    pips = []
+    for m in (edl.get("pips") or []):
+        start = m["start"] if "start" in m else seg_at(m.get("segment", 0)) + 0.3
+        dur = float(m.get("duration") or 3.0)
+        if start > total - 1.5:
+            continue
+        dur = round(min(dur, total - start), 1)
+        pips.append({"src_start": m["src_start"], "focus": m["focus"], "start": round(start, 1), "duration": dur})
+        ovs.append({"kind": "pip", "path": "", "start": start, "end": start + dur, "src_start": m["src_start"], "focus": m["focus"]})
+    edl["pips"] = pips
     if ovs:
         extras["overlays"] = sorted(ovs, key=lambda o: o["start"])
     # 내레이션: 첫 장면 한 문장 + 영상 중간 문장들. 서로 겹치지 않게 뒤로 밀고, 끝을 넘으면 뺀다

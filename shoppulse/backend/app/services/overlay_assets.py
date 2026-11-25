@@ -154,3 +154,19 @@ def draw_sticker(kind: str, out: Path, size: int = 260) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     res.save(out, "PNG")
     return out
+
+
+def pip_parts(workdir: Path, dia: int) -> tuple[Path, Path]:
+    """원형 작은 화면용 그림 두 장: 원 모양 마스크(흰 원)와 흰 테두리 고리."""
+    from PIL import Image, ImageDraw
+    mask, ring = workdir / f"pip_mask_{dia}.png", workdir / f"pip_ring_{dia}.png"
+    if not (mask.exists() and ring.exists()):
+        k = 4  # 크게 그려 줄이면 가장자리가 매끈하다
+        m = Image.new("L", (dia * k, dia * k), 0)
+        ImageDraw.Draw(m).ellipse([0, 0, dia * k - 1, dia * k - 1], fill=255)
+        m.resize((dia, dia), Image.LANCZOS).save(mask)
+        r_ = (dia + 16) * k
+        rg = Image.new("RGBA", (r_, r_), (0, 0, 0, 0))
+        ImageDraw.Draw(rg).ellipse([0, 0, r_ - 1, r_ - 1], outline=(255, 255, 255, 255), width=10 * k)
+        rg.resize((dia + 16, dia + 16), Image.LANCZOS).save(ring)
+    return mask, ring

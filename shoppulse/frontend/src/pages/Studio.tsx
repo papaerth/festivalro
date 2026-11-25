@@ -4,7 +4,7 @@ import { api, fmt, LABELS } from '../api'
 import { useAsync } from '../hooks'
 import { Badge, ErrorBox, Spinner, useToast } from '../components/ui'
 import CaptureOriginalModal from '../components/CaptureOriginal'
-import type { EdlClip, EdlOverlay, EdlSticker, MidNarration, StudioRender, StudioState } from '../types'
+import type { EdlClip, EdlOverlay, EdlPip, EdlSticker, MidNarration, StudioRender, StudioState } from '../types'
 
 const ts = (sec: number | null | undefined) => (sec === null || sec === undefined ? '' : `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`)
 const toSec = (t: string) => { const p = t.trim().split(':').map(Number); if (p.some(isNaN)) return NaN; return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p.length === 2 ? p[0] * 60 + p[1] : p[0] }
@@ -19,7 +19,7 @@ export default function Studio() {
   const [hint, setHint] = useState('')
   const [upPct, setUpPct] = useState<number | null>(null)
   const [capture, setCapture] = useState(false)
-  const [edit, setEdit] = useState<{ hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; end_caption: string; narration: string; overlays: EdlOverlay[]; mid_narrations: MidNarration[]; stickers: EdlSticker[] } | null>(null)
+  const [edit, setEdit] = useState<{ hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; end_caption: string; narration: string; overlays: EdlOverlay[]; mid_narrations: MidNarration[]; stickers: EdlSticker[]; pips: EdlPip[] } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const assetRef = useRef<HTMLInputElement>(null)
   const [assetKind, setAssetKind] = useState<'product' | 'logo' | 'sticker'>('product')
@@ -34,7 +34,7 @@ export default function Studio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, cid])
   useEffect(() => {
-    if (latest?.status === 'done' && latest.edl) setEdit({ hook: latest.edl.hook, segments: latest.edl.segments, title_lines: latest.edl.title_lines, credit: latest.edl.credit, end_caption: latest.edl.end_caption || '', narration: latest.edl.narration || '', overlays: latest.edl.overlays || [], mid_narrations: latest.edl.mid_narrations || [], stickers: latest.edl.stickers || [] })
+    if (latest?.status === 'done' && latest.edl) setEdit({ hook: latest.edl.hook, segments: latest.edl.segments, title_lines: latest.edl.title_lines, credit: latest.edl.credit, end_caption: latest.edl.end_caption || '', narration: latest.edl.narration || '', overlays: latest.edl.overlays || [], mid_narrations: latest.edl.mid_narrations || [], stickers: latest.edl.stickers || [], pips: latest.edl.pips || [] })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latest?.id, latest?.status])
 
@@ -175,9 +175,16 @@ export default function Studio() {
                       <select className="input w-32" value={m.type} onChange={(e) => setEdit({ ...edit, stickers: edit.stickers.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)) })}>{STICKERS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
                       <input type="number" step={0.5} min={0} className="input w-20" value={m.start ?? 0} onChange={(e) => setEdit({ ...edit, stickers: edit.stickers.map((x, j) => (j === i ? { type: x.type, duration: x.duration, start: Number(e.target.value) } : x)) })} /><span>초에 등장</span>
                       <button className="text-red-600" onClick={() => setEdit({ ...edit, stickers: edit.stickers.filter((_, j) => j !== i) })}>✕</button></div>))}
+                  {edit.pips.map((m, i) => (
+                    <div key={i} className="flex flex-wrap items-center gap-2"><span className="whitespace-nowrap">원형 작은 화면</span>
+                      <input type="number" step={0.5} min={0} className="input w-20" value={m.start ?? 0} onChange={(e) => setEdit({ ...edit, pips: edit.pips.map((x, j) => (j === i ? { src_start: x.src_start, focus: x.focus, duration: x.duration, start: Number(e.target.value) } : x)) })} /><span>초에 등장 · 원 안에 보여 줄 원본 시각</span>
+                      <PipTime value={m.src_start} onChange={(v) => setEdit({ ...edit, pips: edit.pips.map((x, j) => (j === i ? { ...x, src_start: v } : x)) })} />
+                      <select className="input w-28" value={m.focus} onChange={(e) => setEdit({ ...edit, pips: edit.pips.map((x, j) => (j === i ? { ...x, focus: e.target.value as EdlPip['focus'] } : x)) })}><option value="left">얼굴이 왼쪽</option><option value="center">얼굴이 가운데</option><option value="right">얼굴이 오른쪽</option></select>
+                      <button className="text-red-600" onClick={() => setEdit({ ...edit, pips: edit.pips.filter((_, j) => j !== i) })}>✕</button></div>))}
                   <div className="flex gap-2">
                     <button className="btn-ghost px-2 py-1 text-xs" disabled={edit.mid_narrations.length >= 3} onClick={() => setEdit({ ...edit, mid_narrations: [...edit.mid_narrations, { segment: Math.min(edit.segments.length - 1, 2), text: '' }] })}>+ 중간 내레이션</button>
                     <button className="btn-ghost px-2 py-1 text-xs" disabled={edit.stickers.length >= 4} onClick={() => setEdit({ ...edit, stickers: [...edit.stickers, { type: 'exclaim', start: 5 }] })}>+ 움직이는 스티커</button>
+                    <button className="btn-ghost px-2 py-1 text-xs" disabled={edit.pips.length >= 2} onClick={() => setEdit({ ...edit, pips: [...edit.pips, { start: 6, src_start: edit.hook ? edit.hook.start : edit.segments[0].start, focus: 'center' }] })}>+ 원형 작은 화면</button>
                   </div>
                 </div>
                 <input className="input mt-2 text-xs" placeholder="끝 질문 자막 (선택, 마지막 1.8초에 표시 · 예: 여러분이라면 살까요?)" maxLength={24} value={edit.end_caption} onChange={(e) => setEdit({ ...edit, end_caption: e.target.value })} />
@@ -212,6 +219,11 @@ function ClipRow({ label, clip, onChange, onRemove, original }: { label: string;
       <td className="td whitespace-nowrap">{original && <a className="underline" href={`${original}&t=${Math.floor(clip.start)}s`} target="_blank" rel="noreferrer">원본에서 보기</a>} {onRemove && <button className="ml-1 text-red-600" onClick={onRemove}>✕</button>}</td>
     </tr>
   )
+}
+function PipTime({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [t, setT] = useState(tsf(value))
+  useEffect(() => { setT(tsf(value)) }, [value])
+  return <input className="input w-20" title="원본 영상 기준 분:초" value={t} onChange={(e) => setT(e.target.value)} onBlur={() => { const v = toSecF(t); if (!isNaN(v) && v >= 0) onChange(v); else setT(tsf(value)) }} />
 }
 const STICKERS = [['exclaim', '놀람 (!)'], ['question', '궁금 (?)'], ['heart', '하트'], ['star', '별'], ['sparkle', '반짝'], ['fire', '불꽃']] as const
 const tsf = (sec: number) => `${Math.floor(sec / 60)}:${(sec % 60).toFixed(1).padStart(4, '0')}`

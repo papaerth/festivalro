@@ -911,6 +911,8 @@ def test_narration_sfx_bgm_and_popups_end_to_end(client, tmp_path, monkeypatch):
     # 영상 중간 내레이션 2문장(하나는 영상 끝을 넘겨 빠진다) + 움직이는 스티커 2개 + 내가 올린 스티커 1개
     edl["mid_narrations"] = [{"segment": 3, "text": "그런데 가격을 보고 더 놀랐다는데"}, {"start": 19.5, "text": "너무 늦은 문장"}]
     edl["stickers"] = [{"segment": 1, "type": "heart"}, {"start": 14, "type": "exclaim", "duration": 2}]
+    # 원형 작은 화면: 본편 3번 컷에서, 원본 44초의 장면을 원 안에(얼굴이 오른쪽)
+    edl["pips"] = [{"segment": 2, "src_start": 44, "focus": "right"}, {"segment": 1, "src_start": "엉터리"}]
     with logo.open("rb") as f:
         st = client.post(f"/api/studio/{cid}/assets", files={"file": ("my_sticker.png", f, "image/png")}, data={"kind": "sticker"}).json()
     assert [a["kind"] for a in st["assets"]] == ["product", "logo", "sticker"]
@@ -921,7 +923,8 @@ def test_narration_sfx_bgm_and_popups_end_to_end(client, tmp_path, monkeypatch):
     assert r2["edl"]["mid_narrations"][0] == {"text": "그런데 가격을 보고 더 놀랐다는데", "segment": 3, "start": 10.2}
     assert r2["edl"]["stickers"] == [{"type": "heart", "start": 5.3, "duration": 1.8}, {"type": "exclaim", "start": 14.0, "duration": 2.0}]
     assert not any("움직임 없이" in n for n in r2["notes"])  # 움직이는 스티커가 그대로 렌더링됐다
-    assert r2["edl"]["audio"]["sfx"].count("pop") == 5
+    assert r2["edl"]["pips"] == [{"src_start": 44.0, "focus": "right", "start": 7.8, "duration": 3.0}]
+    assert r2["edl"]["audio"]["sfx"].count("pop") == 6
     assert r2["edl"]["audio"]["narration"].startswith("test · 가짜 음성 · 2.0") and r2["edl"]["narration"].startswith("이 배우가")
     assert {o["kind"]: o["start"] for o in r2["edl"]["overlays"]} == {"product": 9.0, "logo": 0.3, "sticker": 5.3}
     probe = subprocess.run([ff, "-hide_banner", "-i", str(sorted((__import__("app.config", fromlist=["x"]).get_settings().media_dir / "renders").glob(f"shorts_c{cid}_*.mp4"),

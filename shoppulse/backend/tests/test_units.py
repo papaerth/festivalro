@@ -386,3 +386,27 @@ def test_elevenlabs_mid_narration_and_stickers(tmp_path, monkeypatch):
     with pytest.raises(audio_fx.TTSError, match="401.*Invalid API key.*API 키"):
         audio_fx.synthesize("문장", tmp_path / "e.wav")
     audio_fx._eleven_cache.clear()
+
+
+def test_bouncy_captions_and_pip_normalize(tmp_path):
+    from PIL import Image
+    from app.services.overlay_assets import pip_parts
+    from app.services.shorts_maker import BOUNCE, EDL_SCHEMA, build_ass, normalize_edl
+    from app.services.style_profile import normalize_style, style_guide
+    st = normalize_style({"caption": {"bounce": 1, "highlight_color": "#FFD400", "color": "#FFFFFF"}, "hook": {"caption_color": "#3DF2C0"}, "pip": {"enabled": True}})
+    assert st["caption"]["bounce"] is True and st["pip"] == {"enabled": True} and style_guide(st)["pip"] is True
+    assert normalize_style(None)["caption"]["bounce"] is False and normalize_style(None)["pip"]["enabled"] is False and "pips" in EDL_SCHEMA["required"]
+    edl = normalize_edl({"hook": {"start": 1, "end": 3.5, "caption": "*이게* 뭐길래"}, "segments": [{"start": 10 + i * 5, "end": 14 + i * 5, "caption": f"컷 *{i}* 끝"} for i in range(5)],
+                         "end_caption": "여러분이라면?", "pips": [{"segment": 1, "src_start": 999, "focus": "위"}, {"start": 3.26, "src_start": 40, "focus": "left", "duration": 99},
+                                                           {"src_start": 5}, "엉터리", {"segment": 2, "src_start": 7, "focus": "right"}]}, 100, 25)
+    assert edl["pips"] == [{"src_start": 98.5, "focus": "center", "segment": 1}, {"src_start": 40.0, "focus": "left", "start": 3.3, "duration": 6.0}]
+    ass = build_ass(edl, "Malgun Gothic", 300, 1300, st)
+    ev = ass.split("[Events]")[1]
+    assert ev.count(BOUNCE) == 7  # 후킹 + 본편 5 + 끝 질문 자막이 모두 통통 튄다
+    # 강조 뒤에는 원래 글자색으로 되돌린다(\\r 초기화는 튀는 움직임까지 지운다)
+    assert BOUNCE + "컷 {\\c&H00D4FF&}0{\\c&HFFFFFF&} 끝" in ev and BOUNCE + "{\\c&H00D4FF&}이게{\\c&HC0F23D&} 뭐길래" in ev and "{\\r}" not in ev
+    assert BOUNCE not in build_ass(edl, "Malgun Gothic", 300, 1300, normalize_style(None))
+    mask, ring = pip_parts(tmp_path, 300)
+    m, r = Image.open(mask), Image.open(ring)
+    assert m.size == (300, 300) and m.getpixel((150, 150)) == 255 and m.getpixel((2, 2)) == 0
+    assert r.size == (316, 316) and r.getpixel((158, 158))[3] == 0 and r.getpixel((158, 4))[3] == 255

@@ -9,13 +9,14 @@ DEFAULT_STYLE: dict = {
     "title": {"enabled": True, "size": "medium", "color": "#FFF000", "second_line_color": "", "outline_color": "#000000",
               "box": False, "box_color": "#000000", "tone": "궁금증을 일으키는 짧은 문장", "patterns": []},
     "caption": {"enabled": True, "position": "below_video", "size": "medium", "color": "#FFFFFF", "outline_color": "#000000",
-                "box": False, "box_color": "#000000", "tone": "사실 설명형 한 줄", "max_chars": 18, "emoji": False, "highlight_color": ""},
+                "box": False, "box_color": "#000000", "tone": "사실 설명형 한 줄", "max_chars": 18, "emoji": False, "highlight_color": "", "bounce": False},
     "hook": {"seconds": 3.0, "pattern": "상품이 처음 드러나거나 반응이 큰 순간을 먼저 보여 준다", "zoom_punch": False, "caption_color": "#FFFFFF"},
     "pacing": {"total_seconds": 26.0, "segments": 2, "max_clip_seconds": 14.0, "note": ""},
     "credit": {"enabled": True},
     "footer": {"text": "", "color": "#FFFFFF"},
     "narration": {"enabled": False, "rate": 1.12, "pattern": "첫 장면에 얹는 한 문장: 누가·무엇을 궁금하게 소개", "mid_count": 0},
     "stickers": {"enabled": False},
+    "pip": {"enabled": False},
     "sfx": {"enabled": False},
     "bgm": {"mode": "none", "volume": 0.1, "track": ""},
     "popup": {"position": "top_right", "size": "medium", "motion": True},
@@ -52,8 +53,8 @@ def normalize_style(raw: dict | None) -> dict:
     """AI·사람이 준 스타일을 렌더러가 안전하게 쓸 수 있는 범위로 정리(없는 값은 기본값)."""
     raw = raw or {}
     d = DEFAULT_STYLE
-    lay, ti, ca, ho, pa, fo, na, sf, bg, po, sk = (raw.get(k) or {} for k in (
-        "layout", "title", "caption", "hook", "pacing", "footer", "narration", "sfx", "bgm", "popup", "stickers"))
+    lay, ti, ca, ho, pa, fo, na, sf, bg, po, sk, pi = (raw.get(k) or {} for k in (
+        "layout", "title", "caption", "hook", "pacing", "footer", "narration", "sfx", "bgm", "popup", "stickers", "pip"))
     return {
         "summary": str(raw.get("summary") or d["summary"])[:400],
         "layout": {"mode": _enum(lay.get("mode"), ("blur_bg", "crop_fill", "color_bg"), "blur_bg"),
@@ -73,7 +74,8 @@ def normalize_style(raw: dict | None) -> dict:
                     "box": bool(ca.get("box", False)), "box_color": hex_ok(ca.get("box_color"), "#000000"),
                     "tone": str(ca.get("tone") or d["caption"]["tone"])[:200],
                     "max_chars": int(_num(ca.get("max_chars"), 8, 28, 18)), "emoji": bool(ca.get("emoji", False)),
-                    "highlight_color": hex_ok(ca.get("highlight_color"), "") if ca.get("highlight_color") else ""},
+                    "highlight_color": hex_ok(ca.get("highlight_color"), "") if ca.get("highlight_color") else "",
+                    "bounce": bool(ca.get("bounce", False))},  # 자막이 나타날 때 통통 튀는 효과
         "hook": {"seconds": round(_num(ho.get("seconds"), 1.5, 3.5, 3.0), 1), "pattern": str(ho.get("pattern") or d["hook"]["pattern"])[:200],
                  "zoom_punch": bool(ho.get("zoom_punch", False)), "caption_color": hex_ok(ho.get("caption_color"), "#FFFFFF")},
         "pacing": {"total_seconds": round(_num(pa.get("total_seconds"), 18, 60, 26), 1), "segments": int(_num(pa.get("segments"), 1, 10, 2)),
@@ -86,6 +88,7 @@ def normalize_style(raw: dict | None) -> dict:
                       "pattern": str(na.get("pattern") or d["narration"]["pattern"])[:200],
                       "mid_count": int(_num(na.get("mid_count"), 0, 2, 0))},  # 영상 중간에 넣는 내레이션 문장 수
         "stickers": {"enabled": bool(sk.get("enabled", False))},  # 반응·상품 장면에 움직이는 스티커
+        "pip": {"enabled": bool(pi.get("enabled", False))},  # 원형 작은 화면(다른 순간의 반응 얼굴을 함께)
         "sfx": {"enabled": bool(sf.get("enabled", False))},
         "bgm": {"mode": _enum(bg.get("mode"), ("none", "auto"), "none"), "volume": round(_num(bg.get("volume"), 0.03, 0.35, 0.1), 2),
                 "track": str(bg.get("track") or "")[:200]},
@@ -106,4 +109,4 @@ def style_guide(style: dict) -> dict:
             "own_twist": style["kick"], "end_question": style["end_question"],
             "highlight_keyword": bool(style["caption"]["highlight_color"]),
             "narration": style["narration"]["enabled"], "narration_pattern": style["narration"]["pattern"],
-            "mid_narrations": style["narration"]["mid_count"] if style["narration"]["enabled"] else 0, "stickers": style["stickers"]["enabled"]}
+            "mid_narrations": style["narration"]["mid_count"] if style["narration"]["enabled"] else 0, "stickers": style["stickers"]["enabled"], "pip": style["pip"]["enabled"]}
