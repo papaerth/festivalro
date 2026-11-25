@@ -69,9 +69,12 @@ def ai_score_step(db: Session, max_per_category: int = TARGET_CANDIDATES, report
                  .filter(SourcingCandidate.channel_category == cat, SourcingCandidate.is_demo.is_(False),
                          SourcingCandidate.status.notin_(["rejected", "published", "analyzing"]))
                  .order_by(SourcingCandidate.created_at.desc()).all())
-        todo = [c for c in cands if latest_scores(c.scores)["final"] is None or
-                (latest_scores(c.scores)["human"] is None and latest_scores(c.scores)["ai"] is not None
-                 and latest_scores(c.scores)["ai"].total is None)][:max_per_category]
+        def _needs_ai(c):
+            ls = latest_scores(c.scores)
+            if ls["human"] is not None:
+                return False
+            return ls["ai"] is None or ls["ai"].total is None
+        todo = [c for c in cands if _needs_ai(c)][:max_per_category]
         for c in todo:
             graph = video_graph(c.video)
             ev = evidence_summary(c.video)
@@ -179,8 +182,12 @@ def ai_identify_products_step(db: Session, max_calls: int = 30) -> dict:
     return {"skipped": False, "identified": identified, "linked": linked, "no_result": no_result, "failed": failed}
 
 
-def ai_plan_step(db: Session, candidate_ids: list[int]) -> dict:
-    """최종 추천 후보에 AI 쇼츠 기획안을 자동 생성한다(오늘 이미 있으면 건너뜀). 키가 없으면 건너뜀."""
+def ai_plan_step(db: Session, candidate_ids: list[int] | None = None, max_calls: int | None = None) -> dict:
+    """활성 후보 전체(점수 높은 순)에 AI 쇼츠 기획안을 미리 만들어 둔다. 키가 없으면 건너뜀.
+
+    - 이미 AI 기획안이 있고 그 뒤로 후보 정보가 바뀌지 않았으면 건너뛴다.
+    - 한 번에 max_calls(기본: 설정 auto_plan_limit, 없으면 40)개까지만 호출한다.
+    """
     from ..config import get_settings
     from ..models import ShortsPlan, UserSetting
     from .shorts_planner import generate_plan
@@ -189,14 +196,26 @@ def ai_plan_step(db: Session, candidate_ids: list[int]) -> dict:
         return {"skipped": True, "reason": "ANTHROPIC_API_KEY 미설정", "generated": 0}
     ts = db.get(UserSetting, "default_target_seconds")
     target = int(ts.value.get("value", 25)) if ts else 25
-    generated, failed, existing = 0, [], 0
-    today = utcnow().date()
+    if max_calls is None:
+        lim = db.get(UserSetting, "auto_plan_limit")
+        max_calls = int(lim.value.get("value", 40)) if lim else 40
+    if candidate_ids is None:
+        cands = (db.query(SourcingCandidate)
+                 .filter(SourcingCandidate.is_demo.is_(False),
+                         SourcingCandidate.status.notin_(["rejected", "published", "analyzing"])).all())
+        cands.sort(key=lambda c: -(latest_scores(c.scores)["final"].total or 0) if latest_scores(c.scores)["final"] and latest_scores(c.scores)["final"].total is not None else 1)
+        candidate_ids = [c.id for c in cands]
+    generated, failed, existing, deferred = 0, [], 0, 0
     for cid in candidate_ids:
         c = db.get(SourcingCandidate, cid)
         if not c:
             continue
-        if any(p.created_at.date() == today and p.generated_by == "anthropic" for p in c.plans):
+        ai_plans = [p for p in c.plans if p.generated_by == "anthropic"]
+        if ai_plans and max(p.created_at for p in ai_plans) >= (c.updated_at or c.created_at):
             existing += 1
+            continue
+        if generated + len(failed) >= max_calls:
+            deferred += 1
             continue
         try:
             plan, by = generate_plan(c, target)
@@ -206,7 +225,8 @@ def ai_plan_step(db: Session, candidate_ids: list[int]) -> dict:
         db.add(ShortsPlan(candidate_id=cid, target_seconds=target, generated_by=by, plan=plan))
         generated += 1
         db.commit()
-    return {"skipped": False, "generated": generated, "existing_today": existing, "failed": failed}
+    return {"skipped": False, "generated": generated, "existing": existing, "deferred": deferred, "failed": failed,
+            "max_calls": max_calls}
 
 
 def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date | None = None,
@@ -226,7 +246,8 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
                   .filter(SourcingCandidate.status == "candidate", SourcingCandidate.notes.like("[자동 발굴%"),
                           Video.source_type == "original_celebrity").all())
         for c in legacy:
-            if any(sc.scorer == "human" for sc in c.scores) or c.plans:
+            # 사람이 손댄 흔적(사람 점수, 템플릿이 아닌 기획안)이 있으면 유지
+            if any(sc.scorer == "human" for sc in c.scores) or any(p.generated_by != "template" for p in c.plans):
                 continue
             c.status = "rejected"
             c.duplicate_reason = "구버전 자동 발굴(원본 영상 기준) — 후보 기준이 재편집 쇼츠로 바뀌어 자동 제외"
@@ -236,6 +257,9 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
         discovery["legacy_retired"] = legacy_retired
     outliers = computed_outlier_step(db)
     ai_products = ai_identify_products_step(db) if ai_score else {"skipped": True, "reason": "비활성", "identified": 0, "linked": 0}
+    # 규칙 간이 채점 + 템플릿 기획안: AI·사람 채점 전에도 모든 후보에 총점·순위·기획안 뼈대가 있게 한다
+    from .rule_scorer import prepare_candidates
+    prepared = prepare_candidates(db)
     ai = ai_score_step(db) if ai_score else {"skipped": True, "reason": "비활성", "scored": 0}
     yesterday = report_date - timedelta(days=1)
     prev = (
@@ -251,6 +275,7 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
     out_categories = []
     summary = {"graph_types": {}, "total_candidates": 0, "total_final": 0, "stats_refresh": refresh,
                "auto_discovery": discovery, "ai_scoring": ai, "ai_products": ai_products, "computed_outliers": outliers,
+               "rule_scores": prepared["rule_scores"], "template_plans": prepared["template_plans"],
                "targets": {"candidates_per_category": TARGET_CANDIDATES, "final_per_category": TARGET_FINAL}}
 
     for cat in CATEGORIES:
@@ -304,12 +329,17 @@ def run_daily_sourcing(db: Session, trigger: str = "manual", report_date: date |
             "final_shortfall": max(0, TARGET_FINAL - len(final)),
             "duplicates_from_previous_day": duplicates,
             "note": None if len(final) >= TARGET_FINAL else (
-                "점수가 매겨진 후보가 부족합니다. " + ("AI 키가 없어 사람이 점수를 입력해야 합니다." if ai.get("skipped") else "후보를 추가하거나 평가하세요.") + " (가짜 결과를 만들지 않음)"),
+                "점수가 매겨진 후보가 부족합니다. " + ("규칙 간이 점수로 순위를 매겼고, AI 키가 없어 AI 채점은 건너뛰었습니다." if ai.get("skipped") else "후보를 추가하거나 평가하세요.") + " (가짜 결과를 만들지 않음)"),
         })
         summary["total_candidates"] += len(top)
         summary["total_final"] += len(final)
 
-    summary["ai_plans"] = ai_plan_step(db, [cid for cat in out_categories for cid in cat["final_ids"]]) if ai_score else {"skipped": True, "reason": "비활성"}
+    # AI 기획안: 최종 추천 후보 먼저, 그다음 나머지 활성 후보(점수순)
+    final_first = [cid for cat in out_categories for cid in cat["final_ids"]]
+    rest = [cid for cat in out_categories for cid in cat["candidate_ids"] if cid not in final_first]
+    others = [c.id for c in db.query(SourcingCandidate).filter(SourcingCandidate.is_demo.is_(False),
+              SourcingCandidate.status.notin_(["rejected", "published", "analyzing"])).all() if c.id not in final_first and c.id not in rest]
+    summary["ai_plans"] = ai_plan_step(db, final_first + rest + others) if ai_score else {"skipped": True, "reason": "비활성"}
     report = DailyReport(report_date=report_date, trigger=trigger, summary=summary, candidates=out_categories,
                          generated_at=utcnow())
     db.add(report)

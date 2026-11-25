@@ -207,13 +207,32 @@ def _run_sourcing(report_date, refresh_limit: int, trigger: str = "manual"):
         BULK_STATE.update(running=False, current=None, summary=summary, finished_at=utcnow().isoformat())
 
 
+def _run_plans(max_calls: int = 40):
+    """활성 후보 전체에 규칙 점수·템플릿 기획안을 채우고, AI 키가 있으면 AI 기획안을 점수순으로 생성한다."""
+    from .daily_sourcing import ai_plan_step
+    from .rule_scorer import prepare_candidates
+
+    with SessionLocal() as db:
+        BULK_STATE.update(current="규칙 점수·템플릿 기획안 준비", total=0, done=0)
+        prepared = prepare_candidates(db)
+        BULK_STATE.update(current="AI 기획안 생성")
+        try:
+            plans = ai_plan_step(db, None, max_calls=max_calls)
+        except Exception as e:
+            BULK_STATE.update(running=False, current=None, error=f"기획안 생성 오류: {e}", finished_at=utcnow().isoformat())
+            raise
+        BULK_STATE.update(running=False, current=None, summary={"prepared": prepared, "ai_plans": plans},
+                          finished_at=utcnow().isoformat())
+
+
 def start(task: str, **params) -> dict:
     with _lock:
         if BULK_STATE["running"]:
             raise RuntimeError(f"다른 일괄 작업({BULK_STATE['task']})이 실행 중입니다. 완료 후 다시 시도하세요.")
         BULK_STATE.update(running=True, task=task, total=0, done=0, current=None, started_at=utcnow().isoformat(),
                           finished_at=None, summary={}, error=None)
-    target = {"resolve": _run_resolve, "collect": _run_collect, "discover": _run_discover, "sourcing": _run_sourcing}[task]
+    target = {"resolve": _run_resolve, "collect": _run_collect, "discover": _run_discover, "sourcing": _run_sourcing,
+              "plans": _run_plans}[task]
     t = threading.Thread(target=target, kwargs=params, daemon=True, name=f"bulk-{task}")
     t.start()
     return status()

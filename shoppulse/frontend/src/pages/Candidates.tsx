@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { api, LABELS } from '../api'
 import { useAsync } from '../hooks'
 import CandidateCard from '../components/CandidateCard'
-import { Empty, ErrorBox, Field, Select, Spinner } from '../components/ui'
+import { Empty, ErrorBox, Field, Select, Spinner, useToast } from '../components/ui'
 
 const GRAPHS = Object.entries(LABELS.graph) as [string, string][]
 const FORMATS = Object.entries(LABELS.format) as [string, string][]
@@ -16,12 +16,17 @@ export default function Candidates() {
   const celebs = useAsync(() => api.celebrities())
   const q = useAsync(() => api.candidates({ ...f, limit: 90 }), [JSON.stringify(f)])
   const m = meta.data
+  const { toast, node } = useToast()
+  const [busy, setBusy] = useState(false)
+  const prepare = async () => { setBusy(true); try { const r = await api.prepareAll(true); toast(`간이 채점 ${r.rule_scores.scored}건 다시 계산 · 템플릿 기획안 ${r.template_plans.generated}건 생성`); q.reload() } catch (e: any) { toast(e.message, 'err') } finally { setBusy(false) } }
+  const plans = async () => { try { await api.generateAllPlans(40); toast('AI 기획안 일괄 생성 시작 — 대시보드의 진행 표시에서 확인하세요(후보당 수십 초)') } catch (e: any) { toast(e.message, 'err') } }
 
   return (
     <div className="space-y-4">
+      {node}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="text-2xl font-bold tracking-tight">소싱 후보</h1><p className="text-sm muted">후보의 주체는 <b>쇼핑 재편집 쇼츠</b>입니다. 들어가면 원본 영상·상품을 연결·확인할 수 있습니다. 「오늘 소싱 실행」이 자동 발굴하거나 영상 상세에서 직접 등록합니다. (저장된 후보의 필터·정렬, 외부 새 검색 아님)</p></div>
-        <div className="text-sm muted">{q.data ? `${q.data.total}개 · ${q.data.sort_label}` : ''}</div>
+        <div><h1 className="text-2xl font-bold tracking-tight">소싱 후보</h1><p className="text-sm muted">후보의 주체는 <b>쇼핑 재편집 쇼츠</b>입니다. 모든 후보는 <b>규칙 간이 점수</b>로 먼저 채점·순위가 매겨지고(#순위), AI 점수·사람 점수가 생기면 그 점수가 우선합니다. 들어가면 원본 영상·상품을 연결·확인할 수 있습니다. 「오늘 소싱 실행」이 자동 발굴하거나 영상 상세에서 직접 등록합니다. (저장된 후보의 필터·정렬, 외부 새 검색 아님)</p></div>
+        <div className="flex items-center gap-2 text-sm muted">{q.data ? `${q.data.total}개 · ${q.data.sort_label}${q.data.ranked !== undefined ? ` · 총점 순위 ${q.data.ranked}개` : ''}` : ''}<button className="btn-ghost text-xs" disabled={busy} onClick={prepare} title="AI 없이 저장된 지표·상품·원본 연결 상태로 6개 항목을 모두 채점해 임시 총점·순위를 만듭니다">{busy ? '계산 중…' : '간이 채점 다시 계산'}</button><button className="btn-ghost text-xs" onClick={plans} title="활성 후보 전체에 AI 쇼츠 기획안을 미리 만들어 둡니다">AI 기획안 일괄 생성</button></div>
       </div>
       <div className="card grid gap-3 p-4 md:grid-cols-4 xl:grid-cols-7">
         <Field label="채널 카테고리"><Select value={f.category || ''} onChange={(v) => set('category', v)} placeholder="전체" options={Object.entries(LABELS.category) as [string, string][]} /></Field>
@@ -45,7 +50,7 @@ export default function Candidates() {
       </div>
       <ErrorBox error={q.error} onRetry={q.reload} />
       {q.loading && !q.data ? <Spinner /> : q.data && q.data.items.length === 0 ? <Empty>조건에 맞는 후보가 없습니다.</Empty> : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{q.data?.items.map((c) => <CandidateCard key={c.id} c={c} />)}</div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{q.data?.items.map((c) => <CandidateCard key={c.id} c={c} rank={c.rank ?? undefined} rankPrefix="#" showReason />)}</div>
       )}
     </div>
   )

@@ -9,6 +9,21 @@ const nav = [
 export default function Layout() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
   const [open, setOpen] = useState(false)
+  const [down, setDown] = useState<null | { since: number; tries: number }>(null)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let alive = true
+    const probe = async (tries: number) => {
+      try {
+        const r = await fetch('/api/health', { cache: 'no-store' })
+        if (r.ok) { if (alive) { setDown(null); window.location.reload() } ; return }
+      } catch {}
+      if (alive) { setDown((d) => (d ? { ...d, tries } : d)); timer = setTimeout(() => probe(tries + 1), 3000) }
+    }
+    const onDown = () => { setDown((d) => { if (d) return d; timer = setTimeout(() => probe(1), 3000); return { since: Date.now(), tries: 0 } }) }
+    window.addEventListener('sp-server-down', onDown)
+    return () => { alive = false; window.removeEventListener('sp-server-down', onDown); if (timer) clearTimeout(timer) }
+  }, [])
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
     try { localStorage.setItem('sp-theme', dark ? 'dark' : 'light') } catch {}
@@ -34,6 +49,11 @@ export default function Layout() {
       </aside>
       {open && <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setOpen(false)} />}
       <main className="min-w-0 flex-1 p-4 lg:p-8">
+        {down && (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            <b>서버에 연결할 수 없습니다.</b> 「SHOPPULSE server」 창이 닫혔거나 재시작 중입니다(업데이트 직후라면 잠시 기다리세요). 서버가 꺼져 있으면 바탕화면 아이콘 또는 start.bat 으로 다시 실행하세요. 연결되면 자동으로 새로고침합니다. <span className="muted">(재시도 {down.tries}회)</span>
+          </div>
+        )}
         <button className="btn-ghost mb-3 lg:hidden" onClick={() => setOpen(true)}>☰ 메뉴</button>
         <Outlet />
       </main>

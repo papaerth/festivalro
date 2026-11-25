@@ -5,7 +5,9 @@ import { api, fmt, LABELS } from '../api'
 import { Badge, ProductStatusBadge, toneFor } from './ui'
 import ViewGraph from './ViewGraph'
 
-export default function CandidateCard({ c, draggable, onDragStart, rank, showReason }: { c: CandidateSummary; draggable?: boolean; onDragStart?: (e: React.DragEvent) => void; rank?: number; showReason?: boolean }) {
+const SCORER_LABEL: Record<string, string> = { rule: '간이 점수(규칙)', ai: 'AI 점수', human: '사람 점수' }
+
+export default function CandidateCard({ c, draggable, onDragStart, rank, rankPrefix = 'Top ', showReason }: { c: CandidateSummary; draggable?: boolean; onDragStart?: (e: React.DragEvent) => void; rank?: number | null; rankPrefix?: string; showReason?: boolean }) {
   const v = c.video
   const [produced, setProduced] = useState<string | null>(c.produced_at)
   const toggle = async (on: boolean) => { try { const d = await api.setProduced(c.id, { produced: on }); setProduced(d.produced_at) } catch {} }
@@ -14,7 +16,7 @@ export default function CandidateCard({ c, draggable, onDragStart, rank, showRea
       <Link to={`/candidates/${c.id}`} className="block">
         <div className="relative aspect-video bg-stone-200 dark:bg-stone-800">
           {v?.thumbnail_url && <img src={v.thumbnail_url} alt="" className="h-full w-full object-cover" loading="lazy" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} />}
-          <div className="absolute left-2 top-2 flex gap-1">{rank && <span className="rounded-md bg-stone-900/90 px-2 py-0.5 text-xs font-bold text-white">Top {rank}</span>}<Badge tone={toneFor.category(c.channel_category)}>{LABELS.category[c.channel_category]}</Badge>{c.is_demo && <Badge tone="red">DEMO</Badge>}{produced && <Badge tone="green">✓ 제작함</Badge>}</div>
+          <div className="absolute left-2 top-2 flex gap-1">{rank && <span className="rounded-md bg-stone-900/90 px-2 py-0.5 text-xs font-bold text-white">{rankPrefix}{rank}</span>}<Badge tone={toneFor.category(c.channel_category)}>{LABELS.category[c.channel_category]}</Badge>{c.is_demo && <Badge tone="red">DEMO</Badge>}{produced && <Badge tone="green">✓ 제작함</Badge>}</div>
           <div className="absolute bottom-2 right-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] text-white">{fmt.duration(v?.duration_seconds)}</div>
           <div className="absolute bottom-2 left-2 rounded-md bg-white/90 px-2 py-0.5 text-xs font-semibold text-stone-900">{c.score !== null ? `${c.score}점` : '점수 없음'}{c.grade_label ? ` · ${c.grade_label}` : ''}</div>
         </div>
@@ -35,7 +37,7 @@ export default function CandidateCard({ c, draggable, onDragStart, rank, showRea
         <div className="flex flex-wrap gap-1 text-[11px]">
           {c.is_short_candidate ? <ProductStatusBadge status={c.video_product_status} names={c.product_name ? [c.product_name] : undefined} /> : <><Badge tone="gray">{c.product_name || '상품 미확인'}</Badge><Badge tone={toneFor.identification(c.product_identification)}>{LABELS.identification[c.product_identification || 'unidentified']}</Badge></>}
           {c.content_type_label && <Badge tone="blue">{c.content_type_label}</Badge>}
-          <Badge tone={toneFor.status(c.status)}>{LABELS.status[c.status] || c.status}</Badge>{c.notes?.includes('[자동 발굴') && <Badge tone="gray" title={c.notes || ''}>자동 발굴</Badge>}{c.score_scorer === 'ai' && <Badge tone="gray">AI 점수</Badge>}{c.plan_count > 0 && <Badge tone="blue">기획안 {c.latest_plan_by === 'anthropic' ? 'AI' : ''}</Badge>}
+          <Badge tone={toneFor.status(c.status)}>{LABELS.status[c.status] || c.status}</Badge>{c.notes?.includes('[자동 발굴') && <Badge tone="gray" title={c.notes || ''}>자동 발굴</Badge>}{c.score_scorer && <Badge tone={c.score_scorer === 'human' ? 'green' : c.score_scorer === 'ai' ? 'violet' : 'gray'}>{SCORER_LABEL[c.score_scorer] || c.score_scorer}</Badge>}{c.plan_count > 0 && <Badge tone="blue">기획안 {c.latest_plan_by === 'anthropic' ? 'AI' : ''}</Badge>}
           {c.recommended_slot && <Badge tone="violet">{LABELS.slot[c.recommended_slot]}</Badge>}
           {c.production_ready ? <Badge tone="green">제작 준비 완료</Badge> : <Badge tone="amber" title={c.unresolved_critical.join(', ')}>검증 {c.unresolved_critical.length}건 미해결</Badge>}
         </div>

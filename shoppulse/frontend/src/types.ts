@@ -50,7 +50,7 @@ export interface AISuggestions { video_is_shopping: boolean; suggestions: AISugg
 
 export interface Evidence { count: number; unconfirmed_count?: number; note?: string; total_views?: number; max_views?: number; graph_types?: Record<string, number>; best_outlier?: number | null; best_vph?: number | null; resurgence?: number; spike_plateau?: number; steady_rise?: number }
 
-export interface Score { id: number; scorer: 'ai' | 'human'; item_scores: Record<string, number | null>; rationale: Record<string, string>; total: number | null; grade_key: string | null; grade_label: string | null; created_at: string }
+export interface Score { id: number; scorer: 'ai' | 'human' | 'rule'; item_scores: Record<string, number | null>; rationale: Record<string, string>; total: number | null; grade_key: string | null; grade_label: string | null; created_at: string }
 export interface Verification { item: string; label: string; status: 'pending' | 'passed' | 'failed' | 'na'; note: string | null; checked_by: string | null; checked_at: string | null }
 export interface Plan { id: number; candidate_id: number; target_seconds: number; generated_by: string; plan: Record<string, any>; created_at: string }
 
@@ -58,12 +58,12 @@ export interface CandidateSummary {
   id: number; video_id: number; product_id: number | null; segment_id: number | null; celebrity_id: number | null; celebrity_name: string | null;
   channel_category: Category; content_type: string | null; content_type_label: string | null; status: string; recommended_slot: Slot | null; hook_idea: string | null;
   research_todo: string | null; notes: string | null; is_demo: boolean; last_recommended_date: string | null; recommendation_count: number; duplicate_reason: string | null;
-  score: number | null; grade_key: string | null; grade_label: string | null; score_scorer: string | null; ai_score: number | null; human_score: number | null;
+  score: number | null; grade_key: string | null; grade_label: string | null; score_scorer: string | null; ai_score: number | null; human_score: number | null; rule_score?: number | null; rank?: number | null;
   production_ready: boolean; unresolved_critical: string[]; product_name: string | null; product_identification: string | null; offer_status: string | null;
   segment: Segment | null; plan_count: number; latest_plan_by: string | null; produced_at: string | null; produced_url: string | null; reason_summary: string | null; is_short_candidate: boolean; original_video: VideoSummary | null; video_product_status: 'confirmed' | 'candidate' | 'none'; evidence: Evidence; updated_at: string; created_at: string; video?: VideoSummary
 }
 export interface CandidateDetail extends CandidateSummary {
-  video: VideoDetail; original_detail: VideoDetail | null; product: Product | null; scores: { ai: Score | null; human: Score | null; history: Score[] }; verification: Verification[]; plans: Plan[]
+  video: VideoDetail; original_detail: VideoDetail | null; product: Product | null; scores: { ai: Score | null; human: Score | null; rule: Score | null; history: Score[] }; verification: Verification[]; plans: Plan[]
 }
 
 export interface ScoringItem { key: string; label: string; max: number; criteria: string }

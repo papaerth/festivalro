@@ -16,7 +16,14 @@ async function req<R>(method: string, url: string, body?: unknown, isForm = fals
     if (isForm) init.body = body as FormData
     else { (init.headers as any)['Content-Type'] = 'application/json'; init.body = JSON.stringify(body) }
   }
-  const res = await fetch(url, init)
+  let res: Response
+  try {
+    res = await fetch(url, init)
+  } catch (e: any) {
+    // 네트워크 단계 실패(Failed to fetch): 서버가 꺼졌거나 재시작 중
+    window.dispatchEvent(new CustomEvent('sp-server-down'))
+    throw new ApiError(0, '서버에 연결할 수 없습니다. SHOPPULSE 서버 창이 닫혔거나 재시작 중입니다(업데이트 직후라면 10~20초 뒤 자동 복구). 바탕화면 아이콘 또는 start.bat 으로 다시 실행하세요.')
+  }
   if (res.status === 204) return undefined as R
   const text = await res.text()
   let data: any = null
@@ -84,13 +91,15 @@ export const api = {
   deleteMention: (id: number) => req<void>('DELETE', `/api/products/mentions/${id}`),
 
   candidateMeta: () => req<T.CandidateMeta>('GET', '/api/candidates/meta'),
-  candidates: (p: Record<string, any> = {}) => req<{ total: number; items: T.CandidateSummary[]; sort_label: string; note: string }>('GET', `/api/candidates${qs(p)}`),
+  candidates: (p: Record<string, any> = {}) => req<{ total: number; items: T.CandidateSummary[]; sort_label: string; ranked?: number; note: string }>('GET', `/api/candidates${qs(p)}`),
   candidate: (id: number) => req<T.CandidateDetail>('GET', `/api/candidates/${id}`),
   createCandidate: (b: Record<string, any>) => req<T.CandidateDetail>('POST', '/api/candidates', b),
   patchCandidate: (id: number, b: Record<string, any>) => req<T.CandidateDetail>('PATCH', `/api/candidates/${id}`, b),
   deleteCandidate: (id: number) => req<void>('DELETE', `/api/candidates/${id}`),
+  prepareAll: (force = false) => req<{ rule_scores: { scored: number; unchanged: number; total: number }; template_plans: { generated: number; total: number } }>('POST', `/api/candidates/prepare-all?force=${force}`),
+  generateAllPlans: (max_calls = 40) => req<T.BulkState>('POST', `/api/candidates/plans/generate-all?max_calls=${max_calls}`),
   addScore: (id: number, b: { scorer: 'human' | 'ai'; item_scores: Record<string, number | null>; rationale?: Record<string, string> }) => req<T.CandidateDetail>('POST', `/api/candidates/${id}/scores`, b),
-  suggestScore: (id: number) => req<T.CandidateDetail>('POST', `/api/candidates/${id}/scores/suggest`),
+  suggestScore: (id: number, mode: 'ai' | 'rule' = 'ai') => req<T.CandidateDetail>('POST', `/api/candidates/${id}/scores/suggest?mode=${mode}`),
   setVerification: (id: number, b: { item: string; status: string; note?: string | null }) => req<T.CandidateDetail>('PUT', `/api/candidates/${id}/verification`, b),
   setProduced: (id: number, b: { produced: boolean; produced_url?: string | null }) => req<T.CandidateDetail>('PUT', `/api/candidates/${id}/produced`, b),
   computeOutlier: (id: number) => req<{ outlier: T.ComputedOutlier; quota_used: number }>('POST', `/api/videos/${id}/compute-outlier`),

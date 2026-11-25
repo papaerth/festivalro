@@ -335,7 +335,7 @@ class SourcingScore(Base):
         ForeignKey("sourcing_candidates.id", ondelete="CASCADE"), nullable=False, index=True
     )
     scoring_version_id: Mapped[int | None] = mapped_column(ForeignKey("scoring_versions.id", ondelete="SET NULL"))
-    scorer: Mapped[str] = mapped_column(String(10), nullable=False)  # ai / human
+    scorer: Mapped[str] = mapped_column(String(10), nullable=False)  # ai / human / rule(규칙 간이 채점)
     item_scores: Mapped[dict] = mapped_column(JSON, nullable=False)  # {key: int|None}
     rationale: Mapped[dict] = mapped_column(JSON, default=dict)  # {key: str}
     total: Mapped[float | None] = mapped_column(Float)  # 항목 하나라도 NULL 이면 NULL

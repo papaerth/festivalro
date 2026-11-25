@@ -213,7 +213,7 @@ class CandidatePatch(BaseModel):
 
 
 class ScoreIn(BaseModel):
-    scorer: Literal["human", "ai"] = "human"
+    scorer: Literal["human", "ai", "rule"] = "human"
     item_scores: dict[str, int | None]
     rationale: dict[str, str] = {}
 

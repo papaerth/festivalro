@@ -19,6 +19,23 @@ from .services import scheduler
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("shoppulse")
 
+
+def _setup_file_log() -> None:
+    """서버 창이 닫혀도 원인을 볼 수 있게 data/logs/server.log 에 기록한다(2MB × 3개 순환)."""
+    try:
+        from logging.handlers import RotatingFileHandler
+
+        log_dir = get_settings().data_dir / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        h = RotatingFileHandler(log_dir / "server.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8")
+        h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        h.addFilter(_AccessLogFilter())
+        logging.getLogger().addHandler(h)
+        for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+            logging.getLogger(name).addHandler(h)
+    except Exception as e:  # 로그 파일을 못 만들어도 서버는 떠야 한다
+        log.warning("로그 파일을 만들지 못했습니다: %s", e)
+
 _QUIET_PATHS = ("/api/channels/bulk/status", "/api/health")
 
 
@@ -46,10 +63,30 @@ def init_db() -> None:
         refresh_data_sources(db)
 
 
+def _prepare_candidates_background() -> None:
+    """시작 직후(백그라운드): 모든 활성 후보에 규칙 간이 점수·템플릿 기획안이 있게 한다. 실패해도 서버는 계속 동작."""
+    import threading
+
+    def run():
+        try:
+            from .services.rule_scorer import prepare_candidates
+
+            with SessionLocal() as db:
+                r = prepare_candidates(db)
+            log.info("후보 준비: 규칙 점수 %s건 계산(%s건 유지), 템플릿 기획안 %s건 생성",
+                     r["rule_scores"]["scored"], r["rule_scores"]["unchanged"], r["template_plans"]["generated"])
+        except Exception as e:
+            log.warning("후보 준비 실패(서버는 계속 동작): %s", e)
+
+    threading.Thread(target=run, daemon=True, name="prepare-candidates").start()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _setup_file_log()
     init_db()
     scheduler.start()
+    _prepare_candidates_background()
     log.info("SHOPPULSE %s 시작 — http://localhost:%d", __version__, get_settings().shoppulse_port)
     yield
     scheduler.shutdown()

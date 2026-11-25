@@ -123,15 +123,17 @@ def test_product_candidate_score_verification_plan(client):
     assert r.status_code == 201
     c = r.json()
     cid = c["id"]
-    assert c["score"] is None and c["production_ready"] is False and len(c["verification"]) == 7
-    # AI 제안: 성과 항목만(지표 있음), 나머지 NULL → 총점 NULL
+    # 생성 즉시 규칙 간이 점수(총점 있음)·템플릿 기획안이 붙는다. 사람·AI 점수는 아직 없음
+    assert c["score"] is not None and c["score_scorer"] == "rule" and c["scores"]["human"] is None and c["scores"]["ai"] is None
+    assert c["plan_count"] == 1 and c["latest_plan_by"] == "template"
+    assert c["production_ready"] is False and len(c["verification"]) == 7
+    # 키 없음 → suggest 는 규칙 간이 채점(성과 항목에 실제 지표 근거)
     r = client.post(f"/api/candidates/{cid}/scores/suggest").json()
-    assert r["scores"]["ai"]["total"] is None
-    assert r["scores"]["ai"]["item_scores"]["performance"] is not None
-    assert r["scores"]["ai"]["item_scores"]["hook"] is None
-    # 사람 점수 — 일부만 → 총점 NULL
+    assert r["scores"]["ai"] is None and r["scores"]["rule"]["total"] is not None
+    assert r["scores"]["rule"]["item_scores"]["performance"] is not None and "VPH" in r["scores"]["rule"]["rationale"]["performance"]
+    # 사람 점수 — 일부만 → 사람 총점 NULL, 표시 점수는 규칙 간이 점수로 유지
     r = client.post(f"/api/candidates/{cid}/scores", json={"scorer": "human", "item_scores": {"hook": 20}}).json()
-    assert r["score"] is None
+    assert r["scores"]["human"]["total"] is None and r["score_scorer"] == "rule"
     full = {"hook": 22, "performance": 15, "originality": 18, "purchasability": 10, "target_fit": 8, "timing": 9}
     r = client.post(f"/api/candidates/{cid}/scores", json={"scorer": "human", "item_scores": full, "rationale": {"hook": "발언이 강함"}}).json()
     assert r["score"] == 82 and r["grade_key"] == "top" and r["grade_label"] == "최우선 검토"
@@ -276,7 +278,7 @@ def test_derived_shorts_link_and_evidence(client):
     # 후보 점수 제안에 재편집 쇼츠 근거 반영
     cid = client.get("/api/candidates").json()["items"][0]["id"]
     r = client.post(f"/api/candidates/{cid}/scores/suggest").json()
-    assert "재편집 쇼츠" in r["scores"]["ai"]["rationale"]["performance"]
+    assert "재편집 쇼츠" in r["scores"]["rule"]["rationale"]["performance"]
     assert r["evidence"]["count"] == 1
     # 필터
     assert client.get("/api/videos", params={"original_video_id": orig["id"]}).json()["total"] == 1
@@ -513,6 +515,29 @@ def test_computed_vph_and_outlier(client):
 
 
 def test_ai_suggest_falls_back_to_rule_without_key(client):
-    cid = client.get("/api/candidates").json()["items"][0]["id"]
+    v = client.post("/api/videos", json={"url_or_id": "mmmmmmmmmmm", "title": "규칙 채점용 쇼츠 추천템?", "duration_seconds": 30,
+                                        "view_count": 250000, "fetch": False, "source_type": "reedit_shorts"}).json()
+    cid = client.post("/api/candidates", json={"video_id": v["id"], "channel_category": "living"}).json()["id"]
     r = client.post(f"/api/candidates/{cid}/scores/suggest", params={"mode": "ai"}).json()
-    assert r["scores"]["ai"] is not None and r["scores"]["ai"]["item_scores"]["hook"] is None  # 키 없음 → 규칙 제안
+    # 키 없음 → 규칙 간이 채점: 6개 항목 모두 채워지고 총점·등급이 나온다(scorer=rule)
+    rule = r["scores"]["rule"]
+    assert rule is not None and all(v is not None for v in rule["item_scores"].values()) and rule["total"] is not None
+    assert rule["rationale"]["_summary"].startswith("규칙 간이 채점") and rule["rationale"]["performance"]
+    assert r["score_scorer"] == "rule" and r["score"] == rule["total"]
+    # 사람 점수가 들어오면 사람 점수가 우선한다
+    full = {k: 1 for k in rule["item_scores"]}
+    r2 = client.post(f"/api/candidates/{cid}/scores", json={"scorer": "human", "item_scores": full}).json()
+    assert r2["score_scorer"] == "human" and r2["score"] == len(full)
+
+
+def test_prepare_all_and_rank(client):
+    r = client.post("/api/candidates/prepare-all").json()
+    assert r["rule_scores"]["total"] >= 1 and r["template_plans"]["total"] >= 1
+    # 다시 호출하면 입력이 안 바뀐 후보는 재계산하지 않는다
+    r2 = client.post("/api/candidates/prepare-all").json()
+    assert r2["rule_scores"]["scored"] == 0 and r2["rule_scores"]["unchanged"] >= 1
+    lst = client.get("/api/candidates", params={"sort": "score"}).json()
+    ranked = [i for i in lst["items"] if i["rank"] is not None]
+    assert ranked and ranked[0]["rank"] == 1 and all(i["plan_count"] >= 1 for i in lst["items"] if i["status"] != "rejected")
+    scores = [i["score"] for i in ranked]
+    assert scores == sorted(scores, reverse=True)

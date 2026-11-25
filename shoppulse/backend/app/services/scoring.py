@@ -49,13 +49,15 @@ def grade_label(grade_key: str | None, config: dict) -> str | None:
 
 
 def latest_scores(candidate_scores: list[SourcingScore]) -> dict[str, SourcingScore | None]:
-    """scorer 별 최신 점수. 사람(human) 점수가 있으면 표시용 최종 점수는 사람 점수."""
-    out: dict[str, SourcingScore | None] = {"ai": None, "human": None}
+    """scorer 별 최신 점수. 표시용 최종 점수 우선순위: 사람(총점 있음) > AI(총점 있음) > 규칙 간이(rule) > 사람(부분) > AI(부분)."""
+    out: dict[str, SourcingScore | None] = {"ai": None, "human": None, "rule": None}
     for s in candidate_scores:
         cur = out.get(s.scorer)
         if cur is None or s.created_at > cur.created_at:
             out[s.scorer] = s
-    out["final"] = out["human"] or out["ai"]
+    human_full = out["human"] if (out["human"] is not None and out["human"].total is not None) else None
+    ai_full = out["ai"] if (out["ai"] is not None and out["ai"].total is not None) else None
+    out["final"] = human_full or ai_full or out["rule"] or out["human"] or out["ai"]
     return out
 
 

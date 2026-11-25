@@ -123,9 +123,14 @@ def list_candidates(
         items.sort(key=lambda i: i["video"]["graph"]["growth_7d"], reverse=True)
     elif sort == "updated":
         items.sort(key=lambda i: i["updated_at"], reverse=True)
+    # 총점 순위(점수 있는 후보만, 필터 결과 안에서 1부터). 정렬 기준과 무관하게 '총점 순위'를 붙인다.
+    by_score = sorted([i for i in items if i["score"] is not None], key=lambda i: -i["score"])
+    rank_of = {i["id"]: n + 1 for n, i in enumerate(by_score)}
+    for i in items:
+        i["rank"] = rank_of.get(i["id"])
     total = len(items)
     return {"total": total, "items": items[offset: offset + limit], "sort": sort, "sort_label": SORTS.get(sort, sort),
-            "note": "저장된 후보의 정렬입니다(외부 새 검색 아님)."}
+            "ranked": len(by_score), "note": "저장된 후보의 정렬입니다(외부 새 검색 아님). 순위는 현재 필터 결과 안의 총점 순위입니다."}
 
 
 @router.post("", status_code=201)
@@ -148,7 +153,34 @@ def create_candidate(body: schemas.CandidateIn, db: Session = Depends(get_db)):
         db.add(VerificationRecord(candidate_id=c.id, item=key, status="pending"))
     log(db, "candidate", c.id, "create", {"video_id": c.video_id, "category": c.channel_category})
     db.commit()
+    # 버튼 누르기 전 준비: 규칙 간이 점수 + 템플릿 기획안
+    try:
+        from ..services.rule_scorer import save_rule_score
+        from ..services.shorts_planner import generate_plan
+        save_rule_score(db, c)
+        plan, by = generate_plan(c, 25, provider="template")
+        db.add(ShortsPlan(candidate_id=c.id, target_seconds=25, generated_by=by, plan=plan))
+        db.commit()
+    except Exception:
+        db.rollback()
     return serializers.candidate_detail(c, get_active_version(db).config)
+
+
+@router.post("/prepare-all")
+def prepare_all(force: bool = False, db: Session = Depends(get_db)):
+    """모든 활성 후보에 규칙 간이 점수(총점·순위)와 템플릿 기획안을 채운다. force=true 면 규칙 점수를 전부 다시 계산."""
+    from ..services.rule_scorer import rule_score_step, template_plan_step
+    return {"rule_scores": rule_score_step(db, force=force), "template_plans": template_plan_step(db)}
+
+
+@router.post("/plans/generate-all")
+def generate_all_plans(max_calls: int = Query(40, ge=1, le=200), db: Session = Depends(get_db)):
+    """활성 후보 전체에 AI 기획안을 미리 생성한다(백그라운드). 진행은 /api/channels/bulk/status 로 확인."""
+    from ..services import bulk
+    try:
+        return bulk.start("plans", max_calls=max_calls)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
 
 
 @router.get("/{cid}")
@@ -217,8 +249,8 @@ def add_score(cid: int, body: schemas.ScoreIn, db: Session = Depends(get_db)):
 
 @router.post("/{cid}/scores/suggest")
 def suggest_score(cid: int, mode: str = "ai", db: Session = Depends(get_db)):
-    """AI 제안 점수. mode=ai: Claude 가 6개 항목 모두 채점(성과 항목은 지표가 있으면 규칙값 우선).
-    mode=rule 또는 AI 키 없음: 규칙으로 '성과' 항목만 제안하고 나머지는 NULL."""
+    """mode=ai: Claude 가 6개 항목 모두 채점(성과 항목은 지표가 있으면 규칙값 우선).
+    mode=rule 또는 AI 키 없음: 규칙 간이 채점(6개 항목 모두, scorer='rule')."""
     c = get_or_404(db, SourcingCandidate, cid, "후보")
     ver = get_active_version(db)
     from ..config import get_settings
@@ -248,18 +280,10 @@ def suggest_score(cid: int, mode: str = "ai", db: Session = Depends(get_db)):
         log(db, "candidate", c.id, "score", {"scorer": "ai", "total": total, "mode": "ai"})
         db.commit()
         return serializers.candidate_detail(c, ver.config)
-    perf_item = next((i for i in ver.config["items"] if i["key"] == "performance"), None)
-    graph = video_graph(c.video)
-    item_scores = {i["key"]: None for i in ver.config["items"]}
-    rationale = {i["key"]: "사람 평가 필요(AI 제안 없음)" for i in ver.config["items"]}
-    if perf_item:
-        val, reason = suggest_performance_score(c.video.metrics, graph["graph_type"], perf_item["max"],
-                                                evidence=serializers.evidence_summary(c.video))
-        item_scores["performance"] = val
-        rationale["performance"] = reason
-    s = SourcingScore(candidate_id=c.id, scoring_version_id=ver.id, scorer="ai", item_scores=item_scores,
-                      rationale=rationale, total=None, grade_key=None)
-    db.add(s)
+    # 규칙 간이 채점(6개 항목 모두, AI 아님) — 총점·순위가 바로 나온다
+    from ..services.rule_scorer import save_rule_score
+    save_rule_score(db, c, ver)
+    log(db, "candidate", c.id, "score", {"scorer": "rule", "mode": mode})
     db.commit()
     return serializers.candidate_detail(c, ver.config)
 

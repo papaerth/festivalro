@@ -22,6 +22,16 @@ from ..services.season import season_context
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+def _safe(fn, fallback):
+    """대시보드 한 조각이 실패해도 화면 전체가 죽지 않게 한다(실패는 서버 로그에 남김)."""
+    try:
+        return fn()
+    except Exception as e:  # pragma: no cover - 방어용
+        import logging
+        logging.getLogger("shoppulse").warning("대시보드 부분 실패: %s", e)
+        return fallback
+
+
 @router.get("/stats")
 def stats(db: Session = Depends(get_db)):
     today = date.today()
@@ -64,7 +74,8 @@ def stats(db: Session = Depends(get_db)):
     graph_counts["insufficient"] = graph_counts.get("insufficient", 0) + (videos_total - len(eligible))
     graph_counts_derived["insufficient"] = graph_counts_derived.get("insufficient", 0) + (derived_total - analyzed_derived)
     graph_counts_original["insufficient"] = graph_counts_original.get("insufficient", 0) + ((videos_total - derived_total) - analyzed_original)
-    cands = db.query(SourcingCandidate).filter(SourcingCandidate.is_demo.is_(False)).all()
+    cands = (db.query(SourcingCandidate).options(selectinload(SourcingCandidate.verifications))
+             .filter(SourcingCandidate.is_demo.is_(False)).all())
     pending_verification = 0
     for c in cands:
         st = {r.item: r.status for r in c.verifications}
@@ -98,9 +109,10 @@ def stats(db: Session = Depends(get_db)):
         "produced_total": sum(1 for c in cands if c.produced_at),
         "last_collection_at": (last_job.finished_at.isoformat() if last_job and last_job.finished_at else None),
         "last_snapshot_at": last_snapshot.isoformat() if last_snapshot else None,
-        "latest_report": serializers.report(latest_report) if latest_report else None,
+        "latest_report": _safe(lambda: serializers.report(latest_report) if latest_report else None, None),
         "scheduler": scheduler.status(),
-        "season": season_context(today, db),
+        "season": _safe(lambda: season_context(today, db), {"date": today.isoformat(), "weekday": "", "season": "", "events": [], "region": "",
+                                                               "weather": {"status": "unavailable", "note": "계절·날씨 계산 실패"}, "note": ""}),
         "scoring_name": cfg.get("name"),
     }
 
