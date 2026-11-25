@@ -16,6 +16,7 @@ SETTINGS = ROOT / "settings.json"
 DEFAULT_NAME = "기본 글자체"
 SAMPLE_PLAN = {
     "title": ["화장 다 떴을 때", "덧바르지 마세요"],
+    "title_keys": ["다 떴을 때", "덧바르지"],
     "source_text": "출처 : 유튜브 '채널 이름'",
     "timeline": [{"type": "cut", "a": 0, "b": 3, "x0": 0,
                   "subs": [{"t": 0, "text": "그 건조한 부분을", "key": "건조한"}, {"t": 1, "text": "없어요!", "em": True},
@@ -126,6 +127,11 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     v_vary = tk.BooleanVar(value=st0.get("sub_vary", True) is not False)
     v_colors = tk.StringVar(value=str(st0.get("sub_colors") or "cycle"))
     v_anim = tk.StringVar(value=str(st0.get("sub_anim") or "pop"))
+    v_title_style = tk.StringVar(value=str(st0.get("title_style") or "plain"))      # 상단 제목 모양
+    v_src_format = tk.StringVar(value=str(st0.get("source_format") or "plain"))     # 출처 문구 모양
+    v_src_size = tk.IntVar(value=int(st0.get("source_size") or 30))
+    v_src_y = tk.IntVar(value=int(st0.get("source_y") or 1700))
+    v_src_alpha = tk.IntVar(value=int(st0.get("source_alpha") or 84))
     v_note = tk.StringVar(value="글자체 목록을 읽는 중입니다…")
     refs = {DEFAULT_NAME: None}
     job = {"id": None, "img": None}
@@ -156,13 +162,13 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     tab_bar.pack(fill="x", pady=(12, 0))
     stack = ttk.Frame(right)
     stack.pack(fill="both", expand=True)
-    pg_font, pg_vary, pg_app, pg_music = (ttk.Frame(stack) for _ in range(4))
+    pg_font, pg_vary, pg_title, pg_app, pg_music = (ttk.Frame(stack) for _ in range(5))
     if ui_theme:
         tabs = ui_theme.Tabs(tab_bar, stack)
     else:
         tabs = ttk.Notebook(stack)
         tabs.pack(fill="both", expand=True)
-    for pg, name in ((pg_font, "글자체"), (pg_vary, "자막 변화"), (pg_app, "앱 화면"), (pg_music, "음악")):
+    for pg, name in ((pg_font, "글자체"), (pg_vary, "자막 변화"), (pg_title, "제목·출처"), (pg_app, "앱 화면"), (pg_music, "음악")):
         tabs.add(pg, text=name)
 
     def font_row(parent, title, var_font, var_size, lo, hi, var_bold, unit="크기", step=2):
@@ -259,6 +265,28 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
     ttk.Label(pg_vary, text="움직임은 완성 영상에서 보입니다(미리보기는 정지 화면).\n이미 만든 편에 강조 낱말을 넣으려면 본 창에서 '컷 설계부터 다시'로 만드세요.",
               foreground=UI["sub"], justify="left", wraplength=460).pack(anchor="w", pady=(6, 0))
 
+    # ---- 제목 · 출처
+    section(pg_title, "썸네일 문구(상단 제목) 모양")
+    for key, label in (("plain", "기본 — 윗줄 흰색 · 아랫줄 노랑"), ("band", "빨간 띠 — 윗줄에 빨간 띠, 낱말마다 다른 색")):
+        ttk.Radiobutton(pg_title, text=label, value=key, variable=v_title_style, command=lambda: schedule()).pack(anchor="w")
+    ttk.Label(pg_title, text="색을 줄 낱말은 AI가 고릅니다. 글자체는 [글자체] 탭에서 고릅니다.", foreground=UI["sub"]).pack(anchor="w")
+    section(pg_title, "출처 문구")
+    for key, label in (("plain", "출처 : 유튜브 '채널'"), ("bar", "출처 | 채널")):
+        ttk.Radiobutton(pg_title, text=label, value=key, variable=v_src_format, command=lambda: schedule()).pack(anchor="w")
+
+    def num_row(label, var, lo, hi, step, hint=""):
+        r = ttk.Frame(pg_title)
+        r.pack(fill="x", pady=(6, 0))
+        ttk.Label(r, text=label, width=9).pack(side="left")
+        sp = ttk.Spinbox(r, from_=lo, to=hi, increment=step, textvariable=var, width=6, command=lambda: schedule())
+        sp.pack(side="left", padx=6)
+        sp.bind("<KeyRelease>", lambda e: schedule(400))
+        ttk.Label(r, text=hint, foreground=UI["sub"]).pack(side="left", padx=6)
+
+    num_row("크기", v_src_size, 20, 70, 2, "기본 30")
+    num_row("위치", v_src_y, 1540, 1880, 10, "작을수록 위 · 기본 1700")
+    num_row("진하기(%)", v_src_alpha, 15, 100, 5, "작을수록 투명 · 기본 84")
+
     section(pg_app, "앱에서 보이는 모습")
     for key, label in [("", "없음 (완성본 그대로)")] + list(platforms.PLATFORMS.items()):
         ttk.Radiobutton(pg_app, text=label, value=key, variable=v_platform, command=lambda: schedule()).pack(anchor="w")
@@ -331,6 +359,9 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
                 "font_em": refs.get(v_em_font.get()), "font_em_name": v_em_font.get(),
                 "em_scale": max(100, min(170, num(v_em_scale, 125))), "sub_vary": bool(v_vary.get()),
                 "sub_colors": v_colors.get() or "cycle", "sub_anim": v_anim.get() or "pop",
+                "title_style": v_title_style.get() or "plain", "source_format": v_src_format.get() or "plain",
+                "source_size": max(20, min(70, num(v_src_size, 30))), "source_y": max(1540, min(1880, num(v_src_y, 1700))),
+                "source_alpha": max(15, min(100, num(v_src_alpha, 84))),
                 "music_file": v_music.get().strip(), "music_volume": max(3, min(60, num(v_volume, 15))) / 100}
 
     def draw():
@@ -425,6 +456,11 @@ def open_window(root, episode: str, fam: str, on_rerender=None):
         v_vary.set(True)
         v_colors.set("cycle")
         v_anim.set("pop")
+        v_title_style.set("plain")
+        v_src_format.set("plain")
+        v_src_size.set(30)
+        v_src_y.set(1700)
+        v_src_alpha.set(84)
         schedule()
 
     if has_episode and on_rerender:

@@ -410,9 +410,19 @@ def design_schema(two: bool = False) -> dict:
 DESIGN_SCHEMA = design_schema(False)
 
 
+def people_block(people: list[str] | None) -> str:
+    """사용자가 사진을 준 언급 인물을 설계에 알리는 글."""
+    if not people:
+        return ""
+    names = ", ".join(f"'{n}'" for n in people)
+    return (f"\n[언급 인물 사진] 사용자가 {names} 의 사진을 주었습니다. 화자가 이 이름을 말하는 순간에 프로그램이 그 사진을 화면에 띄웁니다.\n"
+            "제품 구간 안에 그 이름이 나오는 대사가 있으면 그 컷을 넣는 것을 먼저 생각하고, 자막에 그 이름을 그대로 적습니다"
+            "(없으면 억지로 넣지 않습니다).\n")
+
+
 def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
                    images: list[str], crop_default, vidiq: str = "", feedback: str = "",
-                   prev_plan: dict | None = None, prev_copy: dict | None = None) -> list:
+                   prev_plan: dict | None = None, prev_copy: dict | None = None, people: list[str] | None = None) -> list:
     """컷 설계 요청. meta·asr_zoom·crop_default 는 영상별 목록(또는 하나), sheets 는 영상별 시트 목록, yt 는 댓글을 합친 것."""
     metas, zooms, crops = as_list(meta), as_list(asr_zoom), as_list(crop_default)
     sheets = sheets if sheets and isinstance(sheets[0], (list, tuple)) else [sheets]
@@ -465,9 +475,11 @@ def design_request(meta, analysis: dict, asr_zoom, sheets, info: dict, yt: dict,
 
 [사용자가 준 TTS용 이미지]
 {', '.join(images) if images else '(없음 — still_t 로 원본의 정지 화면을 씁니다)'}
-
+{people_block(people)}
 출력 형식
 - combos: 썸네일 문구(top1 윗줄, top2 아랫줄)와 업로드 제목(title) 조합 3개, 좋은 순서대로. 첫 번째가 화면 상단 제목이 됩니다.
+  top1·top2 안에서 눈에 띄게 할 낱말 한두 개를 *별표*로 감쌉니다(예: top1 "화장 *다 떴을 때*", top2 "*덧바르지* 마세요").
+  별표는 화면에 나오지 않고 그 낱말에 색이 들어갑니다. title 에는 별표를 쓰지 않습니다.
   업로드 제목은 피드에서 손을 멈추게 하는 후킹 문장으로 씁니다(궁금증·반전·구체적인 상황이나 숫자).
   반드시 띄어쓰기 포함 20자 이내로 씁니다(넘으면 규칙 검사에서 걸립니다). 짧고 강하게.
   세 개는 서로 다른 각도로 씁니다.
@@ -581,7 +593,8 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict, n_src: int = 1, chann
     plan = {
         "product": product, "brand": pick.get("brand", ""), "channel": channel,
         "source_text": credit(channel),
-        "title": [top["top1"], top["top2"]],
+        "title": [split_key(top["top1"])[0], split_key(top["top2"])[0]],
+        "title_keys": [split_key(top["top1"])[1], split_key(top["top2"])[1]],     # 색을 줄 낱말(빨간 띠 모양에서 쓴다)
         "crop": {"size": crop_a["size"], "y0": 0, "x_min": crop_a["x_min"], "x_max": crop_a["x_max"]},
         "timeline": tl, "cards": cards,
         "thumbnail": {"t": round(d["thumbnail"]["t"], 2), "x0": d["thumbnail"]["x0"]},
@@ -598,7 +611,8 @@ def to_plan(d: dict, analysis: dict, info: dict, yt: dict, n_src: int = 1, chann
     if static:
         plan["erase"] = static
     copy = {"product": product,
-            "combos": [{"top": [c["top1"], c["top2"]], "title": c["title"]} for c in d["combos"][:3]],
+            "combos": [{"top": [split_key(c["top1"])[0], split_key(c["top2"])[0]], "title": c["title"].replace("*", "")}
+                       for c in d["combos"][:3]],
             "description": d["description"], "pin_question": d["pin_question"], "notes": d["notes"],
             "revision": d.get("revision", "")}
     return plan, copy

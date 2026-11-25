@@ -35,6 +35,9 @@ SUB_COLORS = [(255, 230, 0), (110, 240, 200), (255, 150, 195)]
 POP, POP_EM = [0.80, 0.97, 1.08, 1.03], [0.70, 0.95, 1.15, 1.07, 1.02]
 RISE = [(26, 0.35), (14, 0.7), (6, 0.92), (2, 1.0)]     # 아래에서 올라오기: (아래로 밀린 픽셀, 불투명도)
 
+RED_BAND, CYAN = (232, 38, 30), (70, 222, 255)      # 제목 '빨간 띠' 모양의 띠 색과 윗줄 강조 색
+PEOPLE_PREFIX = "인물_"                               # input/<편>/인물_<이름>.jpg — 그 이름이 언급될 때 띄울 사진
+
 DEFAULTS = {
     "speed": 1.1,
     "mirror": True,
@@ -45,6 +48,10 @@ DEFAULTS = {
     "sub_vary": True,          # 강조 낱말·강조 자막을 크게, 다른 색, 다른 글자체로
     "sub_colors": "cycle",     # 강조 색: cycle(노랑·민트·분홍 번갈아) · yellow(노랑만)
     "em_scale": 125,           # 강조 글자 크기(%)
+    "title_style": "plain",    # 상단 제목 모양: plain(윗줄 흰색·아랫줄 노랑) · band(윗줄 빨간 띠, 낱말마다 색)
+    "source_format": "plain",  # 출처 문구: plain(출처 : 유튜브 '채널') · bar(출처 | 채널)
+    "source_alpha": 84,        # 출처 문구 불투명도(%)
+    "pip_pos": "left",         # 언급 인물 사진을 띄울 자리: left · right (영상 아래쪽 모서리, 자막 위)
     "layout": {
         "video_y": 420,        # 1:1 영상이 놓이는 세로 위치(1080×1080)
         "title_y": [205, 335],  # 상단 제목 두 줄의 가운데 y
@@ -74,13 +81,14 @@ def apply_defaults(plan: dict, settings: dict | None = None) -> dict:
             plan[k] = {**v, **(plan.get(k) or {})}
         else:
             plan.setdefault(k, v)
-    for key in ("title_size", "sub_size"):
+    for key in ("title_size", "sub_size", "source_size", "source_y"):
         if st.get(key) and key not in own_layout:
             plan["layout"][key] = int(st[key])
     for key in ("font_title", "font_sub", "font_em"):
         if st.get(key) and not plan.get(key):
             plan[key] = st[key]
-    for key in ("title_bold", "sub_bold", "music_file", "music_volume", "sub_anim", "sub_vary", "sub_colors", "em_scale"):
+    for key in ("title_bold", "sub_bold", "music_file", "music_volume", "sub_anim", "sub_vary", "sub_colors", "em_scale",
+                "title_style", "source_format", "source_alpha", "pip_pos"):
         if key in st and key not in own:
             plan[key] = st[key]
     return plan
@@ -105,23 +113,132 @@ def source_text_at(plan: dict, i: int | None = None) -> str:
             if not s.get("image"):
                 k = int(s.get("src", 0) or 0)
                 break
-    return (plan.get("source_text_b") if k else "") or plan.get("source_text", "")
+    text = (plan.get("source_text_b") if k else "") or plan.get("source_text", "")
+    if plan.get("source_format") == "bar":      # "출처 : 유튜브 '채널'" → "출처 | 채널"
+        m = re.search(r"'(.+)'", text)
+        text = f"출처 | {m.group(1)}" if m else text
+    return text
+
+
+def _title_words(line: str, keys: str, i: int, style: str):
+    """제목 한 줄을 (낱말, 색) 목록으로. keys 는 색을 줄 낱말들(모델이 *별표*로 표시한 것)."""
+    words = line.split()
+    if style != "band":
+        return [(w, WHITE if i == 0 else YELLOW) for w in words]
+    ks = set(str(keys or "").split())
+    hit = [any(k in w for k in ks) for w in words] if ks else []
+    if i == 0:      # 윗줄(빨간 띠): 표시한 낱말은 하늘색, 나머지는 흰색. 표시가 없으면 첫 낱말만 흰색
+        hit = hit if any(hit) else [k > 0 for k in range(len(words))] if len(words) > 1 else [False] * len(words)
+        return [(w, CYAN if h else WHITE) for w, h in zip(words, hit)]
+    # 아랫줄: 표시한 낱말은 노랑, 나머지는 흰색. 표시가 없으면 노랑·흰색을 번갈아
+    hit = hit if any(hit) else [k % 2 == 0 for k in range(len(words))]
+    return [(w, YELLOW if h else WHITE) for w, h in zip(words, hit)]
+
+
+def title_images(plan: dict) -> list:
+    """상단 제목 두 줄의 그림 [(이미지, 가운데 y)]. title_style 이 band 면 윗줄에 빨간 띠를 깔고 낱말마다 색을 준다."""
+    from PIL import Image, ImageDraw
+    L = plan["layout"]
+    ft = plan.get("font_title") or plan.get("font_bold")
+    style = plan.get("title_style") or "plain"
+    title = [str(x) for x in (plan.get("title") or ["", ""])[:2]]
+    keys = list(plan.get("title_keys") or []) + ["", ""]
+    room = CW - (150 if style == "band" else 90)
+    longest = max(title, key=lambda t: util.font(L["title_size"], True, ft).getlength(t)) if title else ""
+    # 띠 모양은 띠가 아랫줄을 덮지 않게 글자를 조금 작게 잡는다
+    tf = fit_font(longest, min(L["title_size"], 96) if style == "band" else L["title_size"], room, True, ft)
+    bd = bold_px(tf.size, bool(plan.get("title_bold")))
+    out = []
+    for i, line in enumerate(title):
+        if not line.strip():
+            continue
+        words = [(w, tf, col, bd) for w, col in _title_words(line, keys[i], i, style)]
+        im = rich_image(words, 6 if not (style == "band" and i == 0) else 4, CW + 40)
+        if style == "band" and i == 0:      # 글자 뒤에 빨간 띠
+            pad_x, pad_y = 22, 2
+            band = Image.new("RGBA", (im.width + 2 * pad_x, im.height + 2 * pad_y), (0, 0, 0, 0))
+            ImageDraw.Draw(band).rounded_rectangle([0, 0, band.width - 1, band.height - 1], radius=8, fill=RED_BAND + (255,))
+            band.alpha_composite(im, (pad_x, pad_y))
+            im = band
+        out.append((im, L["title_y"][i] - (8 if style == "band" and i == 0 else 0)))
+    return out
 
 
 def title_base(plan: dict):
-    """검은 9:16 바탕에 상단 제목 두 줄(윗줄 흰색, 아랫줄 노란색)을 그린 이미지."""
+    """검은 9:16 바탕에 상단 제목 두 줄을 그린 이미지."""
     from PIL import Image
-    L = plan["layout"]
-    ft = plan.get("font_title") or plan.get("font_bold")
     base = Image.new("RGB", (CW, CH), BLACK)
-    title = (plan.get("title") or ["", ""])[:2]
-    longest = max(title, key=lambda s: util.font(L["title_size"], True, ft).getlength(s)) if title else ""
-    tf = fit_font(longest, L["title_size"], CW - 90, True, ft)
-    for i, line in enumerate(title):
-        im = text_image(line, tf, WHITE if i == 0 else YELLOW, stroke_w=6, max_w=CW + 40,
-                        bold=bold_px(tf.size, bool(plan.get("title_bold"))))
-        base.paste(im, (int(CW / 2 - im.width / 2), int(L["title_y"][i] - im.height / 2)), im)
+    for im, cy in title_images(plan):
+        base.paste(im, (int(CW / 2 - im.width / 2), int(cy - im.height / 2)), im)
     return base
+
+
+def source_image(text: str, plan: dict):
+    """출처 문구 그림. 크기·불투명도는 설정(layout.source_size, source_alpha)을 따른다."""
+    L = plan["layout"]
+    alpha = int(round(255 * max(10, min(100, float(plan.get("source_alpha") or 84))) / 100))
+    return text_image(text, util.font(L["source_size"], False, plan.get("font_regular")), (235, 235, 235), alpha=alpha)
+
+
+def people_images(base_dir) -> dict:
+    """사용자가 넣은 언급 인물 사진 {이름: 파일}. input/<편>/인물_<이름>.jpg (이름이 대사에 나오면 그 사진을 띄운다)."""
+    base_dir = Path(base_dir)
+    if not base_dir.is_dir():
+        return {}
+    out = {}
+    for p in sorted(base_dir.iterdir()):
+        if p.suffix.lower() in util.IMAGE_EXT and p.stem.startswith(PEOPLE_PREFIX) and p.stem[len(PEOPLE_PREFIX):].strip():
+            out[p.stem[len(PEOPLE_PREFIX):].strip()] = p
+    return out
+
+
+def people_hits(plan: dict, people: dict) -> list[tuple]:
+    """언급 인물이 나오는 자막 [(구간 순번, 자막 순번, 이름)]. 한 컷에서 한 사람은 처음 나올 때 한 번만."""
+    hits = []
+    for i, seg in enumerate(plan.get("timeline") or []):
+        seen = set()
+        for k, sb in enumerate(seg.get("subs") or []):
+            flat = re.sub(r"\s+", "", str(sb.get("text", "")))
+            for name in people:
+                if name not in seen and re.sub(r"\s+", "", name) in flat:
+                    seen.add(name)
+                    hits.append((i, k, name))
+    return hits
+
+
+def pip_image(path, size: int = 300):
+    """언급 인물 사진을 흰 테두리의 동그란 그림으로(세로 사진은 위쪽, 가로 사진은 가운데를 쓴다)."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageOps
+    im = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+    side = min(im.size)
+    x0 = (im.width - side) // 2
+    y0 = 0 if im.height > im.width else (im.height - side) // 2
+    ring, big = 8, 4                      # 가장자리를 매끄럽게 하려고 4배로 그렸다가 줄인다
+    face = im.crop((x0, y0, x0 + side, y0 + side)).resize((size - 2 * ring, size - 2 * ring), Image.LANCZOS)
+    mask = Image.new("L", (size * big, size * big), 0)
+    ImageDraw.Draw(mask).ellipse([ring * big, ring * big, (size - ring) * big - 1, (size - ring) * big - 1], fill=255)
+    mask = mask.resize((size, size), Image.LANCZOS)
+    disc = Image.new("L", (size * big, size * big), 0)
+    ImageDraw.Draw(disc).ellipse([0, 0, size * big - 1, size * big - 1], fill=255)
+    disc = disc.resize((size, size), Image.LANCZOS)
+    pad = 14
+    out = Image.new("RGBA", (size + 2 * pad, size + 2 * pad), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", out.size, (0, 0, 0, 0))
+    shadow.paste((0, 0, 0, 150), (pad, pad + 4), disc)
+    out.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(7)))
+    out.paste((255, 255, 255, 255), (pad, pad), disc)
+    photo = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    photo.paste(face, (ring, ring))
+    out.paste(photo, (pad, pad), mask)
+    return out
+
+
+def pip_center(plan: dict, im) -> tuple[int, int]:
+    """언급 인물 사진의 가운데 좌표: 영상 아래쪽 모서리, 자막 바로 위."""
+    L = plan["layout"]
+    cy = int(L["sub_y"] - 70 - im.height / 2)
+    cx = int(14 + im.width / 2) if (plan.get("pip_pos") or "left") != "right" else int(CW - 14 - im.width / 2)
+    return cx, cy
 
 
 def sub_color(plan: dict, n: int = 0):
@@ -866,8 +983,15 @@ def preview_frame(plan: dict, src, base_dir, scene: dict | None = None, show_car
         out.alpha_composite(im, (int(CW / 2 - im.width / 2), int(L["sub_y"] - im.height / 2)))
     txt = source_text_at(plan, scene["seg"] if seg is not None else None)
     if txt:
-        im = text_image(txt, util.font(L["source_size"], False, plan.get("font_regular")), (235, 235, 235), alpha=215)
+        im = source_image(txt, plan)
         out.alpha_composite(im, (int(CW / 2 - im.width / 2), int(L["source_y"] - im.height / 2)))
+    if seg is not None and sub is not None and seg.get("type") == "cut":      # 이 자막에서 언급되는 인물 사진
+        people = people_images(base_dir)
+        for i_, k_, name in people_hits(plan, people):
+            if (i_, k_) == (scene["seg"], min(scene.get("sub", 0), len(seg.get("subs") or [1]) - 1)):
+                pim = pip_image(people[name])
+                cx, cy = pip_center(plan, pim)
+                out.alpha_composite(pim, (int(cx - pim.width / 2), int(cy - pim.height / 2)))
     cards = plan.get("cards") or []
     if show_card and cards and seg is not None:
         c = next((c for c in cards if int(c.get("seg", -1)) == scene.get("seg")), cards[0])
@@ -887,7 +1011,6 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
     crops = [crop_of(plan, m, k) for k, m in enumerate(metas)]
     size, y0 = crops[0]
     speed, L = float(plan["speed"]), plan["layout"]
-    fr_ = plan.get("font_regular")
     name = util.safe_name(name)
 
     # --- 상단 제목 + 바탕
@@ -975,7 +1098,6 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
 
     # --- 자막·카드·효과음 배치
     overlays, subs_out, sfx_out, dropped = [], [], [], []
-    src_font = util.font(L["source_size"], False, fr_)
 
     def add_sfx(kind, t):
         # 컷 전환 '휙' 소리는 쓰지 않는다(거슬린다는 피드백). 이전에 만든 plan 에 남아 있어도 넣지 않는다
@@ -983,6 +1105,10 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
             sfx_out.append({"type": kind, "t": round(t, 3)})
 
     emph_n = 0          # 지금까지 나온 강조 수(강조 색을 번갈아 쓴다)
+    people = people_images(base_dir)
+    pip_at, people_out = {}, []
+    for i_, k_, who in people_hits(plan, people):      # (name 은 출력 파일 이름이라 다른 이름을 쓴다)
+        pip_at.setdefault((i_, k_), []).append(who)
     for r in segs:
         s = plan["timeline"][r["i"]]
         seg_t0, seg_t1 = r["f0"] / FPS, r["f1"] / FPS
@@ -1008,6 +1134,13 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
             f0, f1 = int(round(t * FPS)), int(round(t_end * FPS))
             if f1 <= f0 or not str(sb.get("text", "")).strip():
                 continue
+            if r["type"] == "cut" and sb in (s.get("subs") or []):
+                for who in pip_at.get((r["i"], s["subs"].index(sb)), []):      # 이 자막에서 언급되는 인물 사진
+                    pim = pip_image(people[who])
+                    cx, cy = pip_center(plan, pim)
+                    p1 = min(total_f, max(f0 + int(1.6 * FPS), min(f0 + int(2.6 * FPS), r["f1"])))
+                    overlays.append(Overlay(pim, cx, cy, f0, p1, fade_in=0, fade_out=4, anim=POP_EM))
+                    people_out.append({"name": who, "seg": r["i"], "start": round(f0 / FPS, 3), "end": round(p1 / FPS, 3)})
             emph = is_emph(sb)
             im = sub_image(sb["text"], bool(sb.get("em")), plan, sb.get("key", ""), emph_n)
             emph_n += 1 if emph else 0
@@ -1019,7 +1152,7 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
         # 출처 문구: 그 구간에 나오는 영상의 출처만(사용자가 준 이미지를 쓰는 구간은 받은 곳을 따로 표기)
         txt = source_text_at(plan, r["i"])
         if txt:
-            im = text_image(txt, src_font, (235, 235, 235), stroke_w=0, alpha=215)
+            im = source_image(txt, plan)
             overlays.append(Overlay(im, CW / 2, L["source_y"], r["f0"], r["f1"], fade_in=0))
 
     cards_out, card_ovs = [], []
@@ -1122,7 +1255,7 @@ def build(plan_path, src, out_dir, name, uvr_model=None, assets=None, no_uvr=Fal
                           "mirror": bool(plan["timeline"][r["i"]].get("mirror", plan["mirror"]))}
                          if r["type"] == "cut" else {"text": r["text"]})}
                      for r in segs],
-        "subs": subs_out, "cards": cards_out, "sfx": sfx_out, "tts": tts_report,
+        "subs": subs_out, "cards": cards_out, "sfx": sfx_out, "tts": tts_report, "people": people_out,
         "dropped_emoji": dropped, "bgm_removed": not (no_uvr or not has_audio), "music": music_note,
         "outputs": {**outs, "thumbnail": thumb_path.name},   # out_dir 안의 파일 이름
     }
