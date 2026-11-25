@@ -563,7 +563,12 @@ def test_find_original_and_segment_from_transcript(client):
     short = client.post("/api/videos", json={"url_or_id": "ooooooooooo", "title": "줄 서서 사 온 트레이더조 가방 대란 #장영란 #미국쇼핑", "duration_seconds": 30,
                                               "view_count": 900000, "fetch": False, "source_type": "reedit_shorts", "published_at": "2026-08-01T00:00:00"}).json()
     cid = client.post("/api/candidates", json={"video_id": short["id"], "channel_category": "living"}).json()["id"]
+    # 같은 연예인의 쇼츠(45초)는 단어가 더 많이 겹쳐도 원본 후보에서 제외된다
+    client.post("/api/videos", json={"url_or_id": "ppppppppppp", "title": "장영란 트레이더조 가방 미국쇼핑 쇼츠", "duration_seconds": 45, "fetch": False,
+                                     "source_type": "original_celebrity", "celebrity_id": celeb["id"], "published_at": "2026-06-02T00:00:00"})
     r = client.post(f"/api/candidates/{cid}/find-original", params={"use_api": False}).json()
+    assert r["match"]["skipped_shorts"] >= 1 and all(c["duration_seconds"] > 60 for c in r["match"]["candidates"])
+    assert r["match"]["candidates"][0]["rank"] == 1 and "롱폼 15분" in r["match"]["candidates"][0]["reasons"]
     assert r["match"]["celebrities"] == ["장영란"] and r["match"]["linked"] is True and r["match"]["confidence"] in ("high", "certain")
     assert r["candidate"]["original_video"]["id"] == orig["id"]
     # 자막 없음 → 설명란 챕터로 구간 제안

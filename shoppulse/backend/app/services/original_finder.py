@@ -21,7 +21,8 @@ DERIVED = ("reedit_shorts", "competitor")
 STOP = {"shorts", "쇼츠", "추천템", "추천", "영상", "유튜브", "리뷰", "꿀템", "대란", "품절", "품절대란", "화제", "연예인", "셀럽",
         "진짜", "정말", "이거", "그거", "왜", "다들", "대체", "최고", "레전드", "충격", "난리", "요즘", "사온", "사", "온",
         "서서", "줄서서", "환장", "할까요", "하는", "있는", "보고", "이게", "그게", "저게", "너무", "완전", "역대급", "솔직", "후기",
-        "공개", "드디어", "지금", "바로", "이유", "결국", "근황", "브이로그", "vlog", "short", "video", "youtube", "구독", "좋아요"}
+        "공개", "드디어", "지금", "바로", "이유", "결국", "근황", "브이로그", "vlog", "short", "video", "youtube", "구독", "좋아요",
+        "밤새", "밤에", "아침에", "오늘", "어제", "내일", "모두", "전부", "하나", "진심", "실화", "대박", "미쳤다", "미친", "찐", "찐친들", "언니", "오빠", "엄마", "아빠"}
 _YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?v=|shorts/|live/|embed/))([A-Za-z0-9_-]{11})")
 _TOKEN_RE = re.compile(r"[가-힣A-Za-z0-9]{2,}")
 
@@ -65,11 +66,35 @@ def _score_text(kws: list[str], title: str | None, desc: str | None, tags: list 
     return score, hits
 
 
-def _cand(v: Video, score: float, hits: list[str], how: str) -> dict:
+MIN_ORIGINAL_SECONDS = 60  # 쇼츠(60초 이하)는 원본 후보에서 제외 — 원본은 롱폼이어야 한다
+
+
+def _is_short(v: Video) -> bool:
+    return v.video_format == "short" or (v.duration_seconds is not None and v.duration_seconds <= MIN_ORIGINAL_SECONDS)
+
+
+def _cand(v: Video, score: float, hits: list[str], how: str, short_published: datetime | None = None) -> dict:
+    """후보 항목 + 롱폼·채널 검증·게시 시점 가산(근거 기록)."""
+    reasons = list(hits)
+    bonus = 0.0
+    dur = v.duration_seconds or 0
+    if dur >= 240:
+        bonus += 1.0; reasons.append(f"롱폼 {dur // 60}분")
+    elif dur > MIN_ORIGINAL_SECONDS:
+        bonus += 0.3; reasons.append(f"{dur // 60}분 {dur % 60}초")
+    if v.channel and v.channel.verification_status == "verified":
+        bonus += 0.5; reasons.append("공식 채널 확인됨")
+    if short_published and v.published_at:
+        days = (short_published - v.published_at).days
+        if 0 <= days <= 180:
+            bonus += 0.5; reasons.append(f"쇼츠 {days}일 전 게시")
+        elif days > 730:
+            bonus -= 0.3; reasons.append(f"쇼츠보다 {days // 365}년 이상 전 게시")
     return {"video_id": v.id, "youtube_video_id": v.youtube_video_id, "title": v.title, "url": v.url,
             "published_at": v.published_at.isoformat() if v.published_at else None, "duration_seconds": v.duration_seconds,
             "channel": v.channel.channel_name if v.channel else v.yt_channel_title, "thumbnail_url": v.thumbnail_url,
-            "score": round(score, 1), "hits": hits, "how": how}
+            "score": round(score + bonus, 1), "keyword_score": round(score, 1), "hits": hits, "reasons": reasons, "how": how,
+            "is_long": dur >= 240}
 
 
 def find_original(db: Session, short: Video, product_name: str | None = None, use_api: bool = False,
@@ -111,12 +136,16 @@ def find_original(db: Session, short: Video, product_name: str | None = None, us
     q = db.query(Video).filter(Video.is_demo.is_(False), Video.source_type == "original_celebrity", Video.id != short.id)
     q = q.filter((Video.celebrity_id.in_(celeb_ids)) | (Video.channel_id.in_(chan_ids)) if chan_ids else Video.celebrity_id.in_(celeb_ids))
     pool = q.all()
+    skipped_shorts = 0
     for v in pool:
         if before and v.published_at and v.published_at > before:
             continue  # 쇼츠보다 늦게 올라온 영상은 원본일 수 없음
+        if _is_short(v):
+            skipped_shorts += 1
+            continue  # 쇼츠는 원본이 아님
         sc, hits = _score_text(kws, v.title, v.description, v.tags)
         if sc > 0:
-            result["candidates"].append(_cand(v, sc, hits, "db"))
+            result["candidates"].append(_cand(v, sc, hits, "db", before))
 
     # 3) 채널 안 API 검색
     if use_api and kws:
@@ -139,22 +168,31 @@ def find_original(db: Session, short: Video, product_name: str | None = None, us
                         if not ids:
                             continue
                         full = client.get_videos(ids)
-                        from .collection import upsert_video_from_api
+                        from .collection import parse_iso8601_duration, upsert_video_from_api
                         for item in full:
+                            d = parse_iso8601_duration(item.get("duration")) or 0
+                            if d <= MIN_ORIGINAL_SECONDS:
+                                skipped_shorts += 1
+                                continue  # 채널의 쇼츠는 원본 후보에서 제외
                             v, _ = upsert_video_from_api(db, item, ch, now, source_type="original_celebrity")
                             if v.celebrity_id is None:
                                 v.celebrity_id = c.id
                             sc, hits = _score_text(kws, v.title, v.description, v.tags)
                             if not any(x["video_id"] == v.id for x in result["candidates"]):
-                                result["candidates"].append(_cand(v, sc + 0.5, hits + ["채널 내 검색 결과"], "api_channel_search"))
+                                result["candidates"].append(_cand(v, sc + 0.5, hits + ["채널 내 검색 결과"], "api_channel_search", before))
                 db.commit()
             except YouTubeAPIError as e:
                 result["notes"].append(f"YouTube 검색 실패: {e}")
             finally:
                 client.close()
 
-    result["candidates"].sort(key=lambda x: -x["score"])
+    result["candidates"].sort(key=lambda x: (-x["score"], -(x["duration_seconds"] or 0)))
     result["candidates"] = result["candidates"][:8]
+    for n, x in enumerate(result["candidates"], 1):
+        x["rank"] = n
+    result["skipped_shorts"] = skipped_shorts
+    if skipped_shorts:
+        result["notes"].append(f"쇼츠(60초 이하) {skipped_shorts}개는 원본 후보에서 제외했습니다(롱폼만 순위).")
     if not result["candidates"]:
         result["reason"] = ("연예인 채널에서 단어가 겹치는 원본 영상을 찾지 못했습니다. " +
                             ("채널 영상 수집 범위(조회 대상 게시 기간)를 넓히거나, " if not use_api else "") +
@@ -172,7 +210,7 @@ def find_original(db: Session, short: Video, product_name: str | None = None, us
         conf = "medium"
     else:
         conf = "low"
-    reason = f"단어 일치 {', '.join(best['hits'][:5])} (점수 {best['score']})"
+    reason = f"#1 {', '.join(best['reasons'][:6])} (점수 {best['score']})"
 
     # 4) AI 재검토
     if use_ai:
