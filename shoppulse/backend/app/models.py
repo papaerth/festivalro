@@ -491,6 +491,7 @@ class ShortsProject(TimestampMixin, Base):
     hint_start: Mapped[int | None] = mapped_column(Integer)  # 사용자가 알려준 대략 위치(초). 있으면 AI 전체 훑기 생략
     hint_end: Mapped[int | None] = mapped_column(Integer)
     assets: Mapped[list | None] = mapped_column(JSON)  # 영상 위에 띄울 상품 사진·로고 [{id,kind,name,path,cut_path,method}]
+    extra_sources: Mapped[list | None] = mapped_column(JSON)  # 섞어 쓸 원본 2·3번 [{slot,path,name,info,hint_start,url,title,channel}]
 
 
 class ShortsRender(Base):

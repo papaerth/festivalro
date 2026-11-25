@@ -170,3 +170,81 @@ def pip_parts(workdir: Path, dia: int) -> tuple[Path, Path]:
         ImageDraw.Draw(rg).ellipse([0, 0, r_ - 1, r_ - 1], outline=(255, 255, 255, 255), width=10 * k)
         rg.resize((dia + 16, dia + 16), Image.LANCZOS).save(ring)
     return mask, ring
+
+
+# ---------------------------------------------------------------- 원본 화면에서 자동으로 만드는 팝업(사용자는 원본 파일만 주면 된다)
+def find_font(bold: bool = True) -> str | None:
+    """한글이 되는 글꼴 파일 경로(Windows: 맑은 고딕). 없으면 None."""
+    import shutil
+    import subprocess
+    import sys
+    cands = []
+    if sys.platform.startswith("win"):
+        import os
+        fonts = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+        cands += [fonts / ("malgunbd.ttf" if bold else "malgun.ttf"), fonts / "malgun.ttf", fonts / "gulim.ttc"]
+    cands += [Path(p) for p in ("/System/Library/Fonts/AppleSDGothicNeo.ttc", "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+                                "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc")]
+    for c in cands:
+        if c.exists():
+            return str(c)
+    if shutil.which("fc-match"):
+        try:
+            out = subprocess.run(["fc-match", "-f", "%{file}", ":lang=ko"], capture_output=True, text=True, timeout=10).stdout.strip()
+            if out and Path(out).exists():
+                return out
+        except Exception:
+            pass
+    return None
+
+
+def card_from_frame(frame: Path, box: dict, out: Path) -> dict:
+    """원본 영상의 한 장면에서 상품 부분만 잘라 흰 테두리 카드로 만든다. box: 화면 비율 좌표 {x,y,w,h}(0~1)."""
+    from PIL import Image
+    img = Image.open(frame).convert("RGBA")
+    W_, H_ = img.size
+    try:
+        x, y, w, h = (max(0.0, min(1.0, float(box.get(k, d)))) for k, d in (("x", 0.25), ("y", 0.2), ("w", 0.5), ("h", 0.6)))
+    except (TypeError, ValueError):
+        x, y, w, h = 0.25, 0.2, 0.5, 0.6
+    w, h = max(0.18, w), max(0.18, h)
+    cx, cy = x + w / 2, y + h / 2
+    w, h = min(1.0, w * 1.16), min(1.0, h * 1.16)  # 상품이 잘리지 않게 여유를 둔다
+    # 너무 길쭉하면 카드가 어색하므로 3:4 ~ 4:3 사이로 맞춘다
+    pw, ph = w * W_, h * H_
+    if pw / ph > 4 / 3:
+        ph = pw * 3 / 4
+    elif pw / ph < 3 / 4:
+        pw = ph * 3 / 4
+    pw, ph = min(pw, W_), min(ph, H_)
+    left = max(0, min(W_ - pw, cx * W_ - pw / 2))
+    top = max(0, min(H_ - ph, cy * H_ - ph / 2))
+    crop = img.crop((int(left), int(top), int(left + pw), int(top + ph)))
+    crop.thumbnail((640, 640))
+    res = _card(crop, 8)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    res.save(out, "PNG")
+    return {"method": "frame", "width": res.width, "height": res.height}
+
+
+def brand_badge(text: str, out: Path) -> Path | None:
+    """브랜드 이름을 흰 알약 모양 배지로(로고 이미지를 구해 오지 않고 글자로 표시). 글꼴이 없으면 None."""
+    from PIL import Image, ImageDraw, ImageFont
+    text = " ".join(str(text or "").split())[:16]
+    font_path = find_font()
+    if not text or not font_path:
+        return None
+    try:
+        font = ImageFont.truetype(font_path, 84)
+    except Exception:
+        return None
+    l, t, r, b = font.getbbox(text)
+    tw, th = r - l, b - t
+    padx, pady = 46, 30
+    img = Image.new("RGBA", (tw + padx * 2, th + pady * 2), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([0, 0, img.width - 1, img.height - 1], radius=img.height // 2, fill=(255, 255, 255, 255), outline=(20, 20, 20, 255), width=6)
+    d.text((padx - l, pady - t), text, font=font, fill=(20, 20, 20, 255))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out, "PNG")
+    return out

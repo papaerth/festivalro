@@ -124,9 +124,9 @@ export const api = {
   jobs: () => req<T.Job[]>('GET', '/api/import/jobs'),
 
   studio: (id: number) => req<T.StudioState>('GET', `/api/studio/${id}`),
-  studioOriginal: (id: number, url_or_id: string) => req<T.StudioState>('POST', `/api/studio/${id}/original`, { url_or_id }),
-  studioMake: (id: number, hint?: string, styleId?: number | null) => { const fd = new FormData(); if (hint) fd.append('hint', hint); if (styleId) fd.append('style_id', String(styleId)); return req<T.StudioState>('POST', `/api/studio/${id}/make`, fd, true) },
-  studioRerender: (id: number, edl: { hook: T.EdlClip | null; segments: T.EdlClip[]; title_lines: string[]; credit: string; end_caption?: string; narration?: string; overlays?: T.EdlOverlay[]; mid_narrations?: T.MidNarration[]; stickers?: T.EdlSticker[]; pips?: T.EdlPip[] }) => req<T.StudioState>('POST', `/api/studio/${id}/rerender`, edl),
+  studioOriginal: (id: number, url_or_id: string, slot = 1) => req<T.StudioState>('POST', `/api/studio/${id}/original?slot=${slot}`, { url_or_id }),
+  studioMake: (id: number, hints: Record<number, string>, styleId?: number | null) => { const fd = new FormData(); if (hints[1]) fd.append('hint', hints[1]); if (hints[2]) fd.append('hint2', hints[2]); if (hints[3]) fd.append('hint3', hints[3]); if (styleId) fd.append('style_id', String(styleId)); return req<T.StudioState>('POST', `/api/studio/${id}/make`, fd, true) },
+  studioRerender: (id: number, edl: { hook: T.EdlClip | null; segments: T.EdlClip[]; title_lines: string[]; credit: string; end_caption?: string; narration?: string; overlays?: T.EdlOverlay[]; mid_narrations?: T.MidNarration[]; stickers?: T.EdlSticker[]; pips?: T.EdlPip[]; brand_text?: string | null }) => req<T.StudioState>('POST', `/api/studio/${id}/rerender`, edl),
   styles: () => req<{ styles: T.RefStyle[]; default: T.StyleProfile; note: string }>('GET', '/api/styles'),
   styleCreate: (name: string, channel_url: string, files: File[]) => { const fd = new FormData(); fd.append('name', name); fd.append('channel_url', channel_url); files.forEach((f) => fd.append('files', f)); return req<T.RefStyle>('POST', '/api/styles', fd, true) },
   styleRelearn: (id: number, files: File[]) => { const fd = new FormData(); files.forEach((f) => fd.append('files', f)); return req<T.RefStyle>('POST', `/api/styles/${id}/relearn`, fd, true) },
@@ -140,10 +140,10 @@ export const api = {
   bgmAdd: (files: File[]) => { const fd = new FormData(); files.forEach((f) => fd.append('files', f)); return req<{ saved: number }>('POST', '/api/styles/bgm', fd, true) },
   bgmDelete: (name: string) => req<unknown>('DELETE', `/api/styles/bgm/${encodeURIComponent(name)}`),
   ttsTest: async (text: string, voiceId?: string) => { const fd = new FormData(); fd.append('text', text); if (voiceId) fd.append('voice_id', voiceId); const res = await fetch('/api/styles/tts-test', { method: 'POST', body: fd }); if (!res.ok) { let d: any = null; try { d = await res.json() } catch {} ; throw new ApiError(res.status, d?.detail ?? '목소리를 만들지 못했습니다') } return URL.createObjectURL(await res.blob()) },
-  studioDeleteSource: (id: number) => req<void>('DELETE', `/api/studio/${id}/source`),
-  studioUpload: (id: number, file: File, onProgress: (pct: number) => void) => new Promise<T.StudioState>((resolve, reject) => {
+  studioDeleteSource: (id: number, slot = 1) => req<void>('DELETE', `/api/studio/${id}/source?slot=${slot}`),
+  studioUpload: (id: number, file: File, onProgress: (pct: number) => void, slot = 1) => new Promise<T.StudioState>((resolve, reject) => {
     // 큰 파일 진행률 표시를 위해 XHR 사용
-    const xhr = new XMLHttpRequest(); const fd = new FormData(); fd.append('file', file)
+    const xhr = new XMLHttpRequest(); const fd = new FormData(); fd.append('file', file); fd.append('slot', String(slot))
     xhr.open('POST', `/api/studio/${id}/source`)
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)) }
     xhr.onload = () => { let d: any = null; try { d = JSON.parse(xhr.responseText) } catch {} ; if (xhr.status >= 200 && xhr.status < 300) resolve(d); else reject(new ApiError(xhr.status, d?.detail ?? xhr.responseText)) }

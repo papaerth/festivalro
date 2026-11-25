@@ -213,7 +213,8 @@ def test_shorts_maker_edl_normalize_and_ass():
                          "segments": [{"start": 50, "end": 70, "caption": "b"}, {"start": 10, "end": 30, "caption": "a"}, {"start": 25, "end": 26, "caption": "x"}],
                          "title_lines": ["가", "나", "다"]}, 120)
     assert edl["hook"]["end"] - edl["hook"]["start"] <= 3.5
-    assert [s["caption"] for s in edl["segments"]][0] == "a" and edl["total_seconds"] <= 32 and len(edl["title_lines"]) == 2
+    # 재생 순서는 준 그대로 둔다(시간순으로 다시 정렬하지 않는다)
+    assert [s["caption"] for s in edl["segments"]] == ["b", "a"] and edl["total_seconds"] <= 32 and len(edl["title_lines"]) == 2 and edl["shuffles"] == 2  # 후킹(100초)→b(50초)→a(10초): 두 번 거슬러 감
     short = normalize_edl({"segments": [{"start": 5, "end": 10, "caption": ""}]}, 100)
     assert short["total_seconds"] >= 18 and short["hook"] is None
     r = normalize_edl(rule_edl(30, None, 90, ["연예인", "상품 이름"]), 90)
@@ -400,7 +401,7 @@ def test_bouncy_captions_and_pip_normalize(tmp_path):
     edl = normalize_edl({"hook": {"start": 1, "end": 3.5, "caption": "*이게* 뭐길래"}, "segments": [{"start": 10 + i * 5, "end": 14 + i * 5, "caption": f"컷 *{i}* 끝"} for i in range(5)],
                          "end_caption": "여러분이라면?", "pips": [{"segment": 1, "src_start": 999, "focus": "위"}, {"start": 3.26, "src_start": 40, "focus": "left", "duration": 99},
                                                            {"src_start": 5}, "엉터리", {"segment": 2, "src_start": 7, "focus": "right"}]}, 100, 25)
-    assert edl["pips"] == [{"src_start": 98.5, "focus": "center", "segment": 1}, {"src_start": 40.0, "focus": "left", "start": 3.3, "duration": 6.0}]
+    assert edl["pips"] == [{"src": 0, "src_start": 98.5, "focus": "center", "segment": 1}, {"src": 0, "src_start": 40.0, "focus": "left", "start": 3.3, "duration": 6.0}]
     ass = build_ass(edl, "Malgun Gothic", 300, 1300, st)
     ev = ass.split("[Events]")[1]
     assert ev.count(BOUNCE) == 7  # 후킹 + 본편 5 + 끝 질문 자막이 모두 통통 튄다
@@ -434,3 +435,59 @@ def test_per_character_bounce_caption():
     ev = build_ass(edl, "Malgun Gothic", 300, 1300, st).split("[Events]")[1]
     assert "\\alpha&HFF&" in ev and BOUNCE not in ev and "Title,,0,0,0,,제목" in ev  # 제목에는 효과를 주지 않는다
     assert BOUNCE in build_ass(edl, "Malgun Gothic", 300, 1300, normalize_style({"caption": {"bounce": True}}))
+
+
+def test_shuffled_order_no_reuse_and_multi_source():
+    """컷 순서 섞기(재생 순서 유지), 같은 장면 재사용 금지, 원본 여러 개, 총 길이 20~30초."""
+    from app.services.shorts_maker import HOOK_MAX, RULES, normalize_edl, rule_edl
+    assert HOOK_MAX == 3.0 and RULES["total_range"] == (20.0, 30.0) and RULES["tts_lines"] == 2
+    e = normalize_edl({"hook": {"start": 40, "end": 46, "caption": "h"},
+                       "segments": [{"start": 50, "end": 58, "caption": "b"}, {"start": 10, "end": 20, "caption": "a"}, {"start": 38, "end": 44, "caption": "c"},
+                                    {"start": 12, "end": 18, "caption": "dup"}, {"src": 7, "start": 1, "end": 9, "caption": "없는 원본"}]}, 120, limits=(20, 30))
+    assert e["hook"] == {"src": 0, "start": 40.0, "end": 43.0, "caption": "h"}  # 후킹은 3초까지
+    assert [(x["caption"], x["start"], x["end"]) for x in e["segments"]] == [("b", 50.0, 58.0), ("a", 10.0, 20.0), ("c", 38.0, 40.0)]  # 후킹과 겹친 부분은 잘라 냄
+    assert e["dropped_overlaps"] == 1 and e["shuffles"] == 1 and 20 <= e["total_seconds"] <= 30
+    clips = [e["hook"]] + e["segments"]
+    for i, x in enumerate(clips):  # 어떤 두 컷도 같은 원본 구간을 겹쳐 쓰지 않는다
+        for y in clips[i + 1:]:
+            assert x["src"] != y["src"] or x["end"] <= y["start"] or y["end"] <= x["start"]
+    # 길이가 모자라면 겹치지 않는 범위에서만 늘린다 / 넘치면 30초로 줄인다
+    short = normalize_edl({"hook": {"start": 30, "end": 32, "caption": ""}, "segments": [{"start": 10, "end": 14, "caption": ""}, {"start": 26, "end": 30, "caption": ""}]}, 200, limits=(20, 30))
+    sc = [short["hook"]] + short["segments"]
+    assert 19.9 <= short["total_seconds"] <= 30 and all(x["end"] <= y["start"] or y["end"] <= x["start"] for i, x in enumerate(sc) for y in sc[i + 1:])
+    long = normalize_edl({"segments": [{"start": i * 10, "end": i * 10 + 8, "caption": ""} for i in range(6)]}, 300, limits=(20, 30))
+    assert long["total_seconds"] <= 30.01
+    # AI 없이: 후킹을 구간 가운데서 가져와 순서를 섞고, 같은 장면을 두 번 쓰지 않는다
+    r = normalize_edl(rule_edl(30, None, 90, ["연예인", "상품"]), 90, limits=(20, 30))
+    assert r["hook"]["start"] > r["segments"][0]["start"] and r["shuffles"] >= 1 and 20 <= r["total_seconds"] <= 30
+    assert r["segments"][0]["end"] <= r["hook"]["start"] + 0.01 and r["segments"][1]["start"] >= r["hook"]["end"] - 0.01
+    # 원본 3개 섞기
+    m = normalize_edl(rule_edl(30, None, 90, [], [(1, 5, 40), (2, 100, 300)]), 90, durations={0: 90, 1: 40, 2: 300}, limits=(20, 30))
+    assert [x["src"] for x in m["segments"]] == [0, 1, 0, 2] and m["shuffles"] >= 3 and 20 <= m["total_seconds"] <= 30
+
+
+def test_auto_product_card_from_original_frame(tmp_path):
+    """상품 사진을 올리지 않아도 원본 화면에서 상품 부분을 잘라 카드로 만든다. 브랜드는 글자 배지로."""
+    import subprocess
+    from PIL import Image
+    from app.services import shorts_maker
+    caps = shorts_maker.capabilities()
+    if not caps.get("available"):
+        import pytest; pytest.skip("ffmpeg 없음")
+    ff = caps["path"]
+    src = tmp_path / "s.mp4"
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=6", "-c:v", caps["vcodec"], "-pix_fmt", "yuv420p", str(src)], check=True)
+    sources = {0: {"path": str(src), "info": shorts_maker.probe(ff, str(src))}}
+    notes: list[str] = []
+    edl = {"product_shot": {"found": True, "src": 0, "time": 3.0, "x": 0.5, "y": 0.2, "w": 0.3, "h": 0.5}, "brand_text": "테스트 브랜드"}
+    got = shorts_maker.auto_assets(edl, [], sources, ff, tmp_path, notes)
+    kinds = {a["id"]: a for a in got}
+    assert "auto_product" in kinds and kinds["auto_product"]["kind"] == "product" and kinds["auto_product"]["auto"] is True and notes == []
+    card = Image.open(kinds["auto_product"]["cut_path"])
+    assert 0.7 <= card.width / card.height <= 1.4 and card.width >= 150  # 너무 길쭉하지 않은 카드
+    from app.services.overlay_assets import find_font
+    assert ("auto_brand" in kinds) == bool(find_font())  # 한글 글꼴이 있는 PC 에서만 배지를 만든다
+    # 사용자가 직접 올린 사진·로고가 있으면 자동으로 만들지 않는다
+    mine = [{"id": "u1", "kind": "product", "cut_path": "x"}, {"id": "u2", "kind": "logo", "cut_path": "y"}]
+    assert [a["id"] for a in shorts_maker.auto_assets(edl, mine, sources, ff, tmp_path, notes)] == ["u1", "u2"]
+    assert shorts_maker.auto_assets({"product_shot": {"found": False}, "brand_text": ""}, [], sources, ff, tmp_path, notes) == []

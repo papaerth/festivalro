@@ -55,6 +55,70 @@ def _source_warning(proj: ShortsProject, short: Video) -> str | None:
     return None
 
 
+def _extra(proj: ShortsProject | None, slot: int) -> dict:
+    return next((x for x in ((proj.extra_sources if proj else None) or []) if x.get("slot") == slot), {})
+
+
+def _sources(proj: ShortsProject | None, c: SourcingCandidate) -> list[dict]:
+    """원본 칸 3개(1=첫 원본, 2·3=섞어 쓸 원본). 파일·주소·대략 위치."""
+    orig = c.video.original
+    out = [{"slot": 1, "name": proj.source_name if proj else None, "info": proj.source_info if proj else None,
+            "exists": bool(proj and proj.source_path and Path(proj.source_path).exists()),
+            "hint_start": proj.hint_start if proj else None, "url": orig.url if orig else None, "title": orig.title if orig else None,
+            "channel": (orig.channel.channel_name if orig.channel else orig.yt_channel_title) if orig else None,
+            "warning": _source_warning(proj, c.video) if proj else None}]
+    for slot in (2, 3):
+        x = _extra(proj, slot)
+        out.append({"slot": slot, "name": x.get("name"), "info": x.get("info"), "exists": bool(x.get("path") and Path(x["path"]).exists()),
+                    "hint_start": x.get("hint_start"), "url": x.get("url"), "title": x.get("title"), "channel": x.get("channel"), "warning": None})
+    return out
+
+
+def _brief(db: Session, c: SourcingCandidate, proj: ShortsProject | None, sources: list[dict]) -> dict:
+    """제작 계획: 무엇이 필요한지(원본), 어떻게 구성할지, 프로그램이 알아서 하는 것. 파일을 올리기 전에 먼저 보여 준다."""
+    v, orig = c.video, c.video.original
+    om = v.original_match or {}
+    lo, hi = shorts_maker.production_limits(db)
+    seg = c.segment
+    rng = (f"{seg.start_seconds // 60}:{seg.start_seconds % 60:02d}" + (f"~{seg.end_seconds // 60}:{seg.end_seconds % 60:02d}" if seg.end_seconds else "")) \
+        if seg and seg.start_seconds is not None else None
+    needs = []
+    if orig:
+        needs.append({"slot": 1, "status": "ready" if sources[0]["exists"] else "need_file", "title": orig.title, "url": orig.url,
+                      "channel": sources[0]["channel"], "duration_seconds": orig.duration_seconds, "range": rng,
+                      "why": "참고 쇼츠가 다룬 장면이 들어 있는 원본" + (f" · 쓸 구간 약 {rng}" if rng else " · 구간은 파일을 올리면 AI 가 찾습니다")})
+    else:
+        cands = [x for x in (om.get("candidates") or []) if x.get("is_long", True)][:3]
+        needs.append({"slot": 1, "status": "need_url", "title": None, "url": None, "channel": None, "duration_seconds": None, "range": None,
+                      "why": "원본 영상을 아직 연결하지 않았습니다." + (" 아래 후보 중 맞는 것을 확인하거나, 직접 찾은 주소를 넣어 주세요." if cands else " 참고 쇼츠를 캡처해 찾은 원본 주소를 넣어 주세요."),
+                      "candidates": [{"title": x.get("title"), "url": x.get("url"), "channel": x.get("channel"), "reasons": (x.get("reasons") or [])[:2]} for x in cands]})
+    for sc in sources[1:]:
+        if sc["exists"] or sc["url"]:
+            needs.append({"slot": sc["slot"], "status": "ready" if sc["exists"] else "need_file", "title": sc["title"], "url": sc["url"], "channel": sc["channel"],
+                          "duration_seconds": (sc["info"] or {}).get("duration"), "range": None, "why": "섞어 쓸 원본"})
+    tts = audio_fx.tts_status()
+    ai = bool(get_settings().anthropic_api_key)
+    return {
+        "needs": needs,
+        "product": {"name": c.product.name if c.product else None, "brand": c.product.brand if c.product else None},
+        "structure": [
+            {"at": "0~3초", "name": "후킹", "what": "가장 강한 순간(큰 반응·결과·상품이 드러나는 장면)을 설명 없이 맨 앞에 + AI 음성 한 문장(약 2.5초) + 큰 자막"},
+            {"at": "3~9초", "name": "맥락", "what": "누가·무엇인지 2~3컷으로 짧게(시간을 거슬러 그 전 상황으로)"},
+            {"at": "9~17초", "name": "상품", "what": "상품이 나오고 쓰는 장면 + 원본 화면에서 잘라 낸 상품 카드가 튀어나옴"},
+            {"at": "전체의 50~70%", "name": "재후킹", "what": "새 정보·반전으로 다시 궁금하게 + AI 음성 두 번째 문장(약 3초)"},
+            {"at": f"끝({lo:g}~{hi:g}초)", "name": "끝", "what": "결론을 다 말하지 않고 후킹 장면 바로 앞에서 끊어, 반복 재생될 때 첫 장면으로 이어지게"}],
+        "rules": [f"총 길이 {lo:g}~{hi:g}초", "후킹은 3초 이내", "컷 순서는 시간순이 아니라 2~3번 섞기", "같은 장면은 두 번 쓰지 않기",
+                  "AI 음성 2문장(첫 장면·재후킹 지점), 길이에 맞춰 속도 자동 조절", "원본이 2~3개면 섞어서 한 편으로", "영상·제목·자막은 원본에서 새로(참고 쇼츠 문구를 가져오지 않음)"],
+        "auto": ["상품 사진: 원본에서 상품이 가장 또렷한 장면을 잘라 카드로", "브랜드: 화면에서 읽은 브랜드 이름을 배지로(로고 이미지는 구해 오지 않음)",
+                 "스티커·효과음·배경음악·자막 효과: 스타일에 따라 자동"],
+        "ready": {"ai": ai, "tts": tts["available"], "tts_note": tts["note"], "ffmpeg": shorts_maker.capabilities().get("available", False)},
+        "limits": [x for x in [
+            None if ai else "AI 키가 없으면 구성·자막·내레이션·상품 카드를 자동으로 정하지 못합니다. '대략 위치'를 적으면 그 주변을 규칙대로 잘라 만듭니다.",
+            None if tts["available"] else "AI 음성을 쓸 수 없어 내레이션 없이 만듭니다.",
+            "시청 지속시간 100% 이상은 반복 시청이 생겨야 가능한 수치라 보장할 수는 없습니다. 3초 후킹과 처음으로 이어지는 끝으로 그 가능성을 높이는 구성입니다."] if x],
+    }
+
+
 def _asset(cid: int, a: dict) -> dict:
     return {"id": a["id"], "kind": a.get("kind", "product"), "name": a.get("name"), "method": a.get("method"),
             "method_label": overlay_assets.METHOD_LABEL.get(a.get("method") or "", ""), "url": f"/api/studio/{cid}/assets/{a['id']}/file"}
@@ -64,6 +128,7 @@ def _state(db: Session, c: SourcingCandidate) -> dict:
     proj = db.get(ShortsProject, c.id)
     renders = db.query(ShortsRender).filter(ShortsRender.candidate_id == c.id).order_by(ShortsRender.id.desc()).limit(10).all()
     v, orig = c.video, c.video.original
+    sources = _sources(proj, c)
     plan = max(c.plans, key=lambda p: p.created_at) if c.plans else None
     # 업로드용 제목 제안: 우리가 만든 편집안의 제목 → 확인된 연예인·상품 이름. 참고 쇼츠(타인의 재편집물) 제목은 제안하지 않는다
     done = next((r for r in renders if r.status == "done" and r.edl and r.edl.get("title_lines")), None)
@@ -71,6 +136,7 @@ def _state(db: Session, c: SourcingCandidate) -> dict:
     desc = "\n".join(x for x in [
         f"원본: {(orig.channel.channel_name if orig and orig.channel else (orig.yt_channel_title if orig else '')) or ''} - {orig.title if orig else ''}".strip(" -"),
         orig.url if orig else None,
+        *[f"원본 {x['slot']}: {x.get('channel') or ''} - {x.get('title') or ''} {x.get('url') or ''}".strip() for x in sources[1:] if x.get("url") or x.get("title")],
         "※ 원본 영상의 일부를 인용해 해설을 더한 영상입니다.",
         "※ 제휴 링크를 쓰는 경우: 이 포스팅은 제휴 활동의 일환으로 수수료를 제공받을 수 있습니다."] if x)
     return {
@@ -85,6 +151,7 @@ def _state(db: Session, c: SourcingCandidate) -> dict:
         "source": ({"name": proj.source_name, "info": proj.source_info, "exists": bool(proj.source_path and Path(proj.source_path).exists()),
                     "hint_start": proj.hint_start, "hint_end": proj.hint_end,
                     "warning": _source_warning(proj, v)} if proj else None),
+        "sources": sources, "brief": _brief(db, c, proj, sources),
         "renders": [_render(r) for r in renders],
         "ffmpeg": shorts_maker.capabilities(),
         "styles": [{"id": x.id, "name": x.name, "status": x.status, "summary": (x.profile or {}).get("summary")}
@@ -98,13 +165,28 @@ def _state(db: Session, c: SourcingCandidate) -> dict:
     }
 
 
+def _set_extra(db: Session, cid: int, slot: int, **fields) -> ShortsProject:
+    proj = db.get(ShortsProject, cid)
+    if not proj:
+        proj = ShortsProject(candidate_id=cid)
+        db.add(proj)
+    items = [dict(x) for x in (proj.extra_sources or [])]
+    cur = next((x for x in items if x.get("slot") == slot), None)
+    if cur is None:
+        cur = {"slot": slot}
+        items.append(cur)
+    cur.update(fields)
+    proj.extra_sources = sorted(items, key=lambda x: x["slot"])
+    return proj
+
+
 @router.get("/{cid}")
 def get_studio(cid: int, db: Session = Depends(get_db)):
     return _state(db, get_or_404(db, SourcingCandidate, cid, "후보"))
 
 
 @router.post("/{cid}/original")
-def set_original(cid: int, body: schemas.LinkOriginalIn, db: Session = Depends(get_db)):
+def set_original(cid: int, body: schemas.LinkOriginalIn, slot: int = 1, db: Session = Depends(get_db)):
     """원본 영상 URL 연결(유튜브 URL·ID). API 키가 있으면 제목·길이를 가져오고, 없으면 URL 만 기록한다."""
     from ..services.metrics import extract_video_id, get_or_create_video
     c = get_or_404(db, SourcingCandidate, cid, "후보")
@@ -113,6 +195,23 @@ def set_original(cid: int, body: schemas.LinkOriginalIn, db: Session = Depends(g
         raise HTTPException(400, "유튜브 영상 URL 또는 11자리 ID를 입력하세요")
     if yid == c.video.youtube_video_id:
         raise HTTPException(400, "참고 쇼츠 자신의 주소입니다. 원본(롱폼) 영상 주소를 넣어 주세요")
+    if slot in (2, 3):  # 섞어 쓸 원본: 주소·제목만 기록해 두고(출처 표기·설명란용) 파일은 따로 올린다
+        meta = {"url": f"https://www.youtube.com/watch?v={yid}", "title": None, "channel": None}
+        if get_settings().youtube_api_key:
+            try:
+                from ..services.youtube_connector import YouTubeClient
+                cl = YouTubeClient()
+                try:
+                    got = cl.get_videos([yid])
+                finally:
+                    cl.close()
+                if got:
+                    meta.update(title=got[0].get("title"), channel=got[0].get("channel_title"))
+            except Exception:
+                pass
+        _set_extra(db, c.id, slot, **meta)
+        db.commit()
+        return _state(db, c)
     v = db.query(Video).filter(Video.youtube_video_id == yid).first()
     if v is None:
         from ..services import collection
@@ -130,14 +229,17 @@ def set_original(cid: int, body: schemas.LinkOriginalIn, db: Session = Depends(g
 
 
 @router.post("/{cid}/source")
-def upload_source(cid: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """원본 mp4 업로드(사용자가 직접 준비한 파일). data/media/originals 에 저장한다."""
+def upload_source(cid: int, file: UploadFile = File(...), slot: int = Form(1), db: Session = Depends(get_db)):
+    """원본 mp4 업로드(사용자가 직접 준비한 파일). slot=1 첫 원본, 2·3 섞어 쓸 원본. data/media/originals 에 저장한다."""
     c = get_or_404(db, SourcingCandidate, cid, "후보")
+    if slot not in (1, 2, 3):
+        raise HTTPException(400, "원본 칸은 1~3번입니다")
     ext = Path(file.filename or "video.mp4").suffix.lower()
     if ext not in ALLOWED_EXT:
         raise HTTPException(400, f"영상 파일만 올릴 수 있습니다({', '.join(ALLOWED_EXT)})")
-    dest = get_settings().media_dir / "originals" / f"c{c.id}{ext}"
-    for old in dest.parent.glob(f"c{c.id}.*"):
+    stem = f"c{c.id}" if slot == 1 else f"c{c.id}_s{slot}"
+    dest = get_settings().media_dir / "originals" / f"{stem}{ext}"
+    for old in dest.parent.glob(f"{stem}.*"):
         old.unlink(missing_ok=True)
     size = 0
     with dest.open("wb") as out:
@@ -162,15 +264,19 @@ def upload_source(cid: int, file: UploadFile = File(...), db: Session = Depends(
     if not proj:
         proj = ShortsProject(candidate_id=c.id)
         db.add(proj)
-    proj.source_path, proj.source_name, proj.source_info = str(dest), file.filename, info or {"size": size}
-    log(db, "candidate", c.id, "upload_source", {"name": file.filename, "size": size})
+    if slot == 1:
+        proj.source_path, proj.source_name, proj.source_info = str(dest), file.filename, info or {"size": size}
+    else:
+        db.flush()
+        _set_extra(db, c.id, slot, path=str(dest), name=file.filename, info=info or {"size": size})
+    log(db, "candidate", c.id, "upload_source", {"name": file.filename, "size": size, "slot": slot})
     db.commit()
     return _state(db, c)
 
 
 @router.post("/{cid}/make")
 def make(cid: int, hint: str | None = Form(None), hint_end: str | None = Form(None), style_id: int | None = Form(None),
-         db: Session = Depends(get_db)):
+         hint2: str | None = Form(None), hint3: str | None = Form(None), db: Session = Depends(get_db)):
     """버튼 한 번: 장면 찾기 → 후킹·컷 구성 → 렌더링을 백그라운드로 시작. hint=대략 위치(분:초, 선택)."""
     c = get_or_404(db, SourcingCandidate, cid, "후보")
     proj = db.get(ShortsProject, c.id)
@@ -180,6 +286,9 @@ def make(cid: int, hint: str | None = Form(None), hint_end: str | None = Form(No
     if not caps.get("available"):
         raise HTTPException(503, caps.get("reason", "ffmpeg 없음"))
     proj.hint_start, proj.hint_end = _hms(hint), _hms(hint_end)
+    for slot, h in ((2, hint2), (3, hint3)):
+        if _extra(proj, slot):
+            _set_extra(db, c.id, slot, hint_start=_hms(h))
     db.commit()
     if style_id is not None:
         st = db.get(ReferenceStyle, style_id)
@@ -198,6 +307,12 @@ def rerender(cid: int, body: schemas.EdlIn, db: Session = Depends(get_db)):
         raise HTTPException(400, "원본 mp4 파일이 없습니다")
     data = body.model_dump()
     sid = data.pop("style_id", None)
+    prev = db.query(ShortsRender).filter(ShortsRender.candidate_id == c.id, ShortsRender.edl.isnot(None)).order_by(ShortsRender.id.desc()).first()
+    for k in ("product_shot", "product_popup_segment", "loop_note"):  # 화면에서 고치지 않는 값은 직전 편집안 것을 이어 쓴다
+        if prev and prev.edl and prev.edl.get(k) is not None:
+            data.setdefault(k, prev.edl[k])
+    if data.get("brand_text") is None:
+        data["brand_text"] = (prev.edl.get("brand_text") if prev and prev.edl else "") or ""
     if sid is None:  # 지정이 없으면 직전 렌더의 스타일을 그대로 쓴다
         last = db.query(ShortsRender).filter(ShortsRender.candidate_id == c.id).order_by(ShortsRender.id.desc()).first()
         sid = last.style_id if last else None
@@ -215,13 +330,21 @@ def render_file(rid: int, download: bool = False, db: Session = Depends(get_db))
 
 
 @router.delete("/{cid}/source", status_code=204)
-def delete_source(cid: int, db: Session = Depends(get_db)):
-    """원본 파일 삭제(디스크 정리). 만든 쇼츠는 남는다."""
+def delete_source(cid: int, slot: int = 1, db: Session = Depends(get_db)):
+    """원본 파일 삭제(디스크 정리). 만든 쇼츠는 남는다. slot=2·3 은 그 칸을 비운다."""
     proj = db.get(ShortsProject, cid)
-    if proj and proj.source_path:
-        Path(proj.source_path).unlink(missing_ok=True)
-        proj.source_path = None
-        db.commit()
+    if not proj:
+        return
+    if slot == 1:
+        if proj.source_path:
+            Path(proj.source_path).unlink(missing_ok=True)
+            proj.source_path = None
+    else:
+        x = _extra(proj, slot)
+        if x.get("path"):
+            Path(x["path"]).unlink(missing_ok=True)
+        proj.extra_sources = [y for y in (proj.extra_sources or []) if y.get("slot") != slot]
+    db.commit()
 
 
 MAX_ASSETS, MAX_ASSET_BYTES = 6, 15 * 1024 * 1024

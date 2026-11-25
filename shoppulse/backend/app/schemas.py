@@ -236,6 +236,7 @@ class EdlClip(BaseModel):
     start: float = Field(..., ge=0)
     end: float = Field(..., ge=0)
     caption: str = ""
+    src: int = 0  # 원본 번호(0=첫 원본, 1·2=섞어 쓸 원본)
 
 
 class EdlIn(BaseModel):
@@ -249,6 +250,7 @@ class EdlIn(BaseModel):
     mid_narrations: list[dict] = []
     stickers: list[dict] = []
     pips: list[dict] = []
+    brand_text: str | None = None
     style_id: int | None = None
 
 

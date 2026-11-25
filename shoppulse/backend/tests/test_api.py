@@ -923,7 +923,7 @@ def test_narration_sfx_bgm_and_popups_end_to_end(client, tmp_path, monkeypatch):
     assert r2["edl"]["mid_narrations"][0] == {"text": "그런데 가격을 보고 더 놀랐다는데", "segment": 3, "start": 10.2}
     assert r2["edl"]["stickers"] == [{"type": "heart", "start": 5.3, "duration": 1.8}, {"type": "exclaim", "start": 14.0, "duration": 2.0}]
     assert not any("움직임 없이" in n for n in r2["notes"])  # 움직이는 스티커가 그대로 렌더링됐다
-    assert r2["edl"]["pips"] == [{"src_start": 44.0, "focus": "right", "start": 7.8, "duration": 3.0}]
+    assert r2["edl"]["pips"] == [{"src": 0, "src_start": 44.0, "focus": "right", "start": 7.8, "duration": 3.0}]
     assert r2["edl"]["audio"]["sfx"].count("pop") == 6
     assert r2["edl"]["audio"]["narration"].startswith("test · 가짜 음성 · 2.0") and r2["edl"]["narration"].startswith("이 배우가")
     assert {o["kind"]: o["start"] for o in r2["edl"]["overlays"]} == {"product": 9.0, "logo": 0.3, "sticker": 5.3}
@@ -987,3 +987,84 @@ def test_new_short_is_made_from_original_not_from_reference_short(client, tmp_pa
             break
         time.sleep(0.2)
     assert r2["status"] == "done" and client.get(f"/api/studio/{cid}").json()["upload_text"]["title_suggestion"] == "우리가 새로 쓴 제목"
+
+
+def test_multi_source_mix_brief_and_auto_assets(client, tmp_path, monkeypatch):
+    """원본 2~3개 섞기, 제작 계획(필요한 것·구성안), 원본 화면에서 자동으로 만드는 상품 카드·브랜드 배지, 내레이션 속도 맞춤."""
+    import subprocess, time
+    from app.services import audio_fx, shorts_maker
+    caps = shorts_maker.capabilities()
+    if not caps.get("available"):
+        import pytest; pytest.skip("ffmpeg 없음")
+    ff = caps["path"]
+
+    def make(name, pattern, size, dur, audio=True):
+        p = tmp_path / name
+        a = ["-f", "lavfi", "-i", f"sine=frequency=440:duration={dur}"] if audio else []
+        subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", f"{pattern}=size={size}:rate=30:duration={dur}", *a,
+                        "-c:v", caps["vcodec"], "-pix_fmt", "yuv420p", *(["-c:a", "aac", "-shortest"] if audio else []), str(p)], check=True)
+        return p
+
+    v = client.post("/api/videos", json={"url_or_id": "mix_short_1", "title": "남의 쇼츠 제목", "duration_seconds": 25,
+                                        "view_count": 700000, "fetch": False, "source_type": "reedit_shorts"}).json()
+    cid = client.post("/api/candidates", json={"video_id": v["id"], "channel_category": "food"}).json()["id"]
+    st = client.get(f"/api/studio/{cid}").json()
+    # 제작 계획: 파일을 올리기 전에 필요한 것과 구성안을 먼저 보여 준다
+    b = st["brief"]
+    assert b["needs"][0]["status"] == "need_url" and [x["name"] for x in b["structure"]] == ["후킹", "맥락", "상품", "재후킹", "끝"]
+    assert any("2~3번 섞기" in x for x in b["rules"]) and any("두 번 쓰지 않기" in x for x in b["rules"]) and any("20~30초" in x for x in b["rules"])
+    assert any("보장할 수는 없습니다" in x for x in b["limits"]) and any("상품 사진" in x for x in b["auto"])
+    assert [x["slot"] for x in st["sources"]] == [1, 2, 3] and not any(x["exists"] for x in st["sources"])
+    # 원본 3개: 크기·비율·소리 유무가 서로 달라도 섞인다
+    for slot, f in ((1, make("a.mp4", "testsrc2", "640x360", 60)), (2, make("b.mp4", "smptebars", "854x480", 40)), (3, make("c.mp4", "testsrc", "360x640", 30, audio=False))):
+        with f.open("rb") as fh:
+            st = client.post(f"/api/studio/{cid}/source", files={"file": (f.name, fh, "video/mp4")}, data={"slot": str(slot)}).json()
+    assert [x["exists"] for x in st["sources"]] == [True, True, True] and st["sources"][1]["info"]["width"] == 854
+    assert client.post(f"/api/studio/{cid}/source", files={"file": ("x.mp4", b"x", "video/mp4")}, data={"slot": "9"}).status_code == 400
+    st = client.post(f"/api/studio/{cid}/original?slot=2", json={"url_or_id": "https://youtu.be/second_orig"}).json()
+    assert st["sources"][1]["url"].endswith("second_orig") and st["sources"][1]["exists"] and "second_orig" in st["upload_text"]["description"]
+
+    def wait(prev=None):
+        for _ in range(500):
+            r = client.get(f"/api/studio/{cid}").json()["renders"][0]
+            if r["status"] in ("done", "failed") and r["id"] != prev:
+                return r
+            time.sleep(0.2)
+        raise AssertionError("렌더 시간 초과")
+
+    # AI 없이: 위치를 아는 원본만 섞는다(3번은 위치를 몰라 빠지고 그 사실을 알린다)
+    client.post(f"/api/studio/{cid}/make", data={"hint": "0:10", "hint2": "0:05"})
+    r = wait()
+    assert r["status"] == "done", r
+    assert "mix2" in r["decided_by"] and sorted({x["src"] for x in r["edl"]["segments"]}) == [0, 1] and r["edl"]["shuffles"] >= 2
+    assert any("원본 3은 상품이 나오는 위치를 몰라" in n for n in r["notes"]) and 20 <= r["edl"]["total_seconds"] <= 30
+    assert r["edl"]["hook"]["end"] - r["edl"]["hook"]["start"] <= 3.0 and r["output_info"]["width"] == 1080
+    clips = [r["edl"]["hook"]] + r["edl"]["segments"]
+    assert all(x["src"] != y["src"] or x["end"] <= y["start"] + 0.01 or y["end"] <= x["start"] + 0.01 for i, x in enumerate(clips) for y in clips[i + 1:])
+    # 편집안: 3개 원본을 섞고 순서를 뒤섞음 + 상품 장면 자동 추출 + 브랜드 배지 + 내레이션 2문장(긴 문장은 속도를 올려 맞춤)
+    def fake(text, out, rate=1.12, voice_id=None):
+        subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-t", "4" if "긴" in text else "2", "-i", "sine=frequency=700", str(out)], check=True)
+        return {"provider": "test", "voice": "가짜"}
+    monkeypatch.setattr(audio_fx, "synthesize", fake)
+    edl = {"hook": {"src": 0, "start": 40, "end": 45, "caption": "*이게* 뭐길래"},
+           "segments": [{"src": 1, "start": 20, "end": 24, "caption": "둘째 원본"}, {"src": 0, "start": 5, "end": 10, "caption": "처음으로"},
+                        {"src": 2, "start": 12, "end": 16, "caption": "셋째 원본"}, {"src": 0, "start": 41, "end": 50, "caption": "후킹과 겹침"}, {"src": 1, "start": 2, "end": 6, "caption": "다시 둘째"}],
+           "title_lines": ["새로 쓴 제목", "둘째 줄"], "credit": "", "narration": "긴 첫 문장입니다", "mid_narrations": [{"segment": 2, "text": "짧은 둘째 문장"}],
+           "pips": [{"segment": 1, "src": 1, "src_start": 30, "focus": "left"}], "brand_text": "테스트브랜드"}
+    client.post(f"/api/studio/{cid}/rerender", json=edl)
+    r2 = wait(r["id"])
+    assert r2["status"] == "done", r2
+    e = r2["edl"]
+    assert [x["src"] for x in e["segments"]] == [1, 0, 2, 0, 1] and e["hook"]["end"] == 43.0 and e["shuffles"] >= 4
+    assert e["segments"][3]["start"] == 43.0  # 후킹(40~43초)과 겹친 부분은 잘라 냈다
+    assert e["pips"][0]["src"] == 1 and 20 <= e["total_seconds"] <= 30
+    lines = e["audio"]["lines"]
+    assert [x["where"] for x in lines] == ["첫 장면", "중간"] and lines[0]["speed"] == 1.3 and lines[0]["seconds"] <= 3.1 and lines[1]["speed"] == 1.0
+    assert any(o["asset_id"] == "auto_brand" and o["kind"] == "logo" for o in e["overlays"])  # 브랜드 이름 배지는 자동
+    assert e["brand_text"] == "테스트브랜드" and e["credit"].startswith("출처:")
+    # 2번 원본을 지우면 그 원본을 쓰는 컷은 빠진다
+    assert client.delete(f"/api/studio/{cid}/source?slot=2").status_code == 204
+    assert client.get(f"/api/studio/{cid}").json()["sources"][1]["exists"] is False
+    client.post(f"/api/studio/{cid}/rerender", json=edl)
+    r3 = wait(r2["id"])
+    assert r3["status"] == "done" and 1 not in {x["src"] for x in r3["edl"]["segments"]}

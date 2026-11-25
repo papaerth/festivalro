@@ -30,6 +30,7 @@ COLUMNS = [
     ("sourcing_candidates", "slot_reason", "TEXT"),
     ("shorts_renders", "style_id", "INTEGER"),
     ("shorts_projects", "assets", "JSON"),
+    ("shorts_projects", "extra_sources", "JSON"),
 ]
 INDEXES = [
     ("ix_videos_original_video_id", "videos", "original_video_id"),
