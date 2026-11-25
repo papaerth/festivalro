@@ -6,6 +6,7 @@ import { Badge, Confirm, ErrorBox, Field, MetricPill, Modal, ProductStatusBadge,
 import type { AISuggestion } from '../types'
 import ViewGraph from '../components/ViewGraph'
 import CaptureInvestigateModal from '../components/CaptureInvestigate'
+import ProductLinks from '../components/ProductLinks'
 
 const CT: [string, string][] = [['direct_recommend', '직접 추천형'], ['sponsored', '광고·협찬형'], ['long_term_love', '애정템형'], ['natural_use', '자연 사용형'], ['experience', '경험담형'], ['comparison', '비교형'], ['taste_reveal', '취향 공개형'], ['value_find', '가성비 발견형'], ['premium_taste', '프리미엄 취향형'], ['regret', '실패·후회형'], ['life_tip', '생활 노하우형'], ['curiosity_debate', '호기심·논쟁형'], ['accidental_find', '우연한 발견형'], ['repeat_buy', '반복 구매형'], ['gift', '선물 추천형']]
 const toSec = (s: string) => { if (!s) return null; const p = s.split(':').map(Number); if (p.some(isNaN)) return null; return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p.length === 2 ? p[0] * 60 + p[1] : p[0] }
@@ -131,6 +132,7 @@ export default function VideoDetail() {
         <div className="card p-4">
           <div className="mb-2 flex items-center justify-between"><h2 className="section-title">연결된 상품 {v.is_derived && <ProductStatusBadge status={v.product_status} />}</h2><div className="flex gap-1">{v.is_derived && v.original && v.original_products.length > 0 && <button className="btn-ghost text-xs" title={`원본 영상의 상품 ${v.original_products.length}개를 이 쇼츠에 연결`} onClick={() => act(() => api.copyOriginalProducts(v.id).then((r) => { if (!r.added) throw new Error('추가된 상품 없음(이미 연결됨)') }), '원본 상품 연결')}>원본의 상품 가져오기</button>}<button className="btn-ghost text-xs" onClick={() => open('product', {})}>+ 상품 연결</button></div></div>
           {v.is_derived && v.product_status !== 'confirmed' && <p className="mb-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-200">이 쇼츠가 어떤 상품을 파는지 확인해 연결해야 바이럴 검증 근거로 집계됩니다. 아래 설명란 링크와 영상 내용을 보고 상품을 등록·연결하세요. 상품 확인 상태가 '정확한 상품' 또는 '브랜드만 확인'이어야 인정됩니다.</p>}
+          {v.is_derived && <div className="mb-3"><ProductLinks video={v} defaultCategory="food" onChanged={() => q.reload()} /></div>}
           {v.is_derived && v.description_links.length > 0 && (
             <div className="mb-3 rounded-xl border border-stone-200 p-2 text-xs dark:border-stone-800">
               <div className="mb-1 font-semibold">설명란 링크 {v.description_links.filter((l) => l.is_shopping_link).length > 0 && <Badge tone="blue">구매 링크 {v.description_links.filter((l) => l.is_shopping_link).length}</Badge>}</div>

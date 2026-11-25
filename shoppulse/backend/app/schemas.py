@@ -332,3 +332,10 @@ class OfferFromSearchIn(BaseModel):
     affiliate_available: bool | None = None
     affiliate_program: str | None = None
     notes: str | None = None
+
+
+class ProductFromLinkIn(BaseModel):
+    url: str = Field(min_length=8, max_length=600)
+    name: str = Field(min_length=1, max_length=300)
+    brand: str | None = None
+    category: Category

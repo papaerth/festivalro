@@ -159,6 +159,7 @@ def video_detail(v: Video) -> dict:
         "evidence": evidence_summary(v),
         "description_links": description_links(v),
         "ai_product_suggestions": v.ai_product_suggestions,
+        "resolved_links": v.resolved_links,
     })
     return d
 

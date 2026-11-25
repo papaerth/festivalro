@@ -39,8 +39,11 @@ export interface VideoDetail extends VideoSummary {
   snapshots: { observed_at: string; view_count: number; like_count: number | null; comment_count: number | null; source: string }[];
   metric_history: { id: number; metric_type: string; value: number | null; basis: string; source: string; measured_at: string; note: string | null }[];
   segments: Segment[]; products: Product[]; candidates: CandidateSummary[]; fetch_note?: string | null
-  derived_shorts: VideoSummary[]; original: VideoSummary | null; original_products: Product[]; evidence: Evidence; description_links: { url: string; host: string; is_shopping_link: boolean }[]; ai_product_suggestions: AISuggestions | null
+  derived_shorts: VideoSummary[]; original: VideoSummary | null; original_products: Product[]; evidence: Evidence; description_links: { url: string; host: string; is_shopping_link: boolean }[]; ai_product_suggestions: AISuggestions | null; resolved_links: ResolvedLinks | null
 }
+
+export interface ResolvedLink { title: string; url: string; final_url: string; host: string; is_shopping: boolean; via: string }
+export interface ResolvedLinks { resolved_at: string; hubs: { hub: string; host: string; links_found: number; shopping_links: number }[]; products: ResolvedLink[]; others: ResolvedLink[]; note: string }
 
 export interface AISuggestion { name: string; brand: string; category: 'beauty' | 'living' | 'food' | 'unknown'; subcategory: string; confidence: 'high' | 'medium' | 'low'; reasoning: string; evidence: string }
 export interface AISuggestions { video_is_shopping: boolean; suggestions: AISuggestion[]; notes: string; model?: string; image_sources?: string[]; disclaimer?: string }

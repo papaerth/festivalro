@@ -322,6 +322,52 @@ def reclassify_shopping(scope: str = "all", db: Session = Depends(get_db)):
     return {"total": len(rows), "shopping": yes, "non_shopping": no, "threshold": threshold()}
 
 
+@router.post("/{vid}/resolve-links")
+def resolve_links(vid: int, db: Session = Depends(get_db)):
+    """설명란·채널 소개의 링크 페이지(인포크링크 등)를 따라가 상품 링크를 수집한다. 미등록 채널 소개글은 YouTube API 로 1회 조회(할당량 1)."""
+    from ..services.link_resolver import resolve_video_links
+    from ..services.youtube_connector import YouTubeAPIError, YouTubeClient, YouTubeNotConfigured
+    v = get_or_404(db, Video, vid, "영상")
+    ch_desc = v.yt_channel_description
+    if ch_desc is None and v.yt_channel_id:
+        try:
+            client = YouTubeClient()
+            try:
+                info = client.get_channels([v.yt_channel_id])
+                ch_desc = (info[0].get("description") or "") if info else ""
+            finally:
+                client.close()
+        except (YouTubeNotConfigured, YouTubeAPIError):
+            ch_desc = None
+        if ch_desc is not None:
+            v.yt_channel_description = ch_desc
+    result = resolve_video_links(v.description, ch_desc)
+    v.resolved_links = result
+    log(db, "video", v.id, "resolve_links", {"products": len(result["products"]), "hubs": len(result["hubs"])})
+    db.commit()
+    return result
+
+
+@router.post("/{vid}/product-from-link", status_code=201)
+def product_from_link(vid: int, body: schemas.ProductFromLinkIn, db: Session = Depends(get_db)):
+    """수집한 상품 링크로 상품(유사 상품 후보)과 판매처를 한 번에 등록하고 이 영상에 연결한다."""
+    from ..models import Product, ProductMention, ProductOffer
+    v = get_or_404(db, Video, vid, "영상")
+    host = body.url.split("/")[2] if "://" in body.url else body.url
+    seller = "쿠팡" if "coupang" in host else "네이버 스마트스토어" if "smartstore" in host or "brand.naver" in host else host
+    p = Product(name=body.name, brand=body.brand or None, category=body.category, identification_status="similar_candidate",
+                notes=f"[링크 수집] 영상 {v.youtube_video_id} 의 설명란/링크 페이지에서 수집한 링크로 등록 — 상품 페이지를 확인한 뒤 상태를 바꾸세요.")
+    db.add(p)
+    db.flush()
+    db.add(ProductMention(video_id=v.id, product_id=p.id, celebrity_id=v.celebrity_id))
+    db.add(ProductOffer(product_id=p.id, seller=seller, url=body.url, price=None, stock_status="unknown",
+                        affiliate_available=True if ("link.coupang" in body.url or "coupa.ng" in body.url) else None,
+                        affiliate_program="쿠팡 파트너스(원 게시자 링크)" if ("link.coupang" in body.url or "coupa.ng" in body.url) else None,
+                        source="link_resolver", notes="타인 게시 링크 — 내 제휴 링크로 교체 필요"))
+    db.commit()
+    return serializers.product(p)
+
+
 @router.post("/{vid}/identify-product")
 async def identify_product(vid: int, files: list[UploadFile] = File(default=[]), use_thumbnail: bool = True,
                            db: Session = Depends(get_db)):

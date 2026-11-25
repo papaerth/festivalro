@@ -115,6 +115,13 @@ def ai_identify_products_step(db: Session, max_calls: int = 30) -> dict:
         v = c.video
         if product_status(v) != "none" or v.ai_product_suggestions is not None:
             continue
+        if v.resolved_links is None:
+            try:
+                from .link_resolver import resolve_video_links
+                v.resolved_links = resolve_video_links(v.description, v.yt_channel_description)
+                db.commit()
+            except Exception:
+                pass
         try:
             result = identify(v, extra_images=None, use_thumbnail=True)
         except AINotConfigured as e:

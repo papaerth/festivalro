@@ -472,3 +472,17 @@ def test_investigate_requires_ai_key(client):
     assert r.status_code == 503 and "ANTHROPIC_API_KEY" in r.json()["detail"]
     r = client.post("/api/products/investigate", files={"files": ("x.txt", io.BytesIO(b"hi"), "text/plain")})
     assert r.status_code == 400
+
+
+def test_resolve_links_and_product_from_link(client, monkeypatch):
+    from app.services import link_resolver as lr
+    monkeypatch.setattr(lr, "expand", lambda u, timeout=6.0: u)
+    monkeypatch.setattr(lr, "fetch_hub_links", lambda u, timeout=8.0: [{"title": "백종원 소갈비찜", "url": "https://www.coupang.com/vp/products/1"}])
+    v = client.post("/api/videos", json={"url_or_id": "lllllllllll", "title": "소갈비찜 리뷰 추천템", "source_type": "reedit_shorts", "fetch": False,
+                                        "description": "제품은 여기 https://inpock.link/foodie"}).json()
+    r = client.post(f"/api/videos/{v['id']}/resolve-links").json()
+    assert r["hubs"][0]["host"] == "inpock.link" and r["products"][0]["title"] == "백종원 소갈비찜"
+    assert client.get(f"/api/videos/{v['id']}").json()["resolved_links"]["products"]
+    p = client.post(f"/api/videos/{v['id']}/product-from-link", json={"url": r["products"][0]["final_url"], "name": "백종원 소갈비찜", "category": "food"}).json()
+    assert p["identification_status"] == "similar_candidate" and p["offers"][0]["seller"] == "쿠팡"
+    assert client.get(f"/api/videos/{v['id']}").json()["product_status"] == "candidate"

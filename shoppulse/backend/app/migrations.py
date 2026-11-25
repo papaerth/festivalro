@@ -21,6 +21,8 @@ COLUMNS = [
     ("videos", "shopping_hits", "JSON"),
     ("videos", "is_shopping", "BOOLEAN"),
     ("videos", "ai_product_suggestions", "JSON"),
+    ("videos", "resolved_links", "JSON"),
+    ("videos", "yt_channel_description", "TEXT"),
     ("sourcing_candidates", "produced_at", "DATETIME"),
     ("sourcing_candidates", "produced_url", "VARCHAR(300)"),
 ]

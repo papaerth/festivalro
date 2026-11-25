@@ -126,3 +126,19 @@ def test_sourcing_window_defaults_and_settings():
         _, _, mn, mx = sourcing_window(db, min_age_days=0, max_age_days=10)
         assert (mn, mx) == (0, 10)
         db.delete(db.get(UserSetting, "window_min_age_days")); db.delete(db.get(UserSetting, "window_max_age_days")); db.commit()
+
+
+def test_link_resolver_classification(monkeypatch):
+    from app.services import link_resolver as lr
+    assert lr.is_link_hub("https://inpock.link/sungsikyung") and lr.is_link_hub("https://linktr.ee/abc")
+    assert lr.is_shop("https://www.coupang.com/vp/products/123") and lr.is_shop("https://smartstore.naver.com/x/products/1")
+    assert not lr.is_shop("https://www.youtube.com/watch?v=abc")
+    assert lr.is_shortener("https://link.coupang.com/a/xyz")
+    # 네트워크 없이: expand/fetch 를 가짜로
+    monkeypatch.setattr(lr, "expand", lambda u, timeout=6.0: "https://www.coupang.com/vp/products/999" if "link.coupang" in u else u)
+    monkeypatch.setattr(lr, "fetch_hub_links", lambda u, timeout=8.0: [{"title": "성시경 라면 (쿠팡)", "url": "https://link.coupang.com/a/abc"}, {"title": "인스타", "url": "https://instagram.com/x"}])
+    r = lr.resolve_video_links("구매는 https://inpock.link/test 참고! 그리고 https://smartstore.naver.com/shop/products/1", None)
+    assert r["hubs"][0]["links_found"] == 2 and r["hubs"][0]["shopping_links"] == 1
+    assert any(p["final_url"].startswith("https://www.coupang.com") and p["title"].startswith("성시경") for p in r["products"])
+    assert any("smartstore" in p["url"] for p in r["products"])
+    assert all(not o["is_shopping"] for o in r["others"])

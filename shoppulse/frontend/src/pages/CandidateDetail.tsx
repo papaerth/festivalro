@@ -6,6 +6,7 @@ import { Badge, Confirm, ErrorBox, Field, MetricPill, ProductStatusBadge, Select
 import ViewGraph from '../components/ViewGraph'
 import OfferSearchModal from '../components/OfferSearch'
 import CaptureInvestigateModal from '../components/CaptureInvestigate'
+import ProductLinks from '../components/ProductLinks'
 import type { CandidateDetail as CD, Score } from '../types'
 
 export default function CandidateDetail() {
@@ -148,6 +149,7 @@ export default function CandidateDetail() {
               {c.original_detail && c.original_detail.products.length > 0 && <button className="btn-ghost px-2 py-1 text-xs" onClick={() => act(() => api.copyOriginalProducts(v.id), '원본 상품 연결')}>원본의 상품 가져오기</button>}
             </div>
             <div className="mt-2"><Field label="등록된 상품 바로 연결"><Select value="" onChange={(pid) => pid && act(() => api.addMention({ video_id: v.id, product_id: Number(pid) }).then(() => api.patchCandidate(c.id, { product_id: Number(pid) })), '상품 연결')} placeholder="선택" options={(products.data || []).map((p) => [String(p.id), `${p.brand || ''} ${p.name} (${LABELS.identification[p.identification_status]})`])} /></Field></div>
+            <div className="mt-2"><ProductLinks video={v} defaultCategory={c.channel_category} onChanged={() => q.reload()} /></div>
             {v.ai_product_suggestions && v.ai_product_suggestions.suggestions.length > 0 && (
               <div className="mt-2 text-xs">
                 <div className="font-semibold">AI 추정 결과 <span className="muted font-normal">({v.ai_product_suggestions.model})</span></div>

@@ -81,7 +81,10 @@ def identify(video, extra_images: list[tuple[bytes, str]] | None = None, use_thu
     from ..serializers import description_links
 
     links = [l["url"] for l in description_links(video) if l["is_shopping_link"]]
+    hub_products = [{"title": p.get("title"), "url": p.get("final_url") or p.get("url"), "via": p.get("via")}
+                    for p in ((video.resolved_links or {}).get("products") or [])][:15]
     ctx = {
+        "collected_product_links": hub_products,
         "title": video.title, "description": (video.description or "")[:3000], "tags": (video.tags or [])[:30],
         "shopping_links": links[:10], "channel": video.yt_channel_title or (video.channel.channel_name if video.channel else None),
         "celebrity": (video.celebrity.name if video.celebrity else (video.channel.celebrity.name if video.channel and video.channel.celebrity else None)),
@@ -89,7 +92,7 @@ def identify(video, extra_images: list[tuple[bytes, str]] | None = None, use_thu
     }
     content.append({"type": "text", "text": (
         "다음 유튜브 쇼핑 쇼츠(또는 연예인 영상)가 다루는 상품을 추정해 주세요. 이미지는 썸네일이거나 사용자가 영상에서 캡처한 화면입니다.\n"
-        "규칙: 1) 실제로 보이거나 적힌 근거(제품명·로고·패키지·링크 도메인·설명문)에 기반해 추정하고, 근거를 evidence 에 적습니다. "
+        "규칙: 1) 실제로 보이거나 적힌 근거(제품명·로고·패키지·링크 도메인·설명문·collected_product_links 의 링크 제목/주소)에 기반해 추정하고, 근거를 evidence 에 적습니다. "
         "2) 확신이 없으면 confidence 를 low 로 두고 brand 는 빈 문자열로 둡니다. 지어내지 않습니다. "
         "3) 여러 상품이 보이면 각각 별도 항목으로 최대 5개. 4) category 는 beauty(뷰티·패션)/living(생활용품)/food(먹거리)/unknown. "
         "5) 상품 판매와 무관한 영상이면 video_is_shopping=false 로 하고 suggestions 는 비웁니다. 한국어로 답합니다.\n\n"
