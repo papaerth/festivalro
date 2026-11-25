@@ -22,7 +22,9 @@ STOP = {"shorts", "쇼츠", "추천템", "추천", "영상", "유튜브", "리�
         "진짜", "정말", "이거", "그거", "왜", "다들", "대체", "최고", "레전드", "충격", "난리", "요즘", "사온", "사", "온",
         "서서", "줄서서", "환장", "할까요", "하는", "있는", "보고", "이게", "그게", "저게", "너무", "완전", "역대급", "솔직", "후기",
         "공개", "드디어", "지금", "바로", "이유", "결국", "근황", "브이로그", "vlog", "short", "video", "youtube", "구독", "좋아요",
-        "밤새", "밤에", "아침에", "오늘", "어제", "내일", "모두", "전부", "하나", "진심", "실화", "대박", "미쳤다", "미친", "찐", "찐친들", "언니", "오빠", "엄마", "아빠"}
+        "밤새", "밤에", "아침에", "오늘", "어제", "내일", "모두", "전부", "하나", "진심", "실화", "대박", "미쳤다", "미친", "찐", "찐친들", "언니", "오빠", "엄마", "아빠",
+        "같이", "함께", "연예인추천템", "추천템", "셀럽템", "셀럽꿀템", "꿀템", "인생템", "필수템", "애정템", "득템", "내돈내산", "리뷰", "언박싱",
+        "이것", "그것", "저것", "이걸", "그걸", "것만", "이것만", "챙기세요", "꼭", "절대", "무조건", "드디어", "결국", "역시", "그냥", "진짜로"}
 _YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?v=|shorts/|live/|embed/))([A-Za-z0-9_-]{11})")
 _TOKEN_RE = re.compile(r"[가-힣A-Za-z0-9]{2,}")
 
@@ -73,18 +75,22 @@ def _score_text(kws: list[str], title: str | None, desc: str | None, tags: list 
     return score, hits
 
 
-def score_with_snippets(kws: list[str], title: str | None, desc: str | None, tags: list | None) -> tuple[float, list[str], list[str]]:
-    """단어 일치 점수 + 설명란에서 그 단어가 나온 문장 조각(근거 문장)."""
+def score_with_snippets(kws: list[str], title: str | None, desc: str | None, tags: list | None,
+                        strong: set[str] | None = None) -> tuple[float, list[str], list[str]]:
+    """단어 일치 점수 + 설명란에서 그 단어가 나온 문장 조각(근거 문장).
+    strong(해시태그·상품명처럼 재편집 채널이 고른 핵심 단어)은 제목 3점/설명 1.5점, 나머지는 2점/1점."""
     t = (title or "").lower()
     raw_d = (desc or "")[:2000]
     d = (raw_d + " " + " ".join(tags or [])).lower()
+    strong_l = {x.lower() for x in (strong or set())}
     hits, snippets, score = [], [], 0.0
     for k in kws:
         kl = k.lower()
+        w = 1.5 if kl in strong_l else 1.0
         if kl in t:
-            score += 2.0; hits.append(k)
+            score += 2.0 * w; hits.append(k)
         elif kl in d:
-            score += 1.0; hits.append(k)
+            score += 1.0 * w; hits.append(k)
             i = raw_d.lower().find(kl)
             if i >= 0 and len(snippets) < 3:
                 a, b = max(0, i - 40), min(len(raw_d), i + len(kl) + 40)
@@ -129,8 +135,9 @@ def find_original(db: Session, short: Video, product_name: str | None = None, us
     names = [c.name for c in celebs]
     kws = extract_keywords(short, product_name, names)
     tags = hashtags_of(short)
+    strong = set(h for h in tags if h in kws) | set(_TOKEN_RE.findall(product_name or ""))
     result = {"checked_at": utcnow().isoformat(), "celebrities": names, "keywords": kws, "hashtags": tags, "candidates": [],
-              "best": None, "confidence": "none", "reason": "", "api_searches": 0, "notes": []}
+              "best": None, "confidence": "none", "reason": "", "api_searches": 0, "notes": [], "strong": sorted(strong)}
     unregistered = [h for h in tags if 2 <= len(h) <= 4 and re.fullmatch(r"[가-힣]+", h) and not any(n in h for n in names)
                     and h.lower() not in STOP and h not in kws[:0]]
     if unregistered:
@@ -176,7 +183,7 @@ def find_original(db: Session, short: Video, product_name: str | None = None, us
         if _is_short(v):
             skipped_shorts += 1
             continue  # 쇼츠는 원본이 아님
-        sc, hits, snips = score_with_snippets(kws, v.title, v.description, v.tags)
+        sc, hits, snips = score_with_snippets(kws, v.title, v.description, v.tags, strong)
         if sc > 0:
             result["candidates"].append(_cand(v, sc, hits, "db", before, snips))
 
@@ -190,9 +197,9 @@ def find_original(db: Session, short: Video, product_name: str | None = None, us
             result["notes"].append(str(e))
         if client:
             try:
-                tags_q = [h for h in hashtags_of(short) if h in kws][:4]
+                tags_q = [h for h in hashtags_of(short) if h in kws][:2]
                 queries = [" ".join(tags_q)] if tags_q else []
-                rest = [k for k in kws if k not in tags_q][:4]
+                rest = [k for k in kws if k not in tags_q][:2]
                 if rest:
                     queries.append(" ".join(rest))
                 queries = [q for q in queries if q] or [" ".join(kws[:4])]
@@ -280,7 +287,8 @@ def _absorb(db, client, ch, c, items, short, kws, before, result, now):
         v, _ = upsert_video_from_api(db, item, ch, now, source_type="original_celebrity")
         if v.celebrity_id is None:
             v.celebrity_id = c.id
-        sc, hits, snips = score_with_snippets(kws, v.title, v.description, v.tags)
+        strong = set(result.get("strong", []))
+        sc, hits, snips = score_with_snippets(kws, v.title, v.description, v.tags, strong)
         if not any(x["video_id"] == v.id for x in result["candidates"]):
             result["candidates"].append(_cand(v, sc + 0.5, hits + ["채널 내 검색 결과"], "api_channel_search", before, snips))
 

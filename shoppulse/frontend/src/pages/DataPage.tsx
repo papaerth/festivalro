@@ -31,7 +31,7 @@ export default function DataPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card p-4">
           <h2 className="section-title mb-1">YouTube Data API 수집 {yt ? <Badge tone="green">키 설정됨</Badge> : <Badge tone="amber">키 미설정 — .env 의 YOUTUBE_API_KEY</Badge>}</h2>
-          <p className="mb-3 text-xs muted">채널 영상 수집(설정의 조회 기간: 기본 3개월 전~3년 전, 업로드 목록 기반)과 기존 영상 조회수 갱신(스냅샷 축적). 할당량: 채널 검색 100, 영상/채널 조회 1 (일 10,000 기본).</p>
+          <p className="mb-3 text-xs muted">채널 영상 수집(원본은 최근 제외 없이 오늘까지, 과거 한도는 설정의 3년, 업로드 목록 기반)과 기존 영상 조회수 갱신(스냅샷 축적). 할당량: 채널 검색 100, 영상/채널 조회 1 (일 10,000 기본).</p>
           <div className="grid gap-3 md:grid-cols-3">
             <div className="md:col-span-2"><Field label="채널 (채널 ID가 있는 채널만 수집 가능)"><Select value={ch} onChange={setCh} placeholder="선택" options={(channels.data || []).map((c) => [String(c.id), `${c.channel_name}${c.celebrity_name ? ` (${c.celebrity_name})` : ''}${c.channel_id ? '' : ' — ID 미확인'}`])} /></Field></div>
             <Field label="최대 영상 수"><input type="number" className="input" value={maxVideos} onChange={(e) => setMaxVideos(Number(e.target.value))} /></Field>

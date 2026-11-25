@@ -95,9 +95,14 @@ def upsert_video_from_api(db: Session, item: dict, channel: YoutubeChannel | Non
 def collect_channel_videos(db: Session, channel: YoutubeChannel, max_videos: int = 200,
                            years: int | None = None, triggered_by: str = "manual",
                            min_age_days: int | None = None, max_age_days: int | None = None) -> CollectionJob:
-    after, before, mn, mx = sourcing_window(db, min_age_days, max_age_days if max_age_days is not None else (years * 365 if years else None))
+    # 원본(연예인 채널) 영상은 '최근 N일 제외' 를 두지 않는다: 쇼츠가 쓴 원본은 최신 영상일 수 있으므로 오늘까지 수집한다.
+    # 과거 한도만 조회 대상 게시 기간(기본 3년)을 따른다. min_age_days 를 명시하면 그 값을 쓴다.
+    after, _before, mn, mx = sourcing_window(db, 0 if min_age_days is None else min_age_days,
+                                             max_age_days if max_age_days is not None else (years * 365 if years else None))
+    before = None if min_age_days is None else _before
     job = start_job(db, "collect_channel_videos", {"channel_id": channel.id, "channel_name": channel.channel_name,
-                                                   "max_videos": max_videos, "window_days": [mn, mx]}, triggered_by)
+                                                   "max_videos": max_videos, "window_days": [mn, mx],
+                                                   "note": "원본은 오늘까지(최근 제외 없음), 과거 한도만 적용"}, triggered_by)
     db.commit()
     try:
         client = YouTubeClient()
