@@ -20,6 +20,7 @@ export default function Studio() {
   const [up, setUp] = useState<{ slot: number; pct: number } | null>(null)
   const [upSlot, setUpSlot] = useState(1)
   const [moreSources, setMoreSources] = useState(false)
+  const [editUrl, setEditUrl] = useState<Record<number, boolean>>({})
   const [capture, setCapture] = useState(false)
   const [edit, setEdit] = useState<{ hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; end_caption: string; narration: string; overlays: EdlOverlay[]; mid_narrations: MidNarration[]; stickers: EdlSticker[]; pips: EdlPip[] } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -85,7 +86,7 @@ export default function Studio() {
             <div className="mb-1 text-xs font-semibold">① 필요한 원본</div>
             <ul className="space-y-1.5 text-xs">{s.brief.needs.map((n) => (
               <li key={n.slot} className="rounded-xl border border-stone-200 p-2 dark:border-stone-700">
-                <div className="flex items-center gap-2"><Badge tone={n.status === 'ready' ? 'green' : n.status === 'need_file' ? 'amber' : 'red'}>{n.status === 'ready' ? '파일 준비됨' : n.status === 'need_file' ? 'mp4 파일 필요' : '원본 주소 필요'}</Badge><span className="line-clamp-1 font-semibold">원본 {n.slot}{n.title ? ` · ${n.title}` : ''}</span>{n.url && <a className="ml-auto whitespace-nowrap underline" href={n.url} target="_blank" rel="noreferrer">열기 ↗</a>}</div>
+                <div className="flex items-center gap-2"><span className="whitespace-nowrap"><Badge tone={n.status === 'ready' ? 'green' : n.status === 'need_file' ? 'amber' : 'red'}>{n.status === 'ready' ? '파일 준비됨' : n.status === 'need_file' ? 'mp4 파일만 필요' : '원본 주소 필요'}</Badge></span><span className="line-clamp-1 font-semibold">원본 {n.slot}{n.title ? ` · ${n.title}` : ''}</span>{n.url && <a className="ml-auto whitespace-nowrap underline" href={n.url} target="_blank" rel="noreferrer">열기 ↗</a>}</div>
                 <div className="mt-0.5 muted">{n.channel ? `${n.channel} · ` : ''}{n.duration_seconds ? `${fmt.duration(Math.round(n.duration_seconds))} · ` : ''}{n.why}</div>
                 {n.candidates && n.candidates.length > 0 && <ul className="mt-1 space-y-0.5">{n.candidates.map((cd, i) => <li key={i} className="flex items-center gap-2"><span className="muted">후보 {i + 1}</span><span className="line-clamp-1 flex-1">{cd.title}</span>{cd.url && <><a className="underline" href={cd.url} target="_blank" rel="noreferrer">보기</a><button className="underline" onClick={() => act(() => api.studioOriginal(cid, cd.url!, 1), '원본 연결됨')}>이걸로</button></>}</li>)}</ul>}
               </li>))}</ul>
@@ -101,7 +102,7 @@ export default function Studio() {
       </div>
 
       <div className="card p-4">
-        <h2 className="section-title mb-2">{step(1, ready)}원본 영상 <span className="text-xs font-normal muted">· 주소와 mp4 파일 (2~3개를 섞으려면 아래에서 추가)</span></h2>
+        <h2 className="section-title mb-2">{step(1, ready)}원본 영상 <span className="text-xs font-normal muted">· {s.sources[0].url ? 'mp4 파일만 올려 주세요' : '주소와 mp4 파일'} (프로그램은 유튜브 영상을 대신 내려받지 않습니다)</span></h2>
         <input ref={fileRef} type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,.mp4,.mov,.mkv,.webm,.m4v" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f, upSlot); e.target.value = '' }} />
         <div className="space-y-3">
           {s.sources.filter((x) => x.slot === 1 || showMore).map((x) => (
@@ -111,11 +112,16 @@ export default function Studio() {
                 {x.title ? <span className="line-clamp-1 min-w-0 flex-1 font-semibold">{x.title}<span className="ml-2 text-xs font-normal muted">{x.channel || ''}</span></span> : <span className="flex-1 text-xs muted">{x.slot === 1 ? '참고 쇼츠의 장면이 들어 있는 원본' : '같은 상품·같은 화제가 나오는 다른 원본(섞어 쓰기)'}</span>}
                 {x.url && <a className="text-xs underline" href={x.url} target="_blank" rel="noreferrer">원본 열기 ↗</a>}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <input className="input min-w-52 flex-1" placeholder="원본 유튜브 주소 붙여넣기 (https://www.youtube.com/watch?v=…)" value={urls[x.slot] || ''} onChange={(e) => setUrls({ ...urls, [x.slot]: e.target.value })} />
-                <button className="btn-ghost border border-stone-300 dark:border-stone-600" disabled={!urls[x.slot]} onClick={() => act(() => api.studioOriginal(cid, urls[x.slot], x.slot), `원본 ${x.slot} 주소 연결됨`).then(() => setUrls({ ...urls, [x.slot]: '' }))}>{x.url ? '주소 바꾸기' : '주소 연결'}</button>
-                {x.slot === 1 && <button className="btn-ghost" onClick={() => setCapture(true)}>캡처로 찾기(AI)</button>}
-              </div>
+              {x.url && !editUrl[x.slot] ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs"><span className="text-emerald-700 dark:text-emerald-400">✓ 원본 주소는 연결돼 있습니다 — {x.exists ? '파일도 준비됐습니다.' : '이제 mp4 파일만 올리면 됩니다.'}</span><button className="underline muted" onClick={() => setEditUrl({ ...editUrl, [x.slot]: true })}>다른 원본으로 바꾸기</button></div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <input className="input min-w-52 flex-1" placeholder="원본 유튜브 주소 붙여넣기 (https://www.youtube.com/watch?v=…)" value={urls[x.slot] || ''} onChange={(e) => setUrls({ ...urls, [x.slot]: e.target.value })} />
+                  <button className="btn-ghost border border-stone-300 dark:border-stone-600" disabled={!urls[x.slot]} onClick={() => act(() => api.studioOriginal(cid, urls[x.slot], x.slot), `원본 ${x.slot} 주소 연결됨`).then(() => { setUrls({ ...urls, [x.slot]: '' }); setEditUrl({ ...editUrl, [x.slot]: false }) })}>{x.url ? '주소 바꾸기' : '주소 연결'}</button>
+                  {x.slot === 1 && <button className="btn-ghost" onClick={() => setCapture(true)}>캡처로 찾기(AI)</button>}
+                  {x.url && <button className="text-xs underline muted" onClick={() => setEditUrl({ ...editUrl, [x.slot]: false })}>취소</button>}
+                </div>
+              )}
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <button className="btn-primary" disabled={up !== null} onClick={() => { setUpSlot(x.slot); setTimeout(() => fileRef.current?.click(), 0) }}>{up?.slot === x.slot ? `올리는 중 ${up.pct}%` : x.exists ? '다른 파일로 바꾸기' : 'mp4 파일 선택'}</button>
                 {x.exists && x.info && <span className="text-xs muted">{x.name} · {fmt.duration(Math.round(x.info.duration || 0))} · {x.info.width}×{x.info.height} · {((x.info.size || 0) / 1024 / 1024).toFixed(0)}MB</span>}
