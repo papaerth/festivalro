@@ -118,7 +118,7 @@ export interface EdlPip { src?: number; src_start: number; focus: 'left' | 'cent
 export interface EdlSticker { type: string; segment?: number; start?: number; duration?: number }
 export interface TtsVoice { id: string; name: string; category?: string | null; gender?: string | null; language?: string | null }
 export interface StudioAsset { id: string; kind: 'product' | 'logo' | 'sticker'; name: string | null; method: string | null; method_label: string; url: string }
-export interface TtsStatus { available: boolean; provider: string | null; voice?: string; voice_id?: string | null; note: string }
+export interface TtsStatus { available: boolean; provider: string | null; voice?: string; voice_id?: string | null; fallback?: boolean; note: string }
 export interface StudioRender { id: number; status: 'queued' | 'running' | 'done' | 'failed'; step: string | null; progress: number; decided_by: string | null; error: string | null; file_url: string | null; notes: string[]; created_at: string; finished_at: string | null;
   style_id: number | null;
   edl: { hook: EdlClip | null; segments: EdlClip[]; title_lines: string[]; credit: string; end_caption?: string; narration?: string; overlays?: EdlOverlay[]; mid_narrations?: MidNarration[]; stickers?: EdlSticker[]; pips?: EdlPip[]; audio?: { narration?: string | null; narration_count?: number; voice?: string; bgm?: string; sfx?: string[]; lines?: { where: string; text: string; seconds: number; speed: number }[] }; shuffles?: number; loop_note?: string | null; brand_text?: string | null; reason?: string | null; quote_seen?: string | null; total_seconds: number } | null; output_info: { duration: number; width: number; height: number; size: number } | null }

@@ -382,7 +382,7 @@ def test_elevenlabs_mid_narration_and_stickers(tmp_path, monkeypatch):
     post = [c for c in calls if c[0] == "POST"][0]
     assert post[1] == "https://api.elevenlabs.io/v1/text-to-speech/v_ko" and post[2] == {"xi-api-key": "el-test-key"}
     assert post[3] == {"output_format": "mp3_44100_128"} and post[4] == {"text": "십 년째 쓴다는 물건", "model_id": "eleven_multilingual_v2"}
-    assert calls[0][1].endswith("/v2/voices") and len([c for c in calls if c[0] == "GET"]) == 1  # 목록은 기억해 두고 다시 묻지 않는다
+    assert "/v2/voices" in calls[0][1] and len([c for c in calls if c[0] == "GET"]) == 1  # 목록은 기억해 두고 다시 묻지 않는다
     # 오류는 사유와 함께 알려 준다
     monkeypatch.setattr(audio_fx.httpx, "post", lambda *a, **k: R(401, {"detail": {"status": "invalid_api_key", "message": "Invalid API key"}}))
     with pytest.raises(audio_fx.TTSError, match="401.*Invalid API key.*API 키"):
@@ -531,3 +531,46 @@ def test_reference_top20_findings_applied():
         assert out["width"] == 1080 and out["height"] == 1920 and abs(out["duration"] - edl["total_seconds"]) < 0.6
         args = (d / "subs.ass").exists()
         assert args
+
+
+def test_elevenlabs_voice_list_failure_falls_back_and_is_cached(tmp_path, monkeypatch):
+    """목소리 목록을 못 읽는 키(권한 제한)여도 내레이션이 빠지지 않는다: 사유를 알리고 임시 기본 목소리로 읽는다. 실패도 기억해 매번 다시 묻지 않는다."""
+    from app.config import get_settings
+    from app.services import audio_fx
+    monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "el-restricted")
+    audio_fx._eleven_cache.clear()
+    calls = []
+
+    class R:
+        def __init__(self, code, body=None, content=b""):
+            self.status_code, self._b, self.content, self.text = code, body, content, json.dumps(body or {})
+        def json(self):
+            return self._b
+
+    def fake_get(url, headers=None, timeout=None):
+        calls.append(url)
+        return R(401, {"detail": {"status": "missing_permissions", "message": "The API key you used is missing the permission voices_read"}})
+
+    posted = []
+
+    def fake_post(url, params=None, headers=None, json=None, timeout=None):
+        posted.append(url)
+        return R(200, content=b"ID3" + b"0" * 2000)
+
+    monkeypatch.setattr(audio_fx.httpx, "get", fake_get)
+    monkeypatch.setattr(audio_fx.httpx, "post", fake_post)
+    st = audio_fx.tts_status()
+    assert st["available"] and st["fallback"] is True and st["voice_id"] == audio_fx.FALLBACK_VOICE["id"]
+    assert "Voices(읽기) 권한" in st["note"] and "Voice ID" in st["note"]
+    audio_fx.tts_status(); audio_fx.tts_status()
+    assert len(calls) == 1  # 401 이면 더 시도하지 않고, 실패를 기억해 다시 묻지 않는다
+    got = audio_fx.synthesize("문장", tmp_path / "f.wav")
+    assert got["provider"] == "elevenlabs" and posted[0].endswith("/" + audio_fx.FALLBACK_VOICE["id"])
+    # 목록이 비어 있으면 다른 주소도 차례로 시도한다
+    audio_fx._eleven_cache.clear(); calls.clear()
+    monkeypatch.setattr(audio_fx.httpx, "get", lambda url, headers=None, timeout=None: (calls.append(url), R(200, {"voices": []}))[1])
+    assert audio_fx.elevenlabs_voice()["fallback"] is True and len(calls) == 3 and "voice_type=default" in calls[1] and calls[2].endswith("/v1/voices")
+    # 직접 넣은 Voice ID 가 있으면 그걸 쓴다
+    monkeypatch.setattr(get_settings(), "elevenlabs_voice_id", "MyVoiceId1234567890")
+    assert audio_fx.elevenlabs_voice()["id"] == "MyVoiceId1234567890" and audio_fx.tts_status()["fallback"] is False
+    audio_fx._eleven_cache.clear()

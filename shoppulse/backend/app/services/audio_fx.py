@@ -99,26 +99,39 @@ def _eleven_error(r) -> str:
     try:
         d = r.json().get("detail")
         msg = d.get("message") if isinstance(d, dict) else str(d)
+        code = d.get("status") if isinstance(d, dict) else ""
     except Exception:
-        msg = (r.text or "")[:200]
-    hint = {401: " (API 키를 확인하세요)", 402: " (요금제·잔여 글자 수를 확인하세요)", 429: " (요청이 너무 많거나 잔여 글자 수가 부족합니다)"}.get(r.status_code, "")
+        msg, code = (r.text or "")[:200], ""
+    if "permission" in f"{code} {msg}".lower():
+        hint = " → API 키에 이 기능 권한이 없습니다. ElevenLabs 에서 키를 만들 때 Text to Speech 와 Voices(읽기) 권한을 켜거나, 권한 제한 없는 키로 바꿔 주세요."
+    else:
+        hint = {401: " (API 키를 확인하세요)", 402: " (요금제·잔여 글자 수를 확인하세요)", 429: " (요청이 너무 많거나 잔여 글자 수가 부족합니다)"}.get(r.status_code, "")
     return f"ElevenLabs 오류({r.status_code}): {str(msg)[:200]}{hint}"
 
 
+# 목소리 목록을 못 읽을 때 임시로 쓰는 기본 여성 목소리(ElevenLabs 기본 제공 목소리). 내 목소리를 고르면 그 목소리를 쓴다
+FALLBACK_VOICE = {"id": "EXAVITQu4vr4xnSDxMaL", "name": "기본 여성 목소리(임시)", "fallback": True}
+
+
 def elevenlabs_voices(force: bool = False) -> list[dict]:
-    """내 ElevenLabs 계정에서 쓸 수 있는 목소리 목록(10분 동안 기억). 실패하면 TTSError."""
+    """내 ElevenLabs 계정에서 쓸 수 있는 목소리 목록. 성공은 10분, 실패는 2분 동안 기억한다(화면을 열 때마다 다시 묻지 않게). 실패하면 TTSError."""
     import time
     key = get_settings().elevenlabs_api_key
     if not key:
         return []
-    if not force and _eleven_cache.get("voices") is not None and time.time() - _eleven_cache.get("at", 0) < 600:
-        return _eleven_cache["voices"]
+    age = time.time() - _eleven_cache.get("at", 0)
+    if not force and "voices" in _eleven_cache and age < (600 if _eleven_cache["voices"] else 120):
+        if _eleven_cache["voices"]:
+            return _eleven_cache["voices"]
+        raise TTSError(_eleven_cache.get("error") or "목소리 목록을 가져오지 못했습니다.")
     last = "목소리 목록을 가져오지 못했습니다."
-    for path in ("/v2/voices", "/v1/voices"):  # v2 가 현재 주소, v1 은 예전 주소(예비)
+    # v2 가 현재 주소(한 번에 100개까지), 기본 제공 목소리만 따로 묻는 방법, 예전 주소(v1) 순으로 시도
+    for path in ("/v2/voices?page_size=100", "/v2/voices?page_size=100&voice_type=default", "/v1/voices"):
         try:
             r = httpx.get(ELEVEN_BASE + path, headers={"xi-api-key": key}, timeout=30.0)
         except httpx.HTTPError as e:
-            raise TTSError(f"ElevenLabs 에 연결하지 못했습니다: {str(e)[:120]}")
+            last = f"ElevenLabs 에 연결하지 못했습니다: {str(e)[:120]}"
+            break
         if r.status_code == 200:
             out = []
             for v in (r.json().get("voices") or []):
@@ -126,11 +139,15 @@ def elevenlabs_voices(force: bool = False) -> list[dict]:
                 if v.get("voice_id"):
                     out.append({"id": v["voice_id"], "name": v.get("name") or v["voice_id"], "category": v.get("category"),
                                 "gender": lab.get("gender"), "language": lab.get("language"), "accent": lab.get("accent")})
-            _eleven_cache.update(voices=out, at=time.time())
-            return out
+            if out:
+                _eleven_cache.update(voices=out, at=time.time(), error=None)
+                return out
+            last = "ElevenLabs 계정의 목소리 목록이 비어 있습니다."
+            continue
         last = _eleven_error(r)
         if r.status_code in (401, 403):
             break
+    _eleven_cache.update(voices=[], at=time.time(), error=last)
     raise TTSError(last)
 
 
@@ -146,17 +163,18 @@ def _stored(key: str):
         return None
 
 
-def elevenlabs_voice() -> dict | None:
-    """쓸 목소리: .env 지정 → 화면에서 고른 것 → 계정 목록에서 한국어·여성 우선 → 첫 번째."""
+def elevenlabs_voice() -> dict:
+    """쓸 목소리: .env 지정 → 화면에서 고른 것 → 계정 목록에서 한국어·여성 우선 → (목록을 못 읽으면) 임시 기본 여성 목소리."""
     vid = get_settings().elevenlabs_voice_id or _stored("elevenlabs_voice_id")
+    err = None
     try:
         voices = elevenlabs_voices()
-    except TTSError:
-        voices = []
+    except TTSError as e:
+        voices, err = [], str(e)
     if vid:
-        return next((v for v in voices if v["id"] == vid), {"id": vid, "name": vid})
+        return next((v for v in voices if v["id"] == vid), {"id": vid, "name": f"직접 넣은 목소리({vid[:6]}…)"})
     if not voices:
-        return None
+        return dict(FALLBACK_VOICE, error=err)
     score = lambda v: (str(v.get("language") or "").lower() in ("ko", "korean"), str(v.get("gender") or "").lower() == "female")  # noqa: E731
     return max(voices, key=score)
 
@@ -164,15 +182,16 @@ def elevenlabs_voice() -> dict | None:
 def _elevenlabs_tts(text: str, out: Path, rate: float, voice_id: str | None = None) -> dict:
     s = get_settings()
     v = {"id": voice_id, "name": voice_id} if voice_id else elevenlabs_voice()
-    if not v:
-        raise TTSError("ElevenLabs 계정에 쓸 수 있는 목소리가 없습니다. 「편집 스타일 → 소리 재료」에서 목소리를 고르거나 .env 의 ELEVENLABS_VOICE_ID 를 적어 주세요.")
     try:
         r = httpx.post(f"{ELEVEN_BASE}/v1/text-to-speech/{v['id']}", params={"output_format": "mp3_44100_128"},
                        headers={"xi-api-key": s.elevenlabs_api_key}, json={"text": text, "model_id": s.elevenlabs_model or "eleven_multilingual_v2"}, timeout=60.0)
     except httpx.HTTPError as e:
         raise TTSError(f"ElevenLabs 에 연결하지 못했습니다: {str(e)[:120]}")
     if r.status_code != 200 or len(r.content) < 800:
-        raise TTSError(_eleven_error(r) if r.status_code != 200 else "ElevenLabs 응답에 소리가 없습니다.")
+        msg = _eleven_error(r) if r.status_code != 200 else "ElevenLabs 응답에 소리가 없습니다."
+        if v.get("fallback"):
+            msg += " (내 계정의 목소리 목록을 읽지 못해 임시 기본 목소리로 시도했습니다. 「편집 스타일 → 소리 재료」에 내 목소리의 Voice ID 를 넣어 주세요.)"
+        raise TTSError(msg)
     path = out.with_suffix(".mp3")
     path.write_bytes(r.content)
     # 말 빠르기는 API 값에 의존하지 않고 우리 쪽에서 맞춘다(tempo: 렌더링 때 그만큼 빠르게 재생)
@@ -187,8 +206,11 @@ def tts_status() -> dict:
         return {"available": False, "provider": None, "note": "내레이션이 꺼져 있습니다(.env 의 SHOPPULSE_TTS_PROVIDER=off)."}
     if pref in ("auto", "elevenlabs") and s.elevenlabs_api_key:
         v = elevenlabs_voice()
-        return {"available": True, "provider": "elevenlabs", "voice": (v or {}).get("name") or "목소리를 골라 주세요", "voice_id": (v or {}).get("id"),
-                "note": "ElevenLabs 음성(내 구독 계정). 문장은 ElevenLabs 로 전송되고 계정의 글자 수가 차감됩니다."}
+        note = "ElevenLabs 음성(내 구독 계정). 문장은 ElevenLabs 로 전송되고 계정의 글자 수가 차감됩니다."
+        if v.get("fallback"):
+            note = (f"내 계정의 목소리 목록을 읽지 못해 임시 기본 여성 목소리를 씁니다. 사유: {v.get('error') or '알 수 없음'} "
+                    "— 「편집 스타일 → 소리 재료」에서 내 목소리의 Voice ID 를 직접 넣을 수 있습니다.")
+        return {"available": True, "provider": "elevenlabs", "voice": v["name"], "voice_id": v["id"], "fallback": bool(v.get("fallback")), "note": note}
     if pref == "elevenlabs":
         return {"available": False, "provider": None, "note": "ELEVENLABS_API_KEY 가 없습니다. .env 에 넣고 다시 실행하세요."}
     if pref in ("auto", "google") and _google_key():

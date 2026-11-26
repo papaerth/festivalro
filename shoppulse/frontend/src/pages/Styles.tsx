@@ -23,6 +23,7 @@ export default function Styles() {
   const au = useAsync(() => api.styleAudio(), [])
   const [voiceUrl, setVoiceUrl] = useState<string | null>(null)
   const [voiceBusy, setVoiceBusy] = useState(false)
+  const [voiceId, setVoiceId] = useState('')
   const testVoice = async () => { setVoiceBusy(true); try { setVoiceUrl(await api.ttsTest('이 목소리로 첫 장면을 소개합니다')) } catch (e: any) { toast(e.message, 'err') } finally { setVoiceBusy(false) } }
   const learning = q.data?.styles.some((s) => s.status === 'learning')
 
@@ -90,7 +91,11 @@ export default function Styles() {
                 </select>
                 {au.data.voice_locked && <span className="muted">(.env 의 ELEVENLABS_VOICE_ID 로 고정됨)</span>}
               </label>)}
-            {au.data.voices_error && <span className="w-full text-xs text-red-600">{au.data.voices_error}</span>}
+            {au.data.tts.provider === 'elevenlabs' && au.data.voices.length === 0 && !au.data.voice_locked && (
+              <div className="w-full rounded-xl border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+                <div>내 계정의 목소리 목록을 읽지 못했습니다{au.data.voices_error ? ` — ${au.data.voices_error}` : ''}. {au.data.tts.fallback ? '지금은 임시 기본 여성 목소리로 읽습니다.' : ''} 원하는 목소리를 쓰려면 ElevenLabs 사이트의 Voices 화면에서 그 목소리의 「Copy voice ID」로 복사한 값을 넣어 주세요.</div>
+                <div className="mt-1 flex gap-2"><input className="input flex-1" placeholder="Voice ID 붙여넣기" value={voiceId} onChange={(e) => setVoiceId(e.target.value.trim())} /><button className="btn-primary" disabled={!voiceId} onClick={() => api.setVoice(voiceId).then(() => { toast('목소리를 저장했습니다. 미리 듣기로 확인하세요'); setVoiceId(''); setVoiceUrl(null); au.reload() }).catch((er) => toast(er.message, 'err'))}>이 목소리 쓰기</button></div>
+              </div>)}
             <span className="w-full text-xs muted">{au.data.tts.note}</span>
           </div>
           <div>

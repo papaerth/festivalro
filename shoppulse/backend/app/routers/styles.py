@@ -121,12 +121,17 @@ def set_voice(body: schemas.SettingIn, db: Session = Depends(get_db)):
     from ..models import UserSetting
     from ..services import audio_fx
     vid = str(body.value or "").strip()
+    import re as _re
+    if not get_settings().elevenlabs_api_key:
+        raise HTTPException(400, "ELEVENLABS_API_KEY 가 없습니다. .env 에 넣고 다시 실행하세요.")
     try:
-        ok = any(v["id"] == vid for v in audio_fx.elevenlabs_voices())
-    except audio_fx.TTSError as e:
-        raise HTTPException(400, str(e))
-    if not ok:
+        listed = audio_fx.elevenlabs_voices()
+    except audio_fx.TTSError:
+        listed = []  # 목록을 못 읽는 키(권한 제한)라도 Voice ID 를 직접 넣어 쓸 수 있게 한다
+    if listed and not any(v["id"] == vid for v in listed):
         raise HTTPException(400, "내 ElevenLabs 계정의 목소리 목록에 없는 목소리입니다")
+    if not listed and not _re.fullmatch(r"[A-Za-z0-9]{12,40}", vid):
+        raise HTTPException(400, "Voice ID 형식이 아닙니다. ElevenLabs 의 Voices 화면에서 목소리의 「Copy voice ID」로 복사한 값을 넣어 주세요.")
     st = db.get(UserSetting, "elevenlabs_voice_id")
     if st:
         st.value = {"value": vid}
