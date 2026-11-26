@@ -1108,3 +1108,81 @@ def test_default_make_uses_house_style_and_default_can_change(client):
     client.put(f"/api/styles/{hid}/default")
     client.delete(f"/api/styles/{oid}")
     assert client.get("/api/styles").json()["default_style_id"] == hid
+
+
+def test_ai_path_scene_not_found_suggestions_then_full_ai_edit(client, tmp_path, monkeypatch):
+    """AI 경로(가짜 AI): 원본에서 장면을 못 찾으면 멈추지 않고 대신 쓸 구간을 제안한다 → 제안 구간으로 만들면
+    AI 편집안(순서 섞기·초점·내레이션 2문장·상품 장면 자동 추출·브랜드 배지)이 그대로 영상이 된다."""
+    import subprocess, time
+    from app.config import get_settings
+    from app.services import audio_fx, shorts_maker
+    caps = shorts_maker.capabilities()
+    if not caps.get("available"):
+        import pytest; pytest.skip("ffmpeg 없음")
+    ff = caps["path"]
+    src = tmp_path / "long.mp4"
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=15:duration=240",
+                    "-f", "lavfi", "-i", "sine=frequency=440:duration=240", "-c:v", caps["vcodec"], "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(src)], check=True)
+    v = client.post("/api/videos", json={"url_or_id": "ai_path_001", "title": "남의 쇼츠: 바디로션 추천", "duration_seconds": 27,
+                                        "view_count": 600000, "fetch": False, "source_type": "reedit_shorts"}).json()
+    cid = client.post("/api/candidates", json={"video_id": v["id"], "channel_category": "beauty"}).json()["id"]
+    with src.open("rb") as f:
+        client.post(f"/api/studio/{cid}/source", files={"file": ("long.mp4", f, "video/mp4")})
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "test-key")
+    seen_ctx = {}
+
+    def fake_locate(ff_, path, info, ctx, workdir):
+        seen_ctx.update(ctx)
+        return {"found": False, "start": 0, "end": 0, "confidence": "low", "reason": "상품이 보이지 않음", "seen": "커피 세팅과 향수병 소개가 나온다",
+                "alternatives": [{"start": 60, "end": 96, "what": "분홍색 향수병 소개"}, {"start": 999, "end": 1200, "what": "범위 밖"}, {"start": "x", "end": 1, "what": "엉터리"}]}
+
+    monkeypatch.setattr(shorts_maker, "ai_locate", fake_locate)
+
+    def wait(prev=None):
+        for _ in range(600):
+            r = client.get(f"/api/studio/{cid}").json()["renders"][0]
+            if r["status"] in ("done", "failed") and r["id"] != prev:
+                return r
+            time.sleep(0.2)
+        raise AssertionError("렌더 시간 초과")
+
+    client.post(f"/api/studio/{cid}/make")
+    r = wait()
+    assert r["status"] == "failed" and "원본이 맞는지 먼저 확인" in r["error"] and "커피 세팅" in r["error"]
+    sg = r["output_info"]["suggestions"]
+    assert sg[0] == {"start": 60, "end": 96, "what": "분홍색 향수병 소개"} and len(sg) == 2 and sg[1]["start"] <= 234  # 범위 밖은 영상 길이 안으로, 엉터리는 버림
+    assert "reference_short_thumbnail" in seen_ctx  # 참고 쇼츠 표지를 장면 찾기 단서로 넘긴다
+    # 제안 구간으로 만들기 → AI 편집안
+    calls = {}
+
+    def fake_edit(ff_, items, ctx, workdir, transcript, guide=None):
+        calls.update(items=items, guide=guide)
+        return {"hook": {"src": 0, "start": 88, "end": 92, "caption": "*이게* 뭐길래", "focus": "left"},
+                "segments": [{"src": 0, "start": 62 + k * 3, "end": 64.4 + k * 3, "caption": f"컷 *{i}*", "focus": ["center", "left", "right"][i % 3]}
+                             for i, k in enumerate([4, 0, 6, 1, 7, 2, 5, 3])] + [{"src": 0, "start": 89, "end": 95, "caption": "후킹과 겹침", "focus": "center"}],
+                "title_lines": ['"진짜 못 버려요"', "십 년째 쓰는 *향수*"], "end_caption": "", "narration": "십 년째 쓴다는 향수가 있다는데",
+                "mid_narrations": [{"segment": 4, "text": "그런데 가격을 보고 놀랐다는데"}], "stickers": [{"segment": 2, "type": "sparkle"}], "pips": [],
+                "product_popup_segment": 3, "product_shot": {"found": True, "src": 0, "time": 70.0, "x": 0.3, "y": 0.2, "w": 0.4, "h": 0.6},
+                "brand_text": "테스트브랜드", "loop_note": "마지막 컷이 후킹 직전 상황", "quote_seen": "진짜 못 버려요", "reason": "결과 먼저", "cautions": ["상품명 확인 필요"]}
+
+    monkeypatch.setattr(shorts_maker, "ai_edit", fake_edit)
+
+    def fake_tts(text, out, rate=1.12, voice_id=None):
+        subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-t", "2.4", "-i", "sine=frequency=700", str(out)], check=True)
+        return {"provider": "test", "voice": "가짜"}
+
+    monkeypatch.setattr(audio_fx, "synthesize", fake_tts)
+    client.post(f"/api/studio/{cid}/make", data={"hint": "1:00", "hint_end": "1:36"})
+    r2 = wait(r["id"])
+    assert r2["status"] == "done", r2
+    assert calls["items"][0]["rng"] == (60.0, 96.0) and calls["guide"]["total_range"] == [20.0, 30.0] and calls["guide"]["mid_narrations"] in (0, 1)
+    e = r2["edl"]
+    clips = [e["hook"]] + e["segments"]
+    assert e["hook"]["end"] - e["hook"]["start"] <= 3.0 and e["hook"]["focus"] == "left" and 20 <= e["total_seconds"] <= 30
+    assert all(x["end"] <= y["start"] + 0.01 or y["end"] <= x["start"] + 0.01 for i, x in enumerate(clips) for y in clips[i + 1:])  # 같은 장면 재사용 없음
+    assert e["shuffles"] >= 2 and "ai_vision" in r2["decided_by"] and e["loop_note"]
+    assert {o["asset_id"] for o in e["overlays"]} >= {"auto_product"} and e["brand_text"] == "테스트브랜드"  # 상품 장면은 원본에서 자동 추출
+    assert e["audio"]["narration_count"] == 2 and [x["where"] for x in e["audio"]["lines"]] == ["첫 장면", "중간"]
+    assert any("확인 필요: 상품명 확인 필요" in n for n in r2["notes"]) and r2["output_info"]["width"] == 1080
+    assert client.get(f"/api/studio/{cid}").json()["upload_text"]["title_suggestion"] == '"진짜 못 버려요" 십 년째 쓰는 향수'
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "")

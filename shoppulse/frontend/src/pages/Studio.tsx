@@ -177,7 +177,24 @@ export default function Studio() {
           <p className="mt-1 text-[11px] muted">{s.styles.length === 0 ? '레퍼런스 채널을 3~4개 등록해 두면, 그 채널의 편집 방식(화면 배치·자막 모양·후킹 방식·컷 속도)으로 만드는 버튼이 여기에 생깁니다.' : '편집 방식만 따라 하고 문구·장면은 베끼지 않습니다. 스타일마다 우리만의 차별점(킥)이 함께 적용됩니다.'}</p>
         </div>
         {busy && latest && <div className="mt-3"><div className="flex justify-between text-sm"><span>{latest.step}</span><span className="tabular-nums">{latest.progress}%</span></div><div className="mt-1 h-2 w-full overflow-hidden rounded bg-stone-200 dark:bg-stone-700"><div className="h-full bg-emerald-600 transition-all" style={{ width: `${latest.progress}%` }} /></div></div>}
-        {latest?.status === 'failed' && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">만들지 못했습니다: {latest.error}</div>}
+        {latest?.status === 'failed' && (
+          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+            <div>만들지 못했습니다: {latest.error}</div>
+            {latest.output_info?.suggestions !== undefined && (
+              <div className="mt-2 space-y-2 text-stone-800 dark:text-stone-100">
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {s.sources[0].url && <a className="btn-ghost border border-stone-300 bg-white dark:border-stone-600 dark:bg-stone-900" href={s.sources[0].url} target="_blank" rel="noreferrer">연결된 원본 열어 확인 ↗</a>}
+                  {c.url && <a className="btn-ghost border border-stone-300 bg-white dark:border-stone-600 dark:bg-stone-900" href={c.url} target="_blank" rel="noreferrer">참고 쇼츠 다시 보기 ↗</a>}
+                </div>
+                {latest.output_info.suggestions.length > 0 && (
+                  <div className="text-xs">
+                    <div className="mb-1 font-semibold">그래도 이 영상으로 만들려면 — AI 가 본 상품 소개 구간을 골라 주세요</div>
+                    <div className="flex flex-wrap gap-2">{latest.output_info.suggestions.map((g, i) => (
+                      <button key={i} className="btn-primary" disabled={!canMake} onClick={() => { setHints({ ...hints, 1: ts(g.start) }); act(() => api.studioMake(cid, { ...allHints(), 1: ts(g.start) }, latest.style_id, ts(g.end)), `${ts(g.start)}~${ts(g.end)} 구간으로 만드는 중`) }}>{ts(g.start)}~{ts(g.end)} · {g.what} 로 만들기</button>))}</div>
+                    <div className="mt-1 muted">참고 쇼츠와 다른 상품일 수 있습니다. 올리기 전에 상품이 맞는지 꼭 확인하세요.</div>
+                  </div>)}
+              </div>)}
+          </div>)}
       </div>
 
       {latest?.status === 'done' && latest.file_url && latest.edl && (

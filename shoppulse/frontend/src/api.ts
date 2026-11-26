@@ -125,7 +125,7 @@ export const api = {
 
   studio: (id: number) => req<T.StudioState>('GET', `/api/studio/${id}`),
   studioOriginal: (id: number, url_or_id: string, slot = 1) => req<T.StudioState>('POST', `/api/studio/${id}/original?slot=${slot}`, { url_or_id }),
-  studioMake: (id: number, hints: Record<number, string>, styleId?: number | null) => { const fd = new FormData(); if (hints[1]) fd.append('hint', hints[1]); if (hints[2]) fd.append('hint2', hints[2]); if (hints[3]) fd.append('hint3', hints[3]); if (styleId) fd.append('style_id', String(styleId)); return req<T.StudioState>('POST', `/api/studio/${id}/make`, fd, true) },
+  studioMake: (id: number, hints: Record<number, string>, styleId?: number | null, hintEnd?: string) => { const fd = new FormData(); if (hints[1]) fd.append('hint', hints[1]); if (hintEnd) fd.append('hint_end', hintEnd); if (hints[2]) fd.append('hint2', hints[2]); if (hints[3]) fd.append('hint3', hints[3]); if (styleId) fd.append('style_id', String(styleId)); return req<T.StudioState>('POST', `/api/studio/${id}/make`, fd, true) },
   studioRerender: (id: number, edl: { hook: T.EdlClip | null; segments: T.EdlClip[]; title_lines: string[]; credit: string; end_caption?: string; narration?: string; overlays?: T.EdlOverlay[]; mid_narrations?: T.MidNarration[]; stickers?: T.EdlSticker[]; pips?: T.EdlPip[]; brand_text?: string | null }) => req<T.StudioState>('POST', `/api/studio/${id}/rerender`, edl),
   styles: () => req<{ styles: T.RefStyle[]; default: T.StyleProfile; note: string; default_style_id: number | null; house_style_id: number | null }>('GET', '/api/styles'),
   styleMakeDefault: (id: number) => req<{ default_style_id: number }>('PUT', `/api/styles/${id}/default`),

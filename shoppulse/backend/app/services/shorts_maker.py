@@ -38,6 +38,14 @@ class ShortsError(RuntimeError):
     pass
 
 
+class SceneNotFound(ShortsError):
+    """원본에서 참고 쇼츠의 장면·상품을 찾지 못함. suggestions: AI 가 대신 쓸 만하다고 본 구간들 [{start,end,what}]"""
+
+    def __init__(self, message: str, suggestions: list[dict] | None = None, seen: str = ""):
+        super().__init__(message)
+        self.suggestions, self.seen = suggestions or [], seen
+
+
 # ---------------------------------------------------------------- ffmpeg 찾기·능력
 def find_ffmpeg() -> str | None:
     s = get_settings()
@@ -389,9 +397,12 @@ EDL_SCHEMA = {
     },
 }
 LOCATE_SCHEMA = {
-    "type": "object", "additionalProperties": False, "required": ["found", "start", "end", "confidence", "reason"],
+    "type": "object", "additionalProperties": False, "required": ["found", "start", "end", "confidence", "reason", "seen", "alternatives"],
     "properties": {"found": {"type": "boolean"}, "start": {"type": "number"}, "end": {"type": "number"},
-                   "confidence": {"type": "string", "enum": ["high", "medium", "low"]}, "reason": {"type": "string"}},
+                   "confidence": {"type": "string", "enum": ["high", "medium", "low"]}, "reason": {"type": "string"},
+                   "seen": {"type": "string"},
+                   "alternatives": {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["start", "end", "what"],
+                                                               "properties": {"start": {"type": "number"}, "end": {"type": "number"}, "what": {"type": "string"}}}}},
 }
 
 
@@ -407,17 +418,44 @@ def _sheet_content(sheets: list[dict]) -> list[dict]:
     return content
 
 
+def reference_cover(ctx: dict) -> dict | None:
+    """참고 쇼츠의 표지 그림(있으면). '어느 장면인지' 찾는 단서로만 AI 에게 보여 준다 — 영상에 쓰지 않는다."""
+    url = ctx.get("reference_short_thumbnail")
+    if not url:
+        return None
+    try:
+        from .product_identifier import fetch_image
+        got = fetch_image(url, timeout=10.0)
+    except Exception:
+        got = None
+    if not got or len(got[0]) > 4_000_000:
+        return None
+    return {"type": "image", "source": {"type": "base64", "media_type": got[1], "data": base64.standard_b64encode(got[0]).decode()}}
+
+
 def ai_locate(ff: str, src: str, info: dict, ctx: dict, workdir: Path) -> dict:
-    """영상 전체를 듬성듬성 훑어 '참고 쇼츠가 쓴 장면'이 있는 구간(최대 150초)을 찾는다."""
+    """영상 전체를 듬성듬성 훑어 '참고 쇼츠가 쓴 장면'이 있는 구간(최대 150초)을 찾는다.
+    상품이 안 보이더라도 참고 쇼츠 표지와 같은 장면(같은 사람·옷·장소·화면 자막)이면 찾은 것으로 본다.
+    못 찾으면 무엇이 보였는지(seen)와, 상품을 소개하는 다른 구간들(alternatives)을 함께 돌려준다."""
     from .claude_client import create_json
     dur = info["duration"]
     step = max(6.0, dur / 150)
     sheets = contact_sheets(ff, src, 0, dur, step, 3, 3, 520, workdir, "coarse")[:18]
-    content = _sheet_content(sheets)
-    content.append({"type": "text", "text": json.dumps({"task": "아래 정보의 재편집 쇼츠가 잘라 쓴 장면이 원본 어디쯤인지 찾아라.", **ctx}, ensure_ascii=False)})
-    system = ("유튜브 원본 영상의 장면 모음 이미지를 보고, 참고 쇼츠(제목·상품·썸네일 설명)가 다룬 장면이 나오는 구간을 초 단위로 찾는 편집 보조다. 한국어. "
-              "해당 상품·소품·화면 자막이 보이는 칸들의 시각을 근거로 start/end(최대 150초 폭)를 준다. 못 찾으면 found=false. 추측이면 confidence=low.")
-    return create_json(system=system, max_tokens=700, output_schema=LOCATE_SCHEMA, messages=[{"role": "user", "content": content}], timeout=240.0)
+    content: list[dict] = []
+    cover = reference_cover(ctx)
+    if cover:
+        content += [{"type": "text", "text": "[참고 쇼츠의 표지] 이 장면이 원본 어디에서 나왔는지 찾는 단서다(같은 사람·옷·장소·소품·화면 자막을 본다)."}, cover]
+    content += _sheet_content(sheets)
+    text_ctx = {k: v for k, v in ctx.items() if k != "reference_short_thumbnail"}
+    content.append({"type": "text", "text": json.dumps({"task": "아래 정보의 재편집 쇼츠가 잘라 쓴 장면이 원본 어디쯤인지 찾아라.", "scanned_seconds": [0, round(dur)],
+                                                         "frame_interval_seconds": round(step, 1), **text_ctx}, ensure_ascii=False)})
+    system = ("유튜브 원본 영상의 장면 모음 이미지를 보고, 참고 쇼츠가 다룬 장면이 나오는 구간을 초 단위로 찾는 편집 보조다. 한국어.\n"
+              "찾는 기준(위에서부터): ① 상품(또는 그 포장·사용 장면)이 보이는 칸 ② 참고 쇼츠 표지와 같은 장면(같은 사람·옷·장소·소품) ③ 상품·제목과 관련된 화면 자막. "
+              "장면 모음은 몇 초 간격으로만 뽑은 것이라 상품이 작거나 잠깐 나오면 안 보일 수 있다 — ②③으로 구간을 좁힐 수 있으면 found=true, confidence 는 low 나 medium 으로 한다. "
+              "start/end 는 최대 150초 폭. 정말 관련 장면이 없으면 found=false.\n"
+              "seen: 이 영상에 실제로 무엇이 나오는지 한두 문장. "
+              "alternatives: found 가 false 일 때, 이 영상에서 어떤 물건·음식을 소개하거나 쓰는 구간을 최대 3개(start, end, what=무엇을 소개하는지 12자 안팎). 그런 구간이 없으면 빈 배열. found 가 true 면 빈 배열.")
+    return create_json(system=system, max_tokens=4000, output_schema=LOCATE_SCHEMA, messages=[{"role": "user", "content": content}], timeout=300.0)
 
 
 def ai_edit(ff: str, items: list[dict], ctx: dict, workdir: Path, transcript: list[dict] | None, guide: dict | None = None) -> dict:
@@ -440,6 +478,7 @@ def ai_edit(ff: str, items: list[dict], ctx: dict, workdir: Path, transcript: li
     nseg = int(guide.get("target_segments") or 6)
     nseg = max(5, min(12, nseg))
     maxclip = float(guide.get("max_clip_seconds") or 5)
+    ctx = {k: v for k, v in ctx.items() if k != "reference_short_thumbnail"}
     payload = {"task": "원본 화면만으로 새 쇼핑 쇼츠 편집안을 만든다.", "sources": ranges, **ctx, "style_guide": guide}
     if transcript:
         a0, b0 = ranges[0]["range"]
@@ -1003,6 +1042,7 @@ def _set(db, r: ShortsRender, step: str, progress: int) -> None:
 def _context(c: SourcingCandidate) -> dict:
     short, orig = c.video, c.video.original
     return {"reference_short_title": short.title, "reference_short_description": (short.description or "")[:300],
+            "reference_short_thumbnail": short.thumbnail_url,
             "product": ({"name": c.product.name, "brand": c.product.brand} if c.product else None),
             "celebrity": c.celebrity.name if c.celebrity else None,
             "original_title": orig.title if orig else None,
@@ -1071,7 +1111,18 @@ def decide_edl(db, c: SourcingCandidate, proj: ShortsProject, r: ShortsRender, f
                 loc = ai_locate(ff, sc["path"], info, ctx, workdir)
                 if not loc.get("found"):
                     if k == 0:
-                        raise ShortsError(f"AI 가 원본에서 해당 장면을 찾지 못했습니다({loc.get('reason', '')}). '대략 위치(분:초)'를 입력하고 다시 시도하세요.")
+                        alts = []
+                        for x in (loc.get("alternatives") or [])[:3]:
+                            try:
+                                a0 = max(0.0, min(float(x["start"]), info["duration"] - 6))
+                                alts.append({"start": int(a0), "end": int(max(a0 + 20, min(float(x["end"]), info["duration"]))), "what": str(x.get("what") or "")[:40]})
+                            except (TypeError, ValueError, KeyError):
+                                continue
+                        what = (c.product.name if c.product else None) or "참고 쇼츠의 장면"
+                        raise SceneNotFound(
+                            f"이 원본에서 「{what}」 장면을 찾지 못했습니다. 원본이 맞는지 먼저 확인해 주세요(참고 쇼츠가 다른 영상에서 나온 것일 수 있습니다). "
+                            f"맞는 원본이라면 상품이 나오는 '대략 위치(분:초)'를 적고 다시 눌러 주세요. AI 가 본 내용: {loc.get('seen') or loc.get('reason', '')}",
+                            alts, loc.get("seen") or "")
                     notes.append(f"원본 {k + 1}에서는 관련 장면을 찾지 못해 쓰지 않았습니다({loc.get('reason', '')}).")
                     continue
                 krng, kbasis = (float(loc["start"]), float(loc["end"])), "ai_locate"
@@ -1186,6 +1237,8 @@ def run_render(render_id: int, reuse_edl: bool = False) -> None:
             log.exception("쇼츠 제작 실패")
             r = db.get(ShortsRender, render_id)
             r.status, r.error, r.finished_at = "failed", str(e)[:800], utcnow()
+            if isinstance(e, SceneNotFound):  # 대신 쓸 만한 구간을 화면에서 고를 수 있게 남긴다
+                r.output_info = {"suggestions": e.suggestions, "seen": e.seen}
             db.commit()
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
