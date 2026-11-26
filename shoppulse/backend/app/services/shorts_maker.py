@@ -479,7 +479,7 @@ def ai_edit(ff: str, items: list[dict], ctx: dict, workdir: Path, transcript: li
         "13) pips: style_guide.pip 가 true 면 최대 2개. 상품을 보여 주는 컷 위에 다른 순간의 반응 얼굴을 원형 작은 화면으로: segment=원이 뜰 컷 번호, src·src_start=반응 장면의 원본과 시각, "
         "focus=얼굴이 화면의 left/center/right 중 어디인지. 그 장면은 다른 컷에서 쓰지 않은 구간이어야 한다. 뚜렷한 반응이 없으면 빈 배열. false 면 빈 배열. "
         "14) loop_note: 끝 장면이 첫 장면으로 어떻게 이어지는지 한 줄. reason: 왜 이 순서로 섞었는지 한 줄.")
-    return create_json(system=system, max_tokens=3000, output_schema=EDL_SCHEMA, messages=[{"role": "user", "content": content}], timeout=360.0)
+    return create_json(system=system, max_tokens=20000, output_schema=EDL_SCHEMA, messages=[{"role": "user", "content": content}], timeout=360.0)
 
 
 # ---------------------------------------------------------------- 자막(ASS)·렌더링

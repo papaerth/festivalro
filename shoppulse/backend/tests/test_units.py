@@ -574,3 +574,51 @@ def test_elevenlabs_voice_list_failure_falls_back_and_is_cached(tmp_path, monkey
     monkeypatch.setattr(get_settings(), "elevenlabs_voice_id", "MyVoiceId1234567890")
     assert audio_fx.elevenlabs_voice()["id"] == "MyVoiceId1234567890" and audio_fx.tts_status()["fallback"] is False
     audio_fx._eleven_cache.clear()
+
+
+def test_claude_empty_answer_when_thinking_uses_up_the_limit(monkeypatch):
+    """최신 모델은 항상 '생각'을 하고 그 분량이 max_tokens 에 포함된다. 한도가 작으면 답이 빈 채로 오므로:
+    한도에 바닥값을 두고, 그래도 비었거나 잘렸으면 한도를 올리고 생각을 줄여 한 번 더 시도한다."""
+    import pytest
+    from app.config import get_settings
+    from app.services import claude_client as cc
+    monkeypatch.setattr(cc, "sdk_import_error", lambda: "ImportError (테스트)")
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "test-key")
+    bodies = []
+
+    def responder(seq):
+        it = iter(seq)
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            bodies.append(json)
+
+            class R:
+                status_code = 200
+                _d = next(it)
+                def json(self):
+                    return self._d
+            return R()
+        return fake_post
+
+    thinking_only = {"content": [{"type": "thinking", "thinking": ""}], "stop_reason": "max_tokens", "model": "claude-opus-5-5"}
+    good = {"content": [{"type": "thinking", "thinking": ""}, {"type": "text", "text": "{\"ok\": true}"}], "stop_reason": "end_turn", "model": "claude-opus-5-5"}
+    monkeypatch.setattr(cc.httpx, "post", responder([thinking_only, good]))
+    out = cc.create_json(system="s", messages=[{"role": "user", "content": "hi"}], output_schema={"type": "object"}, max_tokens=700)
+    assert out["ok"] is True and len(bodies) == 2
+    assert bodies[0]["max_tokens"] == cc.MIN_MAX_TOKENS and "effort" not in bodies[0]["output_config"]  # 작은 한도는 바닥값으로 올려 보낸다
+    assert bodies[1]["max_tokens"] == cc.RETRY_MAX_TOKENS and bodies[1]["output_config"]["effort"] == "low"
+    assert bodies[1]["output_config"]["format"]["type"] == "json_schema"
+    # 잘린 JSON 도 믿지 않고 다시 시도한다
+    bodies.clear()
+    cut = {"content": [{"type": "text", "text": "{\"ok\": tr"}], "stop_reason": "max_tokens", "model": "m"}
+    monkeypatch.setattr(cc.httpx, "post", responder([cut, good]))
+    assert cc.create_json(system="s", messages=[], output_schema={"type": "object"})["ok"] is True and len(bodies) == 2
+    # 두 번 다 실패하면 이유와 할 일을 알려 준다(파싱 오류 원문을 그대로 내보내지 않는다)
+    monkeypatch.setattr(cc.httpx, "post", responder([thinking_only, thinking_only]))
+    with pytest.raises(cc.ClaudeError, match="길이 한도에 걸려 잘렸습니다.*대략 위치"):
+        cc.create_json(system="s", messages=[], output_schema={"type": "object"})
+    # 정상 응답은 한 번만 부른다
+    bodies.clear()
+    monkeypatch.setattr(cc.httpx, "post", responder([good]))
+    assert cc.create_json(system="s", messages=[], output_schema={"type": "object"})["_transport"] == "http" and len(bodies) == 1
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "")
